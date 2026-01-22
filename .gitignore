@@ -1,0 +1,30 @@
+# --- Python Internals ---
+__pycache__/
+*.py[cod]
+*.so
+
+# --- Virtual Environments ---
+# Essential to keep your repo clean from library files
+.venv/
+venv/
+env/
+
+# --- Data & Cache ---
+# Ignore the S&P 500 data downloaded by yfinance
+*.csv
+data/
+cache/
+
+# --- IDE & OS Settings ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Jupyter (Research) ---
+.ipynb_checkpoints/
+
+# --- Build & Logs ---
+build/
+dist/
+*.log
