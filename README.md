@@ -49,7 +49,7 @@ $$ dX_t = \kappa(\theta - X_t)dt + \mathcal{N}_{\mu}(\mathbb{S}_t)dt + \mathcal{
 Where:
 *   $\kappa(\theta - X_t)$ is the physical mean-reverting prior.
 *   $\mathcal{N}_{\mu, \sigma}$ are neural networks parameterizing the drift and diffusion corrections.
-*   $\mathbb{S}_t$ is the truncated signature of the driving Brownian motion $W_{[0,t]}$.
+*   $\mathbb{S}_t$ is the truncated signature of the driving Brownian motion $W\_{\[0,t\]}$.
 
 ## Usage
 
