@@ -1,0 +1,42 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\geometry{a4paper, margin=2.5cm}
+
+\title{Martingale Restoration in Rough Volatility Models \\ \large A Signature-Based Neural Compensation Approach}
+\author{Quant Project - IA/Maths}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Problem Statement}
+In the context of rough volatility models, such as the Rough Bergomi model, the variance process $V_t$ exhibits an H\"older regularity $H < 0.5$. The discretized price process $S_t$ under the risk-neutral measure should theoretically satisfy the martingale property:
+\begin{equation}
+    \mathbb{E}[S_T | \mathcal{F}_t] = S_t
+\end{equation}
+However, due to the non-Markovian nature of the fractional kernel and discretization errors (e.g., in the hybrid scheme), the simulated price process often exhibits a drift bias $\epsilon(t, \text{Path}(V_{[0,t]}))$, leading to statistical arbitrage opportunities.
+
+\section{Signature-Based Approximation}
+The error $\epsilon$ is a continuous functional of the past trajectory of the variance path. According to the \textbf{Universal Approximation Theorem for Signatures} (Levin et al., 2013), the space of signatures $\mathbf{S}(X)$ is dense in the space of continuous functions of paths. 
+
+Thus, for any discretization bias $\epsilon$, there exists a linear weight vector $\mathbf{W}$ such that:
+\begin{equation}
+    \epsilon(t, \omega) \approx \langle \mathbf{W}, \mathbf{S}(V_{[0,t]}) \rangle
+\end{equation}
+
+\section{Proposed Neural Architecture}
+We propose a "Signature Compensator" $\mathcal{N}_\theta$. The corrected price dynamics are given by:
+\begin{equation}
+    d\hat{S}_t = \hat{S}_t \left( \left[ r - \mathcal{N}_\theta(\mathbf{S}(V_{[0,t]})) \right] dt + \sqrt{V_t} dW_t \right)
+\end{equation}
+where $\mathcal{N}_\theta$ is trained to minimize the Martingale Loss:
+\begin{equation}
+    \mathcal{L}(\theta) = \left\| \mathbb{E} \left[ e^{-r(T-t)} \hat{S}_T - \hat{S}_t \big| \mathcal{F}_t \right] \right\|^2
+\end{equation}
+This approach allows the model to "learn" the numerical bias and compensate for it without an explicit analytical formula for the discretization error.
+
+\end{document}
