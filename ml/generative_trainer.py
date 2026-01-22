@@ -12,27 +12,26 @@ class GenerativeTrainer:
     Trains a Neural SDE to generate synthetic volatility paths 
     that are statistically indistinguishable from the S&P 500.
     """
+    
     def __init__(self, config: dict):
         self.config = config
-        # Higher order signature (3 or 4) needed to capture complex market features
         self.sig_extractor = SignatureFeatureExtractor(truncation_order=3)
-        self.optim = optax.chain(
-            optax.clip_by_global_norm(1.0),  
-            optax.adam(learning_rate=5e-4)
-        )
-        # Input dimension for the Neural SDE (Noise driver)
         self.input_sig_dim = self.sig_extractor.get_feature_dim(1)
         
-        # Load Real Market Data
         loader = MarketDataLoader()
         self.market_paths = loader.get_realized_vol_paths(segment_length=config['n_steps'])
         
-        # Pre-compute signatures of real data (Target Distribution)
-        print("Computing Signatures of Real Market Data...")
-        # We process in chunks if data is too large, here it fits in RAM
         self.target_sigs = self.sig_extractor.get_signature(self.market_paths)
-        self.target_sigs = jax.device_put(self.target_sigs) # Move to GPU if available
+        self.target_sigs = jax.device_put(self.target_sigs)
 
+        # --- IMPROVEMENT 3: Learning Rate Scheduler ---
+        # Starts at 1e-3, decays to 1e-5 over 2000 steps
+        scheduler = optax.cosine_decay_schedule(init_value=1e-3, decay_steps=2000, alpha=0.01)
+        
+        self.optim = optax.chain(
+            optax.clip_by_global_norm(1.0),
+            optax.adam(learning_rate=scheduler)
+        )    
     def train_step(self, model, opt_state, noise_driver, noise_sigs, dt):
         """
         Unsupervised training step against Market Data.

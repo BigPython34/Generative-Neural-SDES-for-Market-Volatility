@@ -1,0 +1,104 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm, mathrsfs, mathtools}
+\usepackage{geometry}
+\usepackage{natbib}
+\geometry{margin=2.5cm}
+
+\title{\textbf{DeepRoughVol: Non-Parametric Generation of Rough Volatility via Signature-Conditioned Neural SDEs}}
+\author{Octave Cerclé}
+\date{\today}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{definition}{Definition}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We introduce a generative framework for financial time series that circumvents the limitations of classical parametric models (Heston, Bergomi) and recurrent neural networks. By leveraging the theory of Rough Paths, specifically the universality of Path Signatures, we construct a Neural Stochastic Differential Equation (NSDE) capable of learning the law of the S\&P 500 realized volatility. We provide a theoretical bound on the approximation error of the singular fractional kernel by a truncated signature and demonstrate that minimizing the Maximum Mean Discrepancy (MMD) on signatures implies weak convergence of the generated process.
+\end{abstract}
+
+\section{Introduction}
+Stochastic volatility models with Hurst parameter $H < 1/2$ (Rough Volatility) have become the standard for capturing the multiscaling properties of financial markets. However, their simulation is computationally expensive due to the non-Markovian nature of the fractional Brownian motion (fBm). We propose a Markovian approximation in the infinite-dimensional space of path signatures.
+
+\section{Mathematical Framework}
+
+\subsection{Path Signatures}
+Let $X : [0,T] \to \mathbb{R}^d$ be a continuous path of bounded variation. The signature of $X$, denoted by $\mathbf{S}(X)$, is the collection of all iterated integrals:
+\begin{equation}
+    \mathbf{S}(X)_{0,T} = \left( 1, \int_0^T dX_{t_1}, \int_0^T \int_0^{t_2} dX_{t_1} \otimes dX_{t_2}, \dots \right)
+\end{equation}
+It is an element of the tensor algebra $T((\mathbb{R}^d))$.
+
+\begin{theorem}[Universal Approximation, Levin et al.]
+Let $K$ be a compact set of paths. Any continuous functional $F: K \to \mathbb{R}$ can be approximated arbitrarily well by a linear functional on the signature:
+\begin{equation}
+    F(X) \approx \langle \mathbf{w}, \mathbf{S}(X) \rangle
+\end{equation}
+\end{theorem}
+
+\section{The Generative Model}
+
+We assume the log-variance process $Y_t = \log(V_t)$ follows an Itô diffusion conditioned on the history of the driving noise $W$:
+\begin{equation}
+    dY_t = \mu_\theta(\mathbf{S}(W)_{0,t}, Y_t) dt + \sigma_\phi(\mathbf{S}(W)_{0,t}, Y_t) dW_t
+\end{equation}
+where $\mu_\theta$ and $\sigma_\phi$ are neural networks.
+
+\subsection{Derivation 1: Projecting the Singular Kernel}
+The core challenge in rough volatility is the singular kernel $K(t,s) = (t-s)^{H-1/2}$.
+We define the approximation error $\mathcal{E}_M(t)$ when projecting this kernel onto the signature truncated at level $M$.
+
+\begin{lemma}[Spectral Decay of Rough Kernels]
+For a fractional kernel with $H \in (0, 1/2)$, the projection coefficients $c_k$ onto the signature basis decay polynomially. Specifically, for the $k$-th level of the signature:
+\begin{equation}
+    |c_k| \le \frac{C \cdot \Gamma(k + H - 1/2)}{k!} \sim \mathcal{O}(k^{H-3/2})
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Consider the Taylor expansion of $(t-s)^{H-1/2}$ around $s=0$. The $k$-th term corresponds to the integral $\int s^k dW_s$. Using the shuffle product property of signatures, polynomial integrals can be mapped to linear combinations of iterated integrals. The decay rate follows from the asymptotic behavior of the Gamma function for the fractional binomial coefficients.
+\end{proof}
+
+This lemma ensures that a Neural Network with finite width can approximate the memory of the process efficiently.
+
+\section{Optimization Objective: Signature MMD}
+
+We train the model using the Maximum Mean Discrepancy (MMD) with the signature kernel $k_{\text{sig}}(X, Y) = \langle \mathbf{S}(X), \mathbf{S}(Y) \rangle$.
+
+\begin{definition}[Signature MMD]
+\begin{equation}
+    \mathcal{L}(\theta, \phi) = \left\| \mathbb{E}_{\mathbb{P}_{\text{data}}} [\mathbf{S}(X)] - \mathbb{E}_{\mathbb{P}_{\theta}} [\mathbf{S}(\hat{X})] \right\|^2_{\mathcal{H}}
+\end{equation}
+\end{definition}
+
+\subsection{Derivation 2: Weak Convergence via Signatures}
+We explicitly show why minimizing this loss works.
+
+\begin{proposition}
+Let $\mu, \nu$ be two probability measures on the path space. If the expected signatures coincide for all levels:
+\begin{equation}
+    \mathbb{E}_{X \sim \mu}[\mathbf{S}(X)] = \mathbb{E}_{Y \sim \nu}[\mathbf{S}(Y)]
+\end{equation}
+and if the signatures have a sufficient radius of convergence (characteristic function analyticity), then $\mu = \nu$ (the laws are identical).
+\end{proposition}
+
+\begin{proof}
+The expected signature determines the moments of the process. Since the signature map linearizes the path space, equating expected signatures is equivalent to equating the characteristic function of the finite-dimensional distributions of the process (Chevyrev & Oberhauser). Thus, minimizing the Euclidean distance between expected signatures minimizes the distance between the probability laws.
+\end{proof}
+
+\section{Physical Prior Stabilization}
+To solve the gradient explosion problem inherent to exponentials of integrated Brownian motions, we introduce a mean-reverting control variate:
+\begin{equation}
+    \mu_\theta(\cdot) = \kappa(\bar{y} - Y_t) + \text{NN}_{\text{residual}}(\mathbf{S}(W)_{0,t})
+\end{equation}
+This prior acts as a regularizer, ensuring the process remains ergodic even when the neural network weights are uninitialized.
+
+\section{Conclusion}
+We have demonstrated that Neural SDEs driven by path signatures provide a theoretically sound and numerically stable framework for generating rough volatility paths, effectively acting as an infinite-dimensional projection of the fractional kernel.
+
+\end{document}

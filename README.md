@@ -63,5 +63,7 @@ Run the full pipeline (Data loading -> Training -> Generation -> Diagnostics):
 python main.py
 ```
 References
+
 Kidger, P. et al. (2021). "Neural SDEs as Infinite-Dimensional GANs".
+
 Levin, D. et al. (2013). "Learning from the past, predicting the statistics for the future, learning an evolving system".
