@@ -73,12 +73,17 @@ class DeepPricingEngine:
         st, vt = bergomi_model.simulate_spot_vol_paths(n_paths, s0=s0)
         return np.array(st), np.array(vt)
 
-    def price_down_and_out_call(self, s_paths, strike, barrier, r=0.05, T=0.25):
+    def price_down_and_out_call(self, s_paths, strike, barrier, r=0.05, T=None):
         """
         Prices a Barrier Option (Down-and-Out Call).
         Payoff = max(S_T - K, 0) if min(S_t) > Barrier, else 0.
         Sensitive to 'Fat Tails' (Crash Risk).
+        
+        Args:
+            T: Maturity. If None, uses the model's horizon for consistency.
         """
+        if T is None:
+            T = self.config['T']  # Use consistent horizon
         min_s = np.min(s_paths, axis=1)
         alive = (min_s > barrier).astype(float)
         

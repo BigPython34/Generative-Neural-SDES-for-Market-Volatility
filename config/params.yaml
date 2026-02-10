@@ -1,0 +1,56 @@
+# DeepRoughVol Configuration
+# --------------------------
+# All parameters centralized for reproducibility
+
+# Data Configuration
+data:
+  source: "data/TVC_VIX, 15.csv"    # VIX 15min for IV training (Q-measure)
+  data_type: "vix"                  # 'realized_vol' or 'vix'
+  segment_length: 20              # Path length for training
+  stride_ratio: 0.5               # 50% overlap between paths
+  rv_window: 13                   # Window for RV calculation (~1 trading day)
+  # Temporal coherence
+  max_gap_hours: 4                # Max acceptable gap between consecutive points
+  trading_hours_per_day: 6.5      # NYSE trading hours (9:30 - 16:00)
+
+# Model Training
+training:
+  n_epochs: 200
+  batch_size: 256
+  learning_rate_init: 0.001      # 1e-3
+  learning_rate_final: 0.00001   # 1e-5
+  decay_steps: 2000
+  gradient_clip: 1.0
+
+# Neural SDE Architecture
+neural_sde:
+  sig_truncation_order: 3
+  mlp_width: 64
+  mlp_depth: 3
+  drift_scale: 0.2           # Constraints neural drift authority
+  diffusion_min: 0.1
+  diffusion_max: 1.6
+  # Physical Prior (Ornstein-Uhlenbeck)
+  kappa: 0.1                 # Mean-reversion speed
+  theta: -3.8                # Long-term log-variance target (~0.022 variance)
+
+# Simulation Configuration
+simulation:
+  n_steps: 20                # Match segment_length for consistency
+  T: 0.083                   # ~1 month (1/12 year) - realistic for option pricing
+  n_paths: 5000              # Monte Carlo paths
+
+# Rough Bergomi Benchmark
+bergomi:
+  hurst: 0.07                # Roughness (H < 0.15 for rough regime)
+  eta: 1.9                   # Vol-of-vol
+  rho: -0.7                  # Spot-vol correlation (leverage)
+  xi0: 0.09                  # Initial forward variance
+
+# Pricing Configuration
+pricing:
+  strike: 100.0
+  barrier: 90.0
+  spot: 100.0
+  risk_free_rate: 0.05
+  maturity: 0.083            # Matches T from simulation

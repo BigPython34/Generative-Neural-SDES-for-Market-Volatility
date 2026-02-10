@@ -26,12 +26,7 @@ class NeuralSDEFunc(eqx.Module):
         
         net_input = jnp.concatenate([signature_t, v_in])
         
-        # --- IMPROVEMENT 1: Tighter Constraints ---
-        # Reduce drift authority from 3.0 to 0.2. 
-        # The AI should only refine the path, not drive the trend.
         drift = 0.2 * jnn.tanh(self.drift_net(net_input))
-        
-        # Diffusion (Vol of Vol) stays dynamic but controlled
         raw_diff = self.diff_net(net_input)
         diffusion = 1.5 * jnn.sigmoid(raw_diff) + 0.1
         
@@ -44,7 +39,7 @@ class NeuralRoughSimulator(eqx.Module):
         self.func = NeuralSDEFunc(sig_dim, key)
 
     def generate_variance_path(self, init_var, signatures, brownian_increments, dt):
-        safe_init = jnp.clip(init_var, 0.005, 0.2)
+        safe_init = jnp.clip(init_var, 0.01, 1.5)
         init_log_var = jnp.log(safe_init)
 
         def scan_fn(log_v_prev, inputs):
@@ -55,19 +50,14 @@ class NeuralRoughSimulator(eqx.Module):
             drift_nn = jnp.squeeze(drift_nn)
             diff_nn = jnp.squeeze(diff_nn)
 
-            theta = -3.8
-            kappa = 0.1
-            
+            # Mean-reversion prior
+            theta = -1.6
+            kappa = 0.15
             drift_phy = kappa * (theta - log_v_prev)
             
-            # Total Drift
             total_drift = drift_phy + drift_nn
-            
-            # Euler Update
             log_v_next = log_v_prev + total_drift * dt + diff_nn * dw_t
-            
-            # Hard Bounds (Safety)
-            log_v_next = jnp.clip(log_v_next, -7.0, -0.5)
+            log_v_next = jnp.clip(log_v_next, -5.0, 1.0)
             
             return log_v_next, log_v_next
 

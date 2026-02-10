@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-02-09T23:32:16.317678",
+  "empirical_params": {
+    "H": 0.04645059061744263,
+    "eta": 1.0,
+    "rho": -0.75,
+    "xi_0": 0.029172639999999993,
+    "sigma_0": 0.17079999999999998
+  },
+  "grid_params": {
+    "hurst": 0.2,
+    "eta": 1.0,
+    "rho": -0.8,
+    "xi0": 0.026193188515801557
+  },
+  "rmse_results": {
+    "Empirical Bergomi": 11.232267472981926,
+    "Grid Search Bergomi": 6.759522763656331,
+    "Black-Scholes": 4.777823945700456
+  },
+  "n_options": 127,
+  "n_paths": 10000,
+  "winner": "grid"
+}

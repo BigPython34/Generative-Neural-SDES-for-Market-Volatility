@@ -1,0 +1,33 @@
+{
+  "parameters": {
+    "eta": 8.371733329628302,
+    "eta_low_regime": 8.441627489207036,
+    "eta_high_regime": 8.312846083082476,
+    "kappa": 2.7166588506159104,
+    "theta": 0.1847974358974359,
+    "vix_current": 17.08,
+    "vvix_current": 98.4,
+    "contango": true
+  },
+  "eta_analysis": {
+    "vvix_mean": 102.42816753926701,
+    "vvix_std": 12.986778186174439,
+    "vix_mean": 18.492696335078534,
+    "implied_eta_mean": 8.371733329628302,
+    "implied_eta_std": 0.5559753776489357,
+    "eta_simple_mean": 5.685223820158489,
+    "vvix_vix_corr": 0.8255809296832868,
+    "eta_low_vol": 8.441627489207036,
+    "eta_high_vol": 8.312846083082476
+  },
+  "term_structure": {
+    "spread_mean": 0.6230104712041886,
+    "spread_std": 0.8613930577210767,
+    "contango_pct": 76.96335078534031,
+    "roll_yield_mean": 524.1417113196601,
+    "kappa_mean": 2.7166588506159104,
+    "kappa_std": 2.0759704226275426,
+    "kappa_median": 2.1361712152743926,
+    "backwardation_vix_mean": 23.557816091954024
+  }
+}

@@ -1,0 +1,254 @@
+{
+  "timestamp": "2026-02-09T23:13:39.958877",
+  "n_days": 30,
+  "summary": {
+    "bs_mean_rmse": 1.2918990202207432,
+    "bergomi_mean_rmse": 28.897075062385838,
+    "neural_sde_mean_rmse": 0.21732527435021387
+  },
+  "win_rates": {
+    "Neural": 30
+  },
+  "daily_results": [
+    {
+      "day": 1,
+      "realized_vol": 68.65121459960938,
+      "bs_rmse": 1.996847843028269,
+      "bergomi_rmse": 42.967658395130535,
+      "neural_sde_rmse": 0.3359128682113261,
+      "best_model": "Neural"
+    },
+    {
+      "day": 2,
+      "realized_vol": 55.567447662353516,
+      "bs_rmse": 1.6162822136218815,
+      "bergomi_rmse": 35.17013989811958,
+      "neural_sde_rmse": 0.2718935226398182,
+      "best_model": "Neural"
+    },
+    {
+      "day": 3,
+      "realized_vol": 33.30922317504883,
+      "bs_rmse": 0.9688604992557472,
+      "bergomi_rmse": 21.550458684872495,
+      "neural_sde_rmse": 0.16298322896155112,
+      "best_model": "Neural"
+    },
+    {
+      "day": 4,
+      "realized_vol": 41.197120666503906,
+      "bs_rmse": 1.1982945943664374,
+      "bergomi_rmse": 27.100148028907935,
+      "neural_sde_rmse": 0.20157899138940855,
+      "best_model": "Neural"
+    },
+    {
+      "day": 5,
+      "realized_vol": 28.452829360961914,
+      "bs_rmse": 0.827603232252733,
+      "bergomi_rmse": 19.709669948427365,
+      "neural_sde_rmse": 0.13922071051011328,
+      "best_model": "Neural"
+    },
+    {
+      "day": 6,
+      "realized_vol": 90.75629425048828,
+      "bs_rmse": 2.6398150456932274,
+      "bergomi_rmse": 54.48310266953066,
+      "neural_sde_rmse": 0.4440738169621625,
+      "best_model": "Neural"
+    },
+    {
+      "day": 7,
+      "realized_vol": 44.713993072509766,
+      "bs_rmse": 1.3005892954612173,
+      "bergomi_rmse": 28.979478973585437,
+      "neural_sde_rmse": 0.21878716604705356,
+      "best_model": "Neural"
+    },
+    {
+      "day": 8,
+      "realized_vol": 35.00332260131836,
+      "bs_rmse": 1.0181364815853982,
+      "bergomi_rmse": 22.704905632792325,
+      "neural_sde_rmse": 0.17127251180103972,
+      "best_model": "Neural"
+    },
+    {
+      "day": 9,
+      "realized_vol": 69.65589141845703,
+      "bs_rmse": 2.0260705909724215,
+      "bergomi_rmse": 43.61103577131913,
+      "neural_sde_rmse": 0.34082876458931477,
+      "best_model": "Neural"
+    },
+    {
+      "day": 10,
+      "realized_vol": 29.096954345703125,
+      "bs_rmse": 0.8463388458808835,
+      "bergomi_rmse": 20.206541362488906,
+      "neural_sde_rmse": 0.14237244474640082,
+      "best_model": "Neural"
+    },
+    {
+      "day": 11,
+      "realized_vol": 49.017948150634766,
+      "bs_rmse": 1.4257778305860689,
+      "bergomi_rmse": 32.343887366479976,
+      "neural_sde_rmse": 0.23984657728250494,
+      "best_model": "Neural"
+    },
+    {
+      "day": 12,
+      "realized_vol": 40.17536544799805,
+      "bs_rmse": 1.1685749646998453,
+      "bergomi_rmse": 26.425776198962158,
+      "neural_sde_rmse": 0.19657950879070338,
+      "best_model": "Neural"
+    },
+    {
+      "day": 13,
+      "realized_vol": 40.624629974365234,
+      "bs_rmse": 1.181642641931997,
+      "bergomi_rmse": 26.72164643210259,
+      "neural_sde_rmse": 0.19877777389900367,
+      "best_model": "Neural"
+    },
+    {
+      "day": 14,
+      "realized_vol": 52.39830780029297,
+      "bs_rmse": 1.5241018121801186,
+      "bergomi_rmse": 34.27569182940744,
+      "neural_sde_rmse": 0.25638679129356956,
+      "best_model": "Neural"
+    },
+    {
+      "day": 15,
+      "realized_vol": 29.758647918701172,
+      "bs_rmse": 0.8655853842948114,
+      "bergomi_rmse": 20.674882869162772,
+      "neural_sde_rmse": 0.14561012754949085,
+      "best_model": "Neural"
+    },
+    {
+      "day": 16,
+      "realized_vol": 30.141294479370117,
+      "bs_rmse": 0.8767153788434764,
+      "bergomi_rmse": 20.947979761445808,
+      "neural_sde_rmse": 0.14748243264528202,
+      "best_model": "Neural"
+    },
+    {
+      "day": 17,
+      "realized_vol": 30.809965133666992,
+      "bs_rmse": 0.8961649348767262,
+      "bergomi_rmse": 20.6617754186443,
+      "neural_sde_rmse": 0.1507542673899145,
+      "best_model": "Neural"
+    },
+    {
+      "day": 18,
+      "realized_vol": 52.64802551269531,
+      "bs_rmse": 1.5313653699761518,
+      "bergomi_rmse": 34.813524987402225,
+      "neural_sde_rmse": 0.2576086783498114,
+      "best_model": "Neural"
+    },
+    {
+      "day": 19,
+      "realized_vol": 31.721115112304688,
+      "bs_rmse": 0.922667402755987,
+      "bergomi_rmse": 21.387653268831613,
+      "neural_sde_rmse": 0.15521255399952355,
+      "best_model": "Neural"
+    },
+    {
+      "day": 20,
+      "realized_vol": 35.30049133300781,
+      "bs_rmse": 1.026780247124753,
+      "bergomi_rmse": 22.91834170463738,
+      "neural_sde_rmse": 0.17272657956319115,
+      "best_model": "Neural"
+    },
+    {
+      "day": 21,
+      "realized_vol": 48.809181213378906,
+      "bs_rmse": 1.4197054192917957,
+      "bergomi_rmse": 32.20266427651562,
+      "neural_sde_rmse": 0.2388250667543326,
+      "best_model": "Neural"
+    },
+    {
+      "day": 22,
+      "realized_vol": 83.77867126464844,
+      "bs_rmse": 2.436857759531261,
+      "bergomi_rmse": 52.87494082400155,
+      "neural_sde_rmse": 0.40993202475847357,
+      "best_model": "Neural"
+    },
+    {
+      "day": 23,
+      "realized_vol": 38.5447998046875,
+      "bs_rmse": 1.1211468587967997,
+      "bergomi_rmse": 25.317201917908676,
+      "neural_sde_rmse": 0.18860107861469175,
+      "best_model": "Neural"
+    },
+    {
+      "day": 24,
+      "realized_vol": 57.70526123046875,
+      "bs_rmse": 1.6784643779553305,
+      "bergomi_rmse": 36.23082263395787,
+      "neural_sde_rmse": 0.2823539036076326,
+      "best_model": "Neural"
+    },
+    {
+      "day": 25,
+      "realized_vol": 34.08631896972656,
+      "bs_rmse": 0.991463763234596,
+      "bergomi_rmse": 22.05943599516676,
+      "neural_sde_rmse": 0.16678558539075095,
+      "best_model": "Neural"
+    },
+    {
+      "day": 26,
+      "realized_vol": 42.69850158691406,
+      "bs_rmse": 1.2419650539149107,
+      "bergomi_rmse": 28.009646085435186,
+      "neural_sde_rmse": 0.20892530441683957,
+      "best_model": "Neural"
+    },
+    {
+      "day": 27,
+      "realized_vol": 35.94963455200195,
+      "bs_rmse": 1.0456617525775507,
+      "bergomi_rmse": 23.39079623982421,
+      "neural_sde_rmse": 0.17590285595046976,
+      "best_model": "Neural"
+    },
+    {
+      "day": 28,
+      "realized_vol": 44.82952880859375,
+      "bs_rmse": 1.3039499218770636,
+      "bergomi_rmse": 29.526156406546555,
+      "neural_sde_rmse": 0.219352495880407,
+      "best_model": "Neural"
+    },
+    {
+      "day": 29,
+      "realized_vol": 29.21391487121582,
+      "bs_rmse": 0.849740821316549,
+      "bergomi_rmse": 20.288769610902907,
+      "neural_sde_rmse": 0.142944730376559,
+      "best_model": "Neural"
+    },
+    {
+      "day": 30,
+      "realized_vol": 27.84076690673828,
+      "bs_rmse": 0.809800268738285,
+      "bergomi_rmse": 19.3575186790651,
+      "neural_sde_rmse": 0.13622586813507628,
+      "best_model": "Neural"
+    }
+  ]
+}
