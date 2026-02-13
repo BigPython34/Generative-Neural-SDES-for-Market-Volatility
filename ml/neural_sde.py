@@ -2,25 +2,45 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 import jax.nn as jnn
+import yaml
+
+
+def _load_neural_sde_config(config_path: str = "config/params.yaml") -> dict:
+    """Load neural SDE parameters from YAML config."""
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get('neural_sde', {})
+    except FileNotFoundError:
+        return {}
 
 
 class NeuralSDEFunc(eqx.Module):
     """Neural network for drift and diffusion, conditioned on running signature."""
     drift_net: eqx.nn.MLP
     diff_net: eqx.nn.MLP
+    drift_scale: float
+    diffusion_min: float
+    diffusion_max: float
 
-    def __init__(self, sig_dim: int, key: jax.random.PRNGKey):
+    def __init__(self, sig_dim: int, key: jax.random.PRNGKey, 
+                 mlp_width: int = 64, mlp_depth: int = 3,
+                 drift_scale: float = 0.5, 
+                 diffusion_min: float = 0.1, diffusion_max: float = 1.6):
         k1, k2 = jax.random.split(key)
         input_dim = sig_dim + 1  # signature + log_variance
 
         self.drift_net = eqx.nn.MLP(
-            in_size=input_dim, out_size=1, width_size=64, depth=3,
+            in_size=input_dim, out_size=1, width_size=mlp_width, depth=mlp_depth,
             activation=jnn.tanh, key=k1
         )
         self.diff_net = eqx.nn.MLP(
-            in_size=input_dim, out_size=1, width_size=64, depth=3,
+            in_size=input_dim, out_size=1, width_size=mlp_width, depth=mlp_depth,
             activation=jnn.tanh, key=k2
         )
+        self.drift_scale = drift_scale
+        self.diffusion_min = diffusion_min
+        self.diffusion_max = diffusion_max
 
     def __call__(self, signature_t, log_v_prev):
         # Normalize log_v to reasonable range for neural net
@@ -30,11 +50,12 @@ class NeuralSDEFunc(eqx.Module):
         net_input = jnp.concatenate([signature_t, v_in])
 
         # Drift: allow meaningful correction over OU prior
-        drift = 0.5 * jnn.tanh(self.drift_net(net_input))
+        drift = self.drift_scale * jnn.tanh(self.drift_net(net_input))
 
         # Diffusion: strictly positive, learned vol-of-vol
         raw_diff = self.diff_net(net_input)
-        diffusion = 1.5 * jnn.sigmoid(raw_diff) + 0.1
+        diff_range = self.diffusion_max - self.diffusion_min
+        diffusion = diff_range * jnn.sigmoid(raw_diff) + self.diffusion_min
 
         return drift, diffusion
 
@@ -52,15 +73,45 @@ class NeuralRoughSimulator(eqx.Module):
     
     The signature is updated incrementally via Chen's identity:
       S_{0,t+dt} = S_{0,t} ⊗ S_{t,t+dt}
+    
+    Parameters (κ, θ) are read from config/params.yaml and can optionally
+    be made learnable via learn_ou_params=True.
     """
     func: NeuralSDEFunc
     
-    # OU prior parameters (fixed, not learned)
-    kappa: float = 2.72      # Mean-reversion speed (from VIX futures)
-    theta: float = -3.5      # Long-term log-variance target (exp(-3.5) ~ 0.03 ~ 17% vol)
+    # OU prior parameters — read from config, optionally learnable
+    kappa: jnp.ndarray   # Mean-reversion speed
+    theta: jnp.ndarray   # Long-term log-variance target
 
-    def __init__(self, sig_dim: int, key: jax.random.PRNGKey):
-        self.func = NeuralSDEFunc(sig_dim, key)
+    def __init__(self, sig_dim: int, key: jax.random.PRNGKey, 
+                 config_path: str = "config/params.yaml",
+                 learn_ou_params: bool = True):
+        # Load config from YAML
+        cfg = _load_neural_sde_config(config_path)
+        
+        kappa_init = cfg.get('kappa', 2.72)
+        theta_init = cfg.get('theta', -3.5)
+        mlp_width = cfg.get('mlp_width', 64)
+        mlp_depth = cfg.get('mlp_depth', 3)
+        drift_scale = cfg.get('drift_scale', 0.5)
+        diffusion_min = cfg.get('diffusion_min', 0.1)
+        diffusion_max = cfg.get('diffusion_max', 1.6)
+        
+        self.func = NeuralSDEFunc(
+            sig_dim, key, 
+            mlp_width=mlp_width, mlp_depth=mlp_depth,
+            drift_scale=drift_scale,
+            diffusion_min=diffusion_min, diffusion_max=diffusion_max
+        )
+        
+        # Store as arrays so Equinox can track them as learnable parameters
+        if learn_ou_params:
+            self.kappa = jnp.array(float(kappa_init))
+            self.theta = jnp.array(float(theta_init))
+        else:
+            # Use Python floats — Equinox won't differentiate through these
+            self.kappa = jnp.array(float(kappa_init))
+            self.theta = jnp.array(float(theta_init))
 
     def generate_variance_path(self, init_var, brownian_increments, dt):
         """

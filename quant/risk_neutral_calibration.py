@@ -27,7 +27,8 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from ml.neural_sde import NeuralRoughSimulator
 from ml.signature_engine import SignatureFeatureExtractor
-from scipy.stats import norm
+from utils.black_scholes import BlackScholes
+import yaml
 
 
 class RiskNeutralNeuralSDE:
@@ -44,55 +45,58 @@ class RiskNeutralNeuralSDE:
         self.n_steps = n_steps
         self.sig_depth = sig_depth
         
+        # Load config for consistent dt
+        with open('config/params.yaml', 'r', encoding='utf-8') as f:
+            self.yaml_config = yaml.safe_load(f)
+        
         if use_trained:
-            # Use the GenerativeTrainer to get a properly trained model
+            # Load the trained model from disk (don't retrain!)
             from ml.generative_trainer import GenerativeTrainer
             
-            config = {'n_steps': n_steps, 'T': 1/12}
-            print("Loading trained Neural SDE model...")
+            config = {'n_steps': n_steps}
             trainer = GenerativeTrainer(config)
-            self.model = trainer.run(n_epochs=100, batch_size=128)
+            loaded = trainer.load_model()
+            if loaded is not None:
+                print("Loaded trained Neural SDE from disk.")
+                self.model = loaded
+            else:
+                print("No saved model found. Training from scratch...")
+                self.model = trainer.run(n_epochs=100, batch_size=128)
             self.sig_engine = trainer.sig_extractor
         else:
-            # Initialize signature engine
-            self.sig_engine = SignatureFeatureExtractor(truncation_order=sig_depth)
+            # Initialize signature engine with real dt
+            T = self.yaml_config['simulation']['T']
+            dt = T / n_steps
+            self.sig_engine = SignatureFeatureExtractor(truncation_order=sig_depth, dt=dt)
+            self.sig_dim = self.sig_engine.get_feature_dim(1)
             
-            # Signature dimension: use get_feature_dim to match training
-            # JAX engine: 2+4+8=14 (no constant term)
-            # esig engine: 1+2+4+8=15 (with constant term)
-            # Training uses JAX, so we use 14
-            self.sig_dim = self.sig_engine.get_feature_dim(1)  # Returns 14 for depth=3
-            
-            # Initialize model with random key
             key = jax.random.PRNGKey(0)
             self.model = NeuralRoughSimulator(sig_dim=self.sig_dim, key=key)
         
     def generate_paths(self, model, spot: float, v0: float, T: float, 
                        rho: float, n_paths: int, key) -> np.ndarray:
-        """Generate spot paths using Neural SDE variance dynamics"""
+        """Generate spot paths using Neural SDE variance dynamics."""
         dt = T / self.n_steps
         
-        # Generate noise (Brownian increments only)
+        # Generate Brownian increments with proper scaling: dW = sqrt(dt) * Z
         key, subkey = jax.random.split(key)
-        noise = jax.random.normal(subkey, (n_paths, self.n_steps))
+        dW = jax.random.normal(subkey, (n_paths, self.n_steps)) * jnp.sqrt(dt)
         
-        # Generate variance paths — model computes running signatures internally
+        # Generate variance paths
         v0_arr = jnp.full(n_paths, v0)
-        
-        def single_path_variance(init_v, brownian):
-            return model.generate_variance_path(init_v, brownian, dt)
-        
-        var_paths = jax.vmap(single_path_variance)(v0_arr, noise)
+        var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+            v0_arr, dW, dt
+        )
         var_paths = jnp.clip(var_paths, 1e-6, 5.0)
         
-        # Correlated spot
+        # Correlated spot noise (also properly scaled)
         key, subkey = jax.random.split(key)
-        z_indep = jax.random.normal(subkey, (n_paths, self.n_steps))
-        spot_noise = rho * noise + jnp.sqrt(1 - rho**2) * z_indep
+        z_indep = jax.random.normal(subkey, (n_paths, self.n_steps)) * jnp.sqrt(dt)
+        spot_dW = rho * dW + jnp.sqrt(1 - rho**2) * z_indep
         
-        # Simulate spot
+        # Simulate spot: dS/S = r*dt + sqrt(V)*dW_S
         vol_paths = jnp.sqrt(var_paths)
-        log_ret = -0.5 * var_paths * dt + vol_paths * jnp.sqrt(dt) * spot_noise
+        log_ret = -0.5 * var_paths * dt + vol_paths * spot_dW
         log_s = jnp.cumsum(log_ret, axis=1)
         S_T = spot * jnp.exp(log_s[:, -1])
         
@@ -107,24 +111,8 @@ class RiskNeutralNeuralSDE:
         return float(np.mean(payoffs))
     
     def bs_iv(self, price: float, spot: float, K: float, T: float, opt_type: str) -> float:
-        """Extract IV from price"""
-        def bs_price(sigma):
-            d1 = (np.log(spot / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T) + 1e-10)
-            d2 = d1 - sigma * np.sqrt(T)
-            if opt_type == 'call':
-                return spot * norm.cdf(d1) - K * norm.cdf(d2)
-            else:
-                return K * norm.cdf(-d2) - spot * norm.cdf(-d1)
-        
-        # Bisection
-        low, high = 0.01, 2.0
-        for _ in range(50):
-            mid = (low + high) / 2
-            if bs_price(mid) < price:
-                low = mid
-            else:
-                high = mid
-        return mid
+        """Extract IV from price using shared BS utilities."""
+        return BlackScholes.implied_vol(price, spot, K, T, r=0.0, opt_type=opt_type)
     
     def compute_model_ivs(self, model, spot: float, v0: float, T: float,
                          strikes: np.ndarray, types: list, rho: float,

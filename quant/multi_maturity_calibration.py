@@ -20,39 +20,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from quant.options_cache import OptionsDataCache, EnhancedOptionsLoader
 from core.bergomi import RoughBergomiModel
-
-
-class BlackScholes:
-    """BS utilities."""
-    
-    @staticmethod
-    def price(S, K, T, r, sigma, opt_type='call'):
-        if T <= 0:
-            return max(S - K, 0) if opt_type == 'call' else max(K - S, 0)
-        d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        if opt_type == 'call':
-            return S * norm.cdf(d1) - K * np.exp(-r*T) * norm.cdf(d2)
-        else:
-            return K * np.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    
-    @staticmethod
-    def implied_vol(price, S, K, T, r, opt_type='call'):
-        if price <= 0 or T <= 0:
-            return np.nan
-        sigma = 0.3
-        for _ in range(50):
-            bs_price = BlackScholes.price(S, K, T, r, sigma, opt_type)
-            d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma * np.sqrt(T))
-            vega = S * np.sqrt(T) * norm.pdf(d1)
-            if vega < 1e-10:
-                break
-            diff = bs_price - price
-            if abs(diff) < 1e-8:
-                break
-            sigma -= diff / vega
-            sigma = np.clip(sigma, 0.01, 3.0)
-        return sigma
+from utils.black_scholes import BlackScholes
 
 
 class MultiMaturityCalibrator:
@@ -169,18 +137,30 @@ class MultiMaturityCalibrator:
     
     def calibrate_neural_sde_surface(self) -> dict:
         """
-        Calibrate Neural SDE and evaluate on entire surface.
+        Evaluate trained Neural SDE on entire surface.
+        Loads the pre-trained model instead of retraining.
         """
         print("\nNeural SDE Surface Evaluation")
         
         import jax
         import jax.numpy as jnp
+        import yaml
         from ml.generative_trainer import GenerativeTrainer
         
-        # Train once
-        config = {'n_steps': 50, 'T': 0.1}
+        # Load config for consistent parameters
+        with open('config/params.yaml', 'r', encoding='utf-8') as f:
+            yaml_cfg = yaml.safe_load(f)
+        
+        config = {'n_steps': yaml_cfg['simulation']['n_steps']}
         trainer = GenerativeTrainer(config)
-        model = trainer.run(n_epochs=50, batch_size=128)
+        
+        # Load trained model (don't retrain!)
+        model = trainer.load_model()
+        if model is None:
+            print("No saved model found. Training...")
+            model = trainer.run(n_epochs=yaml_cfg['training']['n_epochs'], batch_size=256)
+        else:
+            print("Loaded trained model from disk.")
         
         key = jax.random.PRNGKey(42)
         n_paths = 5000
@@ -196,26 +176,27 @@ class MultiMaturityCalibrator:
             n_steps = max(20, int(T * 252))
             dt = T / n_steps
             
-            # Generate paths
+            # Generate paths with properly scaled Brownian increments
             key, subkey = jax.random.split(key)
-            noise = jax.random.normal(subkey, (n_paths, n_steps))
+            dW = jax.random.normal(subkey, (n_paths, n_steps)) * jnp.sqrt(dt)
             
             atm_iv = smile.loc[smile['moneyness'].abs().idxmin(), 'impliedVolatility']
             v0 = jnp.full(n_paths, atm_iv**2)
             
             var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
-                v0, noise, dt
+                v0, dW, dt
             )
             var_paths = np.array(var_paths)
             
-            # Spot paths with correlation
+            # Spot paths with correlation — noise already scaled by sqrt(dt)
             rho = -0.7
             key, subkey = jax.random.split(key)
-            z_indep = np.array(jax.random.normal(subkey, (n_paths, n_steps)))
-            spot_noise = rho * np.array(noise) + np.sqrt(1 - rho**2) * z_indep
+            z_indep = np.array(jax.random.normal(subkey, (n_paths, n_steps))) * np.sqrt(dt)
+            dW_np = np.array(dW)
+            spot_noise = rho * dW_np + np.sqrt(1 - rho**2) * z_indep
             
             vol_paths = np.sqrt(np.maximum(var_paths, 1e-8))
-            log_ret = (self.r - 0.5 * var_paths) * dt + vol_paths * np.sqrt(dt) * spot_noise
+            log_ret = (self.r - 0.5 * var_paths) * dt + vol_paths * spot_noise
             log_s = np.cumsum(log_ret, axis=1)
             S_T = self.spot * np.exp(log_s[:, -1])
             

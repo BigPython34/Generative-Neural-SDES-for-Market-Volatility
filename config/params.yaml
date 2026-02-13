@@ -22,18 +22,22 @@ training:
   decay_steps: 2000
   gradient_clip: 1.0
   lambda_mean: 10.0              # Weight for mean penalty loss
+  warmup_steps: 50               # Linear LR warmup (stabilizes early signature feedback)
+  validation_split: 0.15         # Fraction of data held out for validation
+  early_stopping_patience: 50    # Epochs without improvement before stopping
 
 # Neural SDE Architecture
 neural_sde:
   sig_truncation_order: 3
   mlp_width: 64
   mlp_depth: 3
-  drift_scale: 0.2           # Constraints neural drift authority
+  drift_scale: 0.5            # Constraints neural drift authority
   diffusion_min: 0.1
   diffusion_max: 1.6
-  # Physical Prior (Ornstein-Uhlenbeck)
-  kappa: 0.1                 # Mean-reversion speed
-  theta: -3.8                # Long-term log-variance target (~0.022 variance)
+  learn_ou_params: true        # Allow kappa/theta to be learned during training
+  # Physical Prior (Ornstein-Uhlenbeck) — initial values, learnable if above is true
+  kappa: 2.72                  # Mean-reversion speed (from VIX futures calibration)
+  theta: -3.5                  # Long-term log-variance target (exp(-3.5) ~ 0.03 ~ 17% vol)
 
 # Simulation Configuration
 simulation:

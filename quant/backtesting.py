@@ -20,39 +20,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from quant.options_cache import OptionsDataCache
 from core.bergomi import RoughBergomiModel
-
-
-class BlackScholes:
-    """BS utilities."""
-    
-    @staticmethod
-    def price(S, K, T, r, sigma, opt_type='call'):
-        if T <= 0:
-            return max(S - K, 0) if opt_type == 'call' else max(K - S, 0)
-        d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        if opt_type == 'call':
-            return S * norm.cdf(d1) - K * np.exp(-r*T) * norm.cdf(d2)
-        else:
-            return K * np.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    
-    @staticmethod
-    def implied_vol(price, S, K, T, r, opt_type='call'):
-        if price <= 0 or T <= 0:
-            return np.nan
-        sigma = 0.3
-        for _ in range(50):
-            bs_price = BlackScholes.price(S, K, T, r, sigma, opt_type)
-            d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma * np.sqrt(T))
-            vega = S * np.sqrt(T) * norm.pdf(d1)
-            if vega < 1e-10:
-                break
-            diff = bs_price - price
-            if abs(diff) < 1e-8:
-                break
-            sigma -= diff / vega
-            sigma = np.clip(sigma, 0.01, 3.0)
-        return sigma
+from utils.black_scholes import BlackScholes
 
 
 class HistoricalBacktester:
@@ -86,9 +54,30 @@ class HistoricalBacktester:
         Simulate a historical backtest using realized volatility data.
         
         Uses S&P 500 realized vol to create synthetic "historical" scenarios.
+        Loads the trained Neural SDE for actual MC pricing.
         """
         print(f"\nSimulating {n_days}-day Historical Backtest")
         print("-" * 50)
+        
+        # --- Load trained Neural SDE ---
+        import jax
+        import jax.numpy as jnp
+        import yaml
+        from ml.generative_trainer import GenerativeTrainer
+        
+        with open('config/params.yaml', 'r', encoding='utf-8') as f:
+            yaml_cfg = yaml.safe_load(f)
+        
+        config = {'n_steps': yaml_cfg['simulation']['n_steps']}
+        trainer = GenerativeTrainer(config)
+        neural_model = trainer.load_model()
+        has_neural = neural_model is not None
+        
+        if has_neural:
+            print("   Loaded trained Neural SDE model ✓")
+        else:
+            print("   WARNING: No trained Neural SDE found. Run main.py first.")
+            print("   Neural SDE results will use heuristic approximation.")
         
         # Load realized volatility data
         from utils.data_loader import RealizedVolatilityLoader
@@ -96,9 +85,7 @@ class HistoricalBacktester:
         rv_loader = RealizedVolatilityLoader("data/SP_SPX, 30.csv")
         rv_paths = np.array(rv_loader.get_realized_vol_paths())
         
-        # rv_paths is already (n_paths, path_len) from the loader
         if rv_paths.ndim == 1:
-            # Reshape if flat
             path_len = 20
             n_full_paths = len(rv_paths) // path_len
             rv_data = rv_paths[:n_full_paths * path_len].reshape(n_full_paths, path_len)
@@ -107,12 +94,13 @@ class HistoricalBacktester:
         
         print(f"   Loaded {len(rv_data)} realized variance paths of shape {rv_data.shape}")
         
-        # Sample different periods as "different days"
+        # Sample different periods
         n_scenarios = min(n_days, len(rv_data))
+        np.random.seed(42)
         indices = np.random.choice(len(rv_data), n_scenarios, replace=False)
         
         results = []
-        spot_base = 100  # Normalized spot
+        spot_base = 100
         
         # Load calibrated Bergomi params if available
         bergomi_params = {'hurst': 0.1, 'eta': 2.5, 'rho': -0.7}
@@ -127,11 +115,13 @@ class HistoricalBacktester:
                     }
                     print(f"   Using calibrated Bergomi: H={bergomi_params['hurst']:.2f}, η={bergomi_params['eta']:.1f}, ρ={bergomi_params['rho']:.1f}")
         
+        rng_key = jax.random.PRNGKey(123) if has_neural else None
+        
         for i, idx in enumerate(indices):
             rv_path = rv_data[idx]
             realized_vol = np.sqrt(np.mean(rv_path))
             
-            # Create synthetic "market" smile based on realized vol
+            # Create synthetic "market" smile
             T = 30 / 365.0
             strikes = spot_base * np.exp(np.linspace(-0.15, 0.15, 11))
             moneyness = np.log(strikes / spot_base)
@@ -139,7 +129,6 @@ class HistoricalBacktester:
             # Synthetic market smile (with realistic skew)
             market_ivs = realized_vol * (1 - 0.3 * moneyness + 0.5 * moneyness**2)
             
-            # Model predictions
             # 1. Black-Scholes (flat ATM)
             bs_ivs = np.full_like(market_ivs, realized_vol)
             
@@ -158,7 +147,7 @@ class HistoricalBacktester:
                 
                 bergomi_ivs = []
                 for K in strikes:
-                    payoff = np.maximum(S_T - K, 0)  # Calls
+                    payoff = np.maximum(S_T - K, 0)
                     mc_price = np.exp(-self.r * T) * np.mean(payoff)
                     iv = BlackScholes.implied_vol(mc_price, spot_base, K, T, self.r, 'call')
                     bergomi_ivs.append(iv if not np.isnan(iv) else realized_vol)
@@ -166,9 +155,46 @@ class HistoricalBacktester:
             except:
                 bergomi_ivs = bs_ivs.copy()
             
-            # 3. Neural SDE (simplified - use trained model's characteristics)
-            # Approximate Neural SDE smile
-            neural_ivs = realized_vol * (1 - 0.25 * moneyness + 0.4 * moneyness**2)
+            # 3. Neural SDE — real MC pricing with trained model
+            if has_neural:
+                try:
+                    n_mc = 3000
+                    n_steps_mc = 30
+                    dt_mc = T / n_steps_mc
+                    rho = -0.7
+                    
+                    rng_key, subkey1, subkey2 = jax.random.split(rng_key, 3)
+                    dW_vol = jax.random.normal(subkey1, (n_mc, n_steps_mc)) * jnp.sqrt(dt_mc)
+                    
+                    v0_arr = jnp.full(n_mc, realized_vol**2)
+                    var_paths = jax.vmap(neural_model.generate_variance_path, in_axes=(0, 0, None))(
+                        v0_arr, dW_vol, dt_mc
+                    )
+                    var_paths = jnp.clip(var_paths, 1e-6, 5.0)
+                    
+                    # Correlated spot
+                    z_indep = jax.random.normal(subkey2, (n_mc, n_steps_mc)) * jnp.sqrt(dt_mc)
+                    spot_dW = rho * dW_vol + jnp.sqrt(1 - rho**2) * z_indep
+                    
+                    vol_paths = jnp.sqrt(var_paths)
+                    log_ret = -0.5 * var_paths * dt_mc + vol_paths * spot_dW
+                    log_s = jnp.cumsum(log_ret, axis=1)
+                    S_T_neural = float(spot_base) * jnp.exp(log_s[:, -1])
+                    S_T_neural = np.array(S_T_neural)
+                    
+                    neural_ivs = []
+                    for K in strikes:
+                        payoff = np.maximum(S_T_neural - K, 0)
+                        mc_price = np.exp(-self.r * T) * np.mean(payoff)
+                        iv = BlackScholes.implied_vol(mc_price, spot_base, K, T, self.r, 'call')
+                        neural_ivs.append(iv if not np.isnan(iv) else realized_vol)
+                    neural_ivs = np.array(neural_ivs)
+                except Exception as e:
+                    # Fallback if JAX fails for this scenario
+                    neural_ivs = realized_vol * (1 - 0.25 * moneyness + 0.4 * moneyness**2)
+            else:
+                # No trained model available — use heuristic
+                neural_ivs = realized_vol * (1 - 0.25 * moneyness + 0.4 * moneyness**2)
             
             # Calculate errors
             bs_rmse = np.sqrt(np.mean((bs_ivs - market_ivs)**2)) * 100

@@ -18,11 +18,18 @@ class GenerativeTrainer:
     """
     Trains a Neural SDE to generate synthetic volatility paths.
     Supports both VIX and Realized Volatility data sources.
+    
+    Features:
+    - LR warmup + cosine decay
+    - Validation split with early stopping
+    - Normalized MMD + mean penalty loss
+    - Learnable OU parameters (κ, θ)
     """
     
     def __init__(self, config: dict, config_path: str = "config/params.yaml"):
         self.config = config
         self.yaml_config = load_config(config_path)
+        self.config_path = config_path
         
         # Load signature config
         sig_order = self.yaml_config['neural_sde']['sig_truncation_order']
@@ -45,32 +52,69 @@ class GenerativeTrainer:
             print("Using VIX data")
             loader = MarketDataLoader(config_path=config_path)
             
-        self.market_paths = loader.get_realized_vol_paths(segment_length=config['n_steps'])
+        all_paths = loader.get_realized_vol_paths(segment_length=config['n_steps'])
+        all_paths = jax.device_put(all_paths)
         
+        # --- Validation split ---
+        train_cfg = self.yaml_config.get('training', {})
+        val_split = train_cfg.get('validation_split', 0.15)
+        n_total = len(all_paths)
+        n_val = max(1, int(n_total * val_split))
+        n_train = n_total - n_val
+        
+        # Deterministic split (last fraction as validation)
+        self.market_paths = all_paths[:n_train]
+        self.val_paths = all_paths[n_train:]
+        print(f"Data split: {n_train} train / {n_val} validation ({val_split:.0%})")
+        
+        # Compute signatures for train and validation
         self.target_sigs = self.sig_extractor.get_signature(self.market_paths)
         self.target_sigs = jax.device_put(self.target_sigs)
         
-        # Precompute signature normalization (component-wise std of real signatures)
+        self.val_sigs = self.sig_extractor.get_signature(self.val_paths)
+        self.val_sigs = jax.device_put(self.val_sigs)
+        
+        # Precompute signature normalization (from training data only)
         self.sig_std = jnp.std(self.target_sigs, axis=0)
         print(f"Signature normalization: std range [{float(jnp.min(self.sig_std)):.2e}, {float(jnp.max(self.sig_std)):.2e}]")
         
-        # Precompute real mean variance for mean penalty
+        # Precompute real mean variance for mean penalty (training data only)
         self.real_mean = float(jnp.mean(self.market_paths))
-        print(f"Real mean variance: {self.real_mean:.6f} (vol: {np.sqrt(self.real_mean)*100:.1f}%)")
+        self.val_mean = float(jnp.mean(self.val_paths))
+        print(f"Real mean variance: train={self.real_mean:.6f}, val={self.val_mean:.6f}")
         
         # Mean penalty weight
-        self.lambda_mean = self.yaml_config.get('training', {}).get('lambda_mean', 10.0)
+        self.lambda_mean = train_cfg.get('lambda_mean', 10.0)
+        
+        # Early stopping config
+        self.patience = train_cfg.get('early_stopping_patience', 50)
 
-        # Learning Rate Scheduler from config
-        train_cfg = self.yaml_config['training']
-        scheduler = optax.cosine_decay_schedule(
-            init_value=train_cfg['learning_rate_init'], 
-            decay_steps=train_cfg['decay_steps'], 
-            alpha=train_cfg['learning_rate_final'] / train_cfg['learning_rate_init']
+        # --- LR Schedule: warmup + cosine decay ---
+        warmup_steps = train_cfg.get('warmup_steps', 50)
+        lr_init = train_cfg.get('learning_rate_init', 0.001)
+        lr_final = train_cfg.get('learning_rate_final', 0.00001)
+        decay_steps = train_cfg.get('decay_steps', 2000)
+        
+        # Warmup: linear ramp from 0 to lr_init over warmup_steps
+        warmup_schedule = optax.linear_schedule(
+            init_value=0.0,
+            end_value=lr_init,
+            transition_steps=warmup_steps
+        )
+        # Cosine decay after warmup
+        cosine_schedule = optax.cosine_decay_schedule(
+            init_value=lr_init,
+            decay_steps=decay_steps,
+            alpha=lr_final / lr_init
+        )
+        # Combine: warmup then decay
+        scheduler = optax.join_schedules(
+            schedules=[warmup_schedule, cosine_schedule],
+            boundaries=[warmup_steps]
         )
         
         self.optim = optax.chain(
-            optax.clip_by_global_norm(train_cfg['gradient_clip']),
+            optax.clip_by_global_norm(train_cfg.get('gradient_clip', 1.0)),
             optax.adam(learning_rate=scheduler)
         )    
     def train_step(self, model, opt_state, noise_driver, dt):
@@ -104,16 +148,29 @@ class GenerativeTrainer:
         key = jax.random.PRNGKey(42)
         model_key, _ = jax.random.split(key)
         
-        model = NeuralRoughSimulator(self.input_sig_dim, model_key)
+        # Pass config_path so model reads κ, θ from YAML
+        learn_ou = self.yaml_config.get('neural_sde', {}).get('learn_ou_params', True)
+        model = NeuralRoughSimulator(
+            self.input_sig_dim, model_key,
+            config_path=self.config_path,
+            learn_ou_params=learn_ou
+        )
         opt_state = self.optim.init(eqx.filter(model, eqx.is_array))
         
         # Real temporal scale: T (in years) / n_steps
-        # For VIX 15-min: T ≈ 0.00305 years for 20 steps
         T = self.yaml_config['simulation']['T']
         dt = T / self.config['n_steps']
         
         print("Starting Market-Driven Training...")
-        best_loss = float('inf')
+        print(f"   LR warmup: {self.yaml_config.get('training',{}).get('warmup_steps',50)} steps")
+        print(f"   Early stopping patience: {self.patience} epochs")
+        if learn_ou:
+            print(f"   Learnable OU params: κ₀={float(model.kappa):.3f}, θ₀={float(model.theta):.3f}")
+        
+        best_val_loss = float('inf')
+        best_train_loss = float('inf')
+        patience_counter = 0
+        best_model = model
         
         for epoch in range(n_epochs):
             key, subkey = jax.random.split(key)
@@ -121,21 +178,64 @@ class GenerativeTrainer:
             # Sample random Brownian increments: dW_t = sqrt(dt) * Z
             noise = jax.random.normal(subkey, (batch_size, self.config['n_steps'])) * jnp.sqrt(dt)
             
-            # Train: model computes running signatures internally
+            # Train step
             model, opt_state, loss = self.train_step(
                 model, opt_state, noise, dt
             )
             
+            # Validation every 10 epochs
             if epoch % 10 == 0:
-                print(f"Epoch {epoch:04d} | MMD Loss: {loss:.8f}")
-            
-            # Save best model
-            if loss < best_loss:
-                best_loss = loss
-                self._save_model(model)
+                key, val_key = jax.random.split(key)
+                val_loss = self._compute_val_loss(model, val_key, dt, batch_size)
                 
-        print(f"Training complete. Best loss: {best_loss:.8f}")
-        return model
+                # Log with OU params if learnable
+                kappa_str = f" | κ={float(model.kappa):.3f}" if learn_ou else ""
+                theta_str = f" θ={float(model.theta):.2f}" if learn_ou else ""
+                print(f"Epoch {epoch:04d} | Train: {loss:.6f} | Val: {val_loss:.6f}{kappa_str}{theta_str}")
+                
+                # Early stopping on validation loss
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience_counter = 0
+                    best_model = model
+                    self._save_model(model)
+                else:
+                    patience_counter += 10  # We check every 10 epochs
+                
+                if patience_counter >= self.patience:
+                    print(f"\nEarly stopping at epoch {epoch} (patience={self.patience})")
+                    print(f"   Best val loss: {best_val_loss:.6f}")
+                    break
+            
+            # Track best training loss (for backward compat)
+            if loss < best_train_loss:
+                best_train_loss = loss
+                
+        print(f"Training complete. Best train: {best_train_loss:.6f}, Best val: {best_val_loss:.6f}")
+        if learn_ou:
+            print(f"   Final OU params: κ={float(best_model.kappa):.3f}, θ={float(best_model.theta):.2f}")
+        return best_model
+    
+    def _compute_val_loss(self, model, key, dt, batch_size):
+        """Compute loss on validation set."""
+        noise = jax.random.normal(key, (batch_size, self.config['n_steps'])) * jnp.sqrt(dt)
+        
+        # Sample initial conditions from validation paths
+        random_indices = jax.random.randint(
+            key, (batch_size,), 0, self.val_paths.shape[0]
+        )
+        v0 = self.val_paths[random_indices, 0]
+        
+        fake_vars = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+            v0, noise, dt
+        )
+        fake_sigs = self.sig_extractor.get_signature(fake_vars)
+        
+        # Use same normalization (from training data) for fair comparison
+        mmd = signature_mmd_loss(fake_sigs, self.val_sigs, self.sig_std)
+        mean_pen = mean_penalty_loss(fake_vars, self.val_mean)
+        
+        return float(mmd + self.lambda_mean * mean_pen)
     
     def _save_model(self, model):
         """Save model to disk."""

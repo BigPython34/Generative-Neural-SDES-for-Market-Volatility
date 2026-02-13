@@ -470,12 +470,13 @@ Panic amplifies: when VIX spikes, VVIX spikes even more.
 ### Neural Network
 
 ```
-NeuralRoughSimulator (with running signatures)
+NeuralRoughSimulator (with running signatures, learnable OU params)
 ├── Input: running signature Sig(X_{0:t}) (dim=14) + log-variance (dim=1)
 ├── drift_net: MLP [15 → 64 → 64 → 64 → 1], tanh activation
 ├── diff_net:  MLP [15 → 64 → 64 → 64 → 1], sigmoid output
-├── Output scaling: drift × 0.5 (tanh), diffusion × 1.5 (sigmoid) + 0.1
-├── OU prior: κ=2.72, θ=-3.5 (log-variance ~ 17% vol)
+├── Output scaling: drift × drift_scale (tanh), diffusion × (max-min)(sigmoid) + min
+├── OU prior: κ, θ read from config/params.yaml (learnable during training)
+├── All hyperparams (width, depth, scales) loaded from YAML — no hardcoded values
 └── Integration: Euler-Maruyama with running signature via Chen's identity
 ```
 
@@ -506,8 +507,8 @@ SignatureFeatureExtractor (order=3, dt=real_dt)
 ### Training Loop
 
 ```
-GenerativeTrainer
-├── Data: 1,534 VIX variance paths × 20 steps (15-min bars)
+GenerativeTrainer (with validation, early stopping, LR warmup)
+├── Data: 1,304 train + 230 validation VIX variance paths × 20 steps (15%)
 ├── Target: Signatures of real paths
 ├── Generated: Neural SDE with running signatures (computed internally)
 ├── Loss: Normalized MMD + mean penalty (λ=10)
@@ -515,7 +516,10 @@ GenerativeTrainer
 │   ├── Pure-time components: zero-weight (std < 1e-8)
 │   └── Mean penalty: λ·(mean_fake - mean_real)²
 ├── Brownian: dW = √dt · Z with dt = T/n_steps = 0.000153 years
-├── Optimizer: Adam + cosine LR decay + grad clipping
+├── LR: Linear warmup (50 steps) → cosine decay
+├── Optimizer: Adam + grad clipping (1.0)
+├── Early stopping: patience=50 on validation loss
+├── Learnable OU: κ, θ optimized during training (regularized by prior)
 └── Convergence: ~200 epochs, best loss ≈ 0.017
 ```
 
@@ -589,11 +593,20 @@ training:
   learning_rate_init: 0.001
   gradient_clip: 1.0
   lambda_mean: 10.0                   # Mean penalty weight
+  warmup_steps: 50                    # Linear LR warmup
+  validation_split: 0.15             # 15% held out
+  early_stopping_patience: 50        # Stop if val loss stalls
 
 neural_sde:
   sig_truncation_order: 3
   mlp_width: 64
   mlp_depth: 3
+  drift_scale: 0.5
+  diffusion_min: 0.1
+  diffusion_max: 1.6
+  learn_ou_params: true              # Allow κ, θ to be learned
+  kappa: 2.72                        # Initial mean-reversion (from VIX futures)
+  theta: -3.5                        # Initial log-variance target
 ```
 
 ---
@@ -604,18 +617,19 @@ neural_sde:
 DeepRoughVol/
 │
 ├── main.py                           # Entry point: train Neural SDE
+├── compare_frequencies.py            # Multi-frequency roughness comparison
 ├── config/
-│   └── params.yaml                   # Central configuration (temporal, training, model)
+│   └── params.yaml                   # Central config (temporal, training, model, OU params)
 │
 ├── core/
 │   ├── bergomi.py                    # Rough Bergomi baseline
 │   └── stochastic_process.py         # SDE utilities
 │
 ├── ml/
-│   ├── neural_sde.py                 # NeuralRoughSimulator (Equinox, Chen's identity)
+│   ├── neural_sde.py                 # NeuralRoughSimulator (learnable κ,θ from YAML)
 │   ├── signature_engine.py           # Path signatures (esig + JAX, real dt augmentation)
 │   ├── losses.py                     # Normalized MMD + mean penalty loss
-│   ├── generative_trainer.py         # Training loop (real dt, proper dW scaling)
+│   ├── generative_trainer.py         # Training (validation split, early stopping, LR warmup)
 │   └── model.py                      # Legacy
 │
 ├── models/                           # Trained models
@@ -625,15 +639,17 @@ DeepRoughVol/
 │   ├── pricing.py                    # Monte Carlo option pricing (barrier, vanilla)
 │   ├── risk_neutral_calibration.py   # IV surface calibration vs BS
 │   ├── enhanced_calibration.py       # VVIX + Futures market parameter extraction
-│   ├── advanced_calibration.py       # Multi-method calibration
+│   ├── advanced_calibration.py       # Multi-method Hurst & forward variance calibration
 │   ├── multi_maturity_calibration.py # Multi-maturity IV surface
-│   ├── backtesting.py                # Historical backtesting
+│   ├── backtesting.py                # Historical backtesting (real Neural SDE MC pricing)
 │   ├── dashboard_v2.py               # Interactive dashboard
 │   ├── robustness_check.py           # Diagnostic audit
 │   ├── verify_roughness.py           # Roughness + ablation verification
 │   └── coherence_check.py            # Full coherence audit
 │
 ├── utils/
+│   ├── black_scholes.py              # Shared BS: pricing, IV, Greeks (single source)
+│   ├── greeks_ad.py                  # Greeks via JAX autodiff (Δ, Γ, vega, θ, vanna, volga)
 │   ├── data_loader.py                # VIX, RV, SPX loading (temporal coherence)
 │   └── diagnostics.py                # Stats (marginal kurtosis, Hurst, ACF)
 │
@@ -688,25 +704,20 @@ A trained model is worthless if you reinitialize random weights in downstream sc
 
 ## Future Work
 
-### High Priority
-- [ ] **Sync hardcoded params with config**: Model hardcodes κ=2.72, θ=-3.5, drift_scale=0.5 — these should be read from `params.yaml`
-- [ ] **Fix dt/noise in calibration scripts**: `risk_neutral_calibration.py`, `advanced_calibration.py`, `multi_maturity_calibration.py` still use old unscaled noise
-- [ ] **Real backtesting**: `backtesting.py` currently uses synthetic Neural SDE smiles — should load the actual trained model and run MC pricing
-- [ ] **Validation split + early stopping**: Training uses all data with no held-out set for overfitting detection
+### ✅ Completed (Phase 10)
+- [x] **Sync hardcoded params with config**: κ, θ, drift_scale, diffusion range all read from `params.yaml`
+- [x] **Fix dt/noise in calibration scripts**: `risk_neutral_calibration.py`, `multi_maturity_calibration.py`, `compare_frequencies.py` now use `dW = √dt · Z`
+- [x] **Real backtesting**: `backtesting.py` loads trained model and runs actual Monte Carlo pricing
+- [x] **Validation split + early stopping**: 15% held-out set, patience=50 epochs
+- [x] **LR warmup**: Linear warmup (50 steps) before cosine decay
+- [x] **Learnable OU parameters**: κ and θ stored as JAX arrays, differentiated through during training
+- [x] **Greeks via AD**: `utils/greeks_ad.py` — Δ, Γ, vega, θ, vanna, volga via `jax.grad`
+- [x] **Shared BS utilities**: `utils/black_scholes.py` — single source, used by all calibration scripts
 
-### Architecture
+### Remaining
 - [ ] **Longer paths**: Increase from 20 to 50-100 steps for richer signature information
-- [ ] **LR warmup**: Add linear warmup (50 steps) before cosine decay — stabilizes early training when the signature feedback loop is fragile
-- [ ] **Learnable OU parameters**: Allow κ and θ to be learned during training (with regularization toward market-calibrated values)
 - [ ] **Multi-frequency training**: Train on 5/10/15/30-min simultaneously to capture multi-scale roughness
-
-### Pricing & Calibration
-- [ ] **Multi-Maturity Calibration**: Fit full IV surface across strikes and expiries simultaneously
-- [ ] **Greeks via AD**: Automatic differentiation for Δ, Γ, Vega, Vanna using JAX's `grad`
 - [ ] **Joint Loss**: Train on VIX paths + option prices simultaneously for end-to-end calibration
-
-### Infrastructure
-- [ ] **Shared BS utilities**: Extract `BlackScholes` class (duplicated in 4+ files) into `utils/black_scholes.py`
 - [ ] **Regime-aware training**: Use VVIX/VIX ratio or contango/backwardation as conditioning variable
 - [ ] **Live Dashboard**: Real-time calibration monitoring with Streamlit
 

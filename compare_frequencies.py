@@ -78,13 +78,20 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     print(f"\n  Quick Training ({n_epochs} epochs) for {freq_name}...")
     
     n_steps = paths.shape[1]
+    
+    # Compute real T based on frequency
+    freq_minutes = int(freq_name.replace('min', ''))
+    bars_per_day = 6.5 * 60 / freq_minutes  # Trading hours / bar interval
+    T = n_steps / (252 * bars_per_day)  # In years
+    dt = T / n_steps
+    
     config = {
         'n_steps': n_steps,
-        'T': 0.083,  # ~1 month
+        'T': T,
     }
     
-    # Create trainer with custom data
-    sig_extractor = SignatureFeatureExtractor(truncation_order=3)
+    # Create signature engine with real dt
+    sig_extractor = SignatureFeatureExtractor(truncation_order=3, dt=dt)
     
     # Compute signatures for real data
     paths_jax = jnp.array(paths)
@@ -108,7 +115,7 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     
     for epoch in range(n_epochs):
         key, subkey = jax.random.split(key)
-        noise = jax.random.normal(subkey, (batch_size, n_steps))
+        noise = jax.random.normal(subkey, (batch_size, n_steps)) * jnp.sqrt(dt)
         
         # Sample initial conditions and target signatures from same batch
         random_indices = jax.random.randint(subkey, (batch_size,), 0, len(paths))
@@ -131,7 +138,7 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     
     # Generate samples for comparison
     key, subkey = jax.random.split(key)
-    noise = jax.random.normal(subkey, (1000, n_steps))
+    noise = jax.random.normal(subkey, (1000, n_steps)) * jnp.sqrt(dt)
     random_indices = jax.random.randint(subkey, (1000,), 0, len(paths))
     v0 = paths_jax[random_indices, 0]
     
