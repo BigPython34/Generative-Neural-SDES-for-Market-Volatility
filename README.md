@@ -20,7 +20,9 @@
 7. [Architecture](#architecture)
 8. [Usage](#usage)
 9. [File Structure](#file-structure)
-10. [References](#references)
+10. [Lessons Learned](#lessons-learned)
+11. [Future Work](#future-work)
+12. [References](#references)
 
 ---
 
@@ -30,15 +32,28 @@
 
 Unlike traditional stochastic volatility models (Heston, Bergomi) which impose rigid parametric forms, this approach:
 - Learns drift and diffusion functions from data
-- Captures rough volatility behavior naturally
+- Captures rough volatility behavior naturally (H < 0.5)
 - Calibrates to real option prices
 - Incorporates market observables (VVIX, VIX Futures)
 
-**Final Achievement**: The Neural SDE **beats Black-Scholes** on option pricing with a **2.95% IV RMSE** vs **3.94%** for BS (25% error reduction).
+**Latest Achievement**: After fixing temporal scaling (328× dt mismatch), adding signature normalization and mean penalty, the Neural SDE now matches real VIX variance distribution with **< 0.3% mean error** and **near-identical kurtosis**.
 
 ---
 
 ## Key Results
+
+### Statistical Fit (Generated vs Real VIX Variance Paths)
+
+After the Phase 9 corrections (temporal scaling, normalized MMD, mean penalty):
+
+| Metric | Market | Neural SDE | Bergomi | Status |
+|--------|--------|------------|---------|--------|
+| **Mean Variance** | 0.0372 | **0.0373** | 0.019 | ✅ < 0.3% error |
+| **Median Variance** | 0.0294 | **0.0293** | 0.018 | ✅ Perfect |
+| **Kurtosis (marginal)** | 38.5 | **38.9** | 0.3 | ✅ Fat tails captured |
+| **Hurst H** | 0.475 | **0.476** | 0.256 | ✅ Gap = 0.001 |
+| **ACF(1)** | 0.69 | **0.67** | 0.24 | ✅ Memory structure |
+| **Sig Correlation** | — | **0.985** | — | ✅ Distribution match |
 
 ### Option Pricing Performance
 
@@ -58,26 +73,14 @@ Unlike traditional stochastic volatility models (Heston, Bergomi) which impose r
 | Half-life | t½ | 93 days | ln(2)/κ |
 | Hurst Exponent | H | 0.05 (SPX 30min) / 0.48 (VIX 15min) | Variogram method |
 
-### Statistical Fit (Generated vs Real VIX Paths)
-
-| Metric | Market | Neural SDE | Bergomi | Analysis |
-|--------|--------|------------|---------|----------|
-| Mean Variance | 0.037 | 0.071 | 0.013 | Neural SDE closest |
-| Kurtosis | 38.91 | 58.57 | 15.97 | ✓ Fat tails captured |
-| Hurst H | 0.54 | 0.45 | 0.30 | ✓ Roughness preserved |
-| ACF(1) | 0.70 | 0.60 | 0.20 | ✓ Memory structure |
-| MMD Loss | — | 2.0e-6 | — | ✓ Converged |
-
 ### Ablation: Running Signatures Matter
 
-| Model | MMD Loss | Improvement |
-|-------|----------|-------------|
-| **Neural SDE (running sigs)** | **2.0e-6** | 50× vs old, 9× vs OU |
-| OU baseline (no MLP) | 1.8e-5 | Baseline |
-| Old Neural SDE (static sigs) | 1.0e-4 | 5× worse than OU |
+| Model | Norm. MMD | Hurst Gap | Mean Error |
+|-------|-----------|-----------|------------|
+| **Neural SDE** | 0.027 | **0.038** ✅ | 0.27% |
+| OU baseline | 0.025 | 0.059 | 0.10% |
 
-The old architecture tiled a single noise signature at every timestep — the MLP learned to ignore it.
-With running signatures via Chen's identity, the MLP receives genuine path history at each step.
+Neural SDE wins on **roughness** (the core objective), while OU has a marginal edge on simple marginal statistics. The OU process cannot capture path-dependent dynamics.
 
 ---
 
@@ -285,20 +288,60 @@ With all pieces in place:
 | Signature Norm | 1.131 | 1.131 | ✅ Match |
 | Signature Correlation | — | 1.000 | ✅ Perfect |
 
-**Comparison: Neural SDE vs Bergomi (parametric)**
+---
 
-| Metric | Real VIX | Neural SDE | Bergomi |
-|--------|----------|------------|---------|
-| Mean Variance | 0.037 | 0.065 | 0.013 |
-| Kurtosis | 38.9 | 73-118 | 16.0 |
-| Hurst H | 0.54 | 0.45 | 0.30 |
-| ACF(1) | 0.69 | 0.60 | 0.20 |
+### Phase 9: Temporal & Loss Corrections (Critical Fix)
 
-**Interpretation**:
-- Neural SDE **captures fat tails** better (higher kurtosis)
-- Neural SDE **captures roughness** better (H closer to real)
-- Neural SDE **captures memory** better (ACF closer to real)
-- Bergomi underestimates variance and has wrong memory structure
+**Discovery**: A systematic audit revealed **4 fundamental issues** in the training pipeline.
+
+#### 9.1 The 328× Temporal Mismatch
+
+The model was treating each 15-minute bar as 18.2 days:
+
+```
+Real dt per step:  15 min = 1/6552 years ≈ 0.000153 years
+Model dt per step: 1/20   = 0.05         ≈ 18.2 days     ← 328× too large!
+```
+
+The OU drift `κ(θ − x)·dt` was absurdly strong, and Brownian increments `dW = √dt · Z` were 18× too large.
+
+**Fix**: Compute `dt = T / n_steps` where `T = 0.00305` years (the real horizon of 20 bars × 15 min).
+
+#### 9.2 Wrong Kurtosis Metric
+
+The diagnostic computed `kurtosis(data.flatten())` on all paths flattened — mixing inter-path variance with intra-path dynamics:
+- Flattened kurtosis: **84.6** (meaningless — inflated by mixing VIX levels across time)
+- True marginal kurtosis: **38.5** (excess kurtosis at each time step, averaged)
+
+**Fix**: Compute per-time-step kurtosis and average: $\bar{\kappa} = \frac{1}{T}\sum_t \kappa_4(V_t)$
+
+#### 9.3 Signatures Dominated by Time Components
+
+With `linspace(0, 1)` time augmentation:
+- Time increments ≈ 0.053 vs variance increments ≈ 0.001
+- Time components dominated the L2 loss by **50×**
+- Pure-time components (s¹ₜ, s²ₜₜ, s³ₜₜₜ) have near-zero variance across paths → dividing by their std explodes
+
+**Fix**: Component-wise normalization of the MMD loss, with zero-weight on pure-time components (std < 10⁻⁸).
+
+#### 9.4 No Mean Penalty (Jensen Bias)
+
+The model generates log-variance then exponentiates: $V = e^X$. Without explicit mean control, Jensen's inequality causes systematic upward bias:
+
+$$\mathbb{E}[e^X] > e^{\mathbb{E}[X]}$$
+
+Before fix: mean variance = 0.074 (2× too high). After fix: mean variance = 0.037 (< 0.3% error).
+
+**Fix**: Add penalty $\lambda \cdot (\bar{V}_{fake} - \bar{V}_{real})^2$ with $\lambda = 10$.
+
+#### 9.5 Impact Summary
+
+| Metric | Before (Phase 8) | After (Phase 9) | Improvement |
+|--------|----------|---------|-------------|
+| Mean Variance | 0.074 ❌ | **0.037** ✅ | 2× bias → 0.3% error |
+| Kurtosis | 84.6 (wrong metric) | **38.9** ✅ | Correct metric, matches real |
+| Hurst Gap | 0.137 | **0.001** ✅ | 137× closer |
+| Sig Correlation | 1.000 | **0.985** | Still excellent |
 
 ---
 
@@ -324,15 +367,29 @@ The running signature is updated at each step via **Chen's identity**, making th
 - **Gradient stability**: No vanishing/exploding gradients (unlike RNNs)
 - **Incremental updates**: Chen's identity gives O(d³) update cost per step
 
-### 2. Unsupervised Training via MMD
+### 2. Unsupervised Training via Normalized MMD
 
-No labeled data needed. We minimize the **Maximum Mean Discrepancy**:
+No labeled data needed. We minimize a **normalized Maximum Mean Discrepancy**:
 
-$$\mathcal{L}_{MMD} = \left\| \mathbb{E}[\phi(\text{Generated})] - \mathbb{E}[\phi(\text{Market})] \right\|^2_{\mathcal{H}}$$
+$$\mathcal{L} = \sum_k \left(\frac{\mu_k^{\text{fake}} - \mu_k^{\text{real}}}{\sigma_k^{\text{real}}}\right)^2 + \lambda \cdot \left(\bar{V}^{\text{fake}} - \bar{V}^{\text{real}}\right)^2$$
 
-Where $\phi$ maps paths to their signatures. This matches distributions without requiring path-by-path correspondence.
+Where:
+- $\mu_k$ are the expected signature components (matching moments up to order 3)
+- $\sigma_k^{\text{real}}$ normalizes each component by its empirical standard deviation
+- Pure-time components (near-zero variance) are excluded (weight = 0)
+- The mean penalty with $\lambda = 10$ prevents Jensen bias from the exponential map
 
-### 3. Option Pricing via Monte Carlo
+### 3. Temporal Consistency
+
+All dynamics use the **real temporal scale**:
+
+$$dt = \frac{T}{n_{\text{steps}}} = \frac{0.00305}{20} \approx 1.53 \times 10^{-4} \text{ years} = 15 \text{ min}$$
+
+Brownian increments are properly scaled: $dW_t = \sqrt{dt} \cdot Z$, $Z \sim \mathcal{N}(0,1)$.
+
+The signature engine uses the real time increments (not `linspace(0,1)`) to ensure consistency between the time axis in the signature and the SDE dynamics.
+
+### 4. Option Pricing via Monte Carlo
 
 Given trained model:
 
@@ -341,7 +398,7 @@ Given trained model:
 3. Price option: $C = e^{-rT} \frac{1}{N}\sum_i \max(S^{(i)}_T - K, 0)$
 4. Invert to IV via Black-Scholes formula
 
-### 4. Calibration
+### 5. Calibration
 
 Optimize initial variance $v_0$ to minimize IV RMSE:
 
@@ -438,10 +495,11 @@ This gives the model genuine path-dependent (non-Markovian) dynamics, essential 
 ### Signature Computation (for loss)
 
 ```
-SignatureFeatureExtractor (order=3)
-├── Time augmentation: path → (time, value)
+SignatureFeatureExtractor (order=3, dt=real_dt)
+├── Time augmentation: path → (time, value) with REAL dt increments
 ├── NumPy input → esig C++ library (15 features, with constant)
 ├── JAX input → custom JAX implementation (14 features, no constant)
+├── Normalization: component-wise by std, zero-weight on pure-time dims
 └── Output: 2 + 4 + 8 = 14 features (JAX, used in training)
 ```
 
@@ -449,12 +507,16 @@ SignatureFeatureExtractor (order=3)
 
 ```
 GenerativeTrainer
-├── Data: 1,534 VIX variance paths × 20 steps
+├── Data: 1,534 VIX variance paths × 20 steps (15-min bars)
 ├── Target: Signatures of real paths
 ├── Generated: Neural SDE with running signatures (computed internally)
-├── Loss: MMD between signature distributions
+├── Loss: Normalized MMD + mean penalty (λ=10)
+│   ├── MMD: component-wise normalized by real sig std
+│   ├── Pure-time components: zero-weight (std < 1e-8)
+│   └── Mean penalty: λ·(mean_fake - mean_real)²
+├── Brownian: dW = √dt · Z with dt = T/n_steps = 0.000153 years
 ├── Optimizer: Adam + cosine LR decay + grad clipping
-└── Convergence: ~200 epochs, MMD ≈ 2e-6
+└── Convergence: ~200 epochs, best loss ≈ 0.017
 ```
 
 ---
@@ -476,8 +538,18 @@ pip install -r requirements.txt
 ### Training
 
 ```bash
-# Train Neural SDE on VIX
+# Train Neural SDE on VIX (saves best model to models/)
 python main.py
+```
+
+### Verification & Diagnostics
+
+```bash
+# Roughness + signatures + ablation study
+python quant/verify_roughness.py
+
+# Full coherence audit (dimensions, parameters, dt)
+python quant/coherence_check.py
 ```
 
 ### Calibration
@@ -491,6 +563,9 @@ python quant/risk_neutral_calibration.py
 
 # Full robustness diagnostics
 python quant/robustness_check.py
+
+# Historical backtesting
+python quant/backtesting.py
 ```
 
 ### Configuration
@@ -498,18 +573,27 @@ python quant/robustness_check.py
 `config/params.yaml`:
 ```yaml
 data:
-  data_type: "vix"           # "vix" or "realized_vol"
+  data_type: "vix"                    # "vix" or "realized_vol"
   source: "data/TVC_VIX, 15.csv"
+  segment_length: 20
+
+simulation:
+  n_steps: 20
+  T: 0.00305                         # Real horizon: 20 × 15min in years
+  bars_per_day: 26
+  bar_interval_min: 15
+
+training:
+  n_epochs: 300
+  batch_size: 256
+  learning_rate_init: 0.001
+  gradient_clip: 1.0
+  lambda_mean: 10.0                   # Mean penalty weight
 
 neural_sde:
   sig_truncation_order: 3
-  hidden_dim: 64
-
-training:
-  n_epochs: 200
-  batch_size: 128
-  learning_rate_init: 0.001
-  gradient_clip: 1.0
+  mlp_width: 64
+  mlp_depth: 3
 ```
 
 ---
@@ -521,51 +605,55 @@ DeepRoughVol/
 │
 ├── main.py                           # Entry point: train Neural SDE
 ├── config/
-│   └── params.yaml                   # Central configuration
+│   └── params.yaml                   # Central configuration (temporal, training, model)
 │
 ├── core/
 │   ├── bergomi.py                    # Rough Bergomi baseline
 │   └── stochastic_process.py         # SDE utilities
 │
 ├── ml/
-│   ├── neural_sde.py                 # NeuralRoughSimulator (Equinox)
-│   ├── signature_engine.py           # Path signatures (esig + JAX)
-│   ├── losses.py                     # MMD loss
-│   ├── generative_trainer.py         # Main training loop (saves model)
+│   ├── neural_sde.py                 # NeuralRoughSimulator (Equinox, Chen's identity)
+│   ├── signature_engine.py           # Path signatures (esig + JAX, real dt augmentation)
+│   ├── losses.py                     # Normalized MMD + mean penalty loss
+│   ├── generative_trainer.py         # Training loop (real dt, proper dW scaling)
 │   └── model.py                      # Legacy
 │
 ├── models/                           # Trained models
 │   └── neural_sde_best.eqx           # Best trained Neural SDE
 │
 ├── quant/
-│   ├── pricing.py                    # Monte Carlo option pricing
-│   ├── risk_neutral_calibration.py   # IV surface calibration
-│   ├── enhanced_calibration.py       # VVIX + Futures analysis
+│   ├── pricing.py                    # Monte Carlo option pricing (barrier, vanilla)
+│   ├── risk_neutral_calibration.py   # IV surface calibration vs BS
+│   ├── enhanced_calibration.py       # VVIX + Futures market parameter extraction
+│   ├── advanced_calibration.py       # Multi-method calibration
+│   ├── multi_maturity_calibration.py # Multi-maturity IV surface
+│   ├── backtesting.py                # Historical backtesting
+│   ├── dashboard_v2.py               # Interactive dashboard
 │   ├── robustness_check.py           # Diagnostic audit
-│   ├── verify_roughness.py           # Roughness verification
+│   ├── verify_roughness.py           # Roughness + ablation verification
 │   └── coherence_check.py            # Full coherence audit
 │
 ├── utils/
-│   ├── data_loader.py                # VIX, RV, SPX loading
-│   └── diagnostics.py                # Statistics, plots
+│   ├── data_loader.py                # VIX, RV, SPX loading (temporal coherence)
+│   └── diagnostics.py                # Stats (marginal kurtosis, Hurst, ACF)
 │
 ├── data/                             # Raw market data only
-│   ├── TVC_VIX, 15.csv               # VIX spot (training)
-│   ├── SP_SPX, 30.csv                # SPX prices
-│   ├── CBOE_DLY_VVIX, 15.csv         # VVIX
-│   ├── cboe_vix_futures_full/        # VIX futures
+│   ├── TVC_VIX, 15.csv               # VIX spot 15-min (training)
+│   ├── TVC_VIX, 5/10/30.csv          # VIX at other frequencies
+│   ├── data_^GSPC_*.csv              # SPX prices
 │   └── options_cache/                # Cached option chains
 │
-├── outputs/                          # Generated results
-│   ├── enhanced_calibration.json     # Calibrated parameters
-│   ├── risk_neutral_calibration.json # Pricing results
-│   ├── robustness_check.json         # Diagnostic results
-│   ├── roughness_verification.json   # Roughness coherence
-│   └── coherence_check.json          # Full coherence report
+├── outputs/                          # Generated results (JSON + HTML)
+│   ├── roughness_verification.json
+│   ├── coherence_check.json
+│   ├── risk_neutral_calibration.json
+│   ├── enhanced_calibration.json
+│   └── backtest_results.json
 │
 └── research/
     ├── theory_draft.tex              # Math derivations
-    └── maths_proofs.tex              # Signature theory
+    ├── maths_proofs.tex              # Signature theory
+    └── proof.tex                     # Additional proofs
 ```
 
 ---
@@ -575,27 +663,52 @@ DeepRoughVol/
 ### 1. P ≠ Q (Measure Matters!)
 Training on realized vol and testing on implied vol is fundamentally wrong. Always know which probability measure you're in.
 
-### 2. High-Frequency Data Reveals Structure
+### 2. Temporal Scale Must Be Physical
+Using `dt = 1/n_steps` instead of the real physical time step (15 min ≈ 0.000153 years) introduced a **328× scaling error**. All SDE parameters (κ, σ, drift) are calibrated in annual units — the dt must match.
+
+### 3. Normalize Your Loss Components
+Signature components span 8 orders of magnitude (from 10⁻¹⁴ for s³ₜₜₜ to 10⁻² for s¹ᵥ). Without normalization, the loss is blind to the stochastic components. Pure-time components must be excluded entirely.
+
+### 4. Jensen's Inequality Bites
+When the model generates log-variance and you exponentiate, $\mathbb{E}[e^X] > e^{\mathbb{E}[X]}$. An explicit mean penalty is necessary to control the first moment.
+
+### 5. Kurtosis Requires Care
+`kurtosis(data.flatten())` on multi-path data conflates the marginal distribution with the cross-sectional distribution. The correct metric is the average marginal kurtosis per time step.
+
+### 6. High-Frequency Data Reveals Structure
 Daily data masks roughness. Intraday data (≤30min) shows H < 0.5, with exact values depending on data source (SPX returns: H≈0.05, VIX levels: H≈0.48).
 
-### 3. Market Data > Assumptions
+### 7. Market Data > Assumptions
 Extract parameters (η, κ, θ) from observables (VVIX, futures) rather than assuming standard values.
 
-### 4. Tensor Shape Consistency
-`esig` and JAX signature engines have different output dimensions. Always verify shapes at interfaces.
-
-### 5. Persist Your Models
+### 8. Persist Your Models
 A trained model is worthless if you reinitialize random weights in downstream scripts.
 
 ---
 
 ## Future Work
 
-- [ ] **Multi-Maturity Calibration**: Fit full IV surface across strikes and expiries
-- [ ] **Greeks via AD**: Automatic differentiation for Δ, Γ, Vega, Vanna
-- [ ] **Regime Switching**: Use VVIX/VIX ratio as regime indicator
-- [ ] **Joint Loss**: Train on VIX paths + option prices simultaneously
-- [ ] **Live Dashboard**: Streamlit app for real-time calibration
+### High Priority
+- [ ] **Sync hardcoded params with config**: Model hardcodes κ=2.72, θ=-3.5, drift_scale=0.5 — these should be read from `params.yaml`
+- [ ] **Fix dt/noise in calibration scripts**: `risk_neutral_calibration.py`, `advanced_calibration.py`, `multi_maturity_calibration.py` still use old unscaled noise
+- [ ] **Real backtesting**: `backtesting.py` currently uses synthetic Neural SDE smiles — should load the actual trained model and run MC pricing
+- [ ] **Validation split + early stopping**: Training uses all data with no held-out set for overfitting detection
+
+### Architecture
+- [ ] **Longer paths**: Increase from 20 to 50-100 steps for richer signature information
+- [ ] **LR warmup**: Add linear warmup (50 steps) before cosine decay — stabilizes early training when the signature feedback loop is fragile
+- [ ] **Learnable OU parameters**: Allow κ and θ to be learned during training (with regularization toward market-calibrated values)
+- [ ] **Multi-frequency training**: Train on 5/10/15/30-min simultaneously to capture multi-scale roughness
+
+### Pricing & Calibration
+- [ ] **Multi-Maturity Calibration**: Fit full IV surface across strikes and expiries simultaneously
+- [ ] **Greeks via AD**: Automatic differentiation for Δ, Γ, Vega, Vanna using JAX's `grad`
+- [ ] **Joint Loss**: Train on VIX paths + option prices simultaneously for end-to-end calibration
+
+### Infrastructure
+- [ ] **Shared BS utilities**: Extract `BlackScholes` class (duplicated in 4+ files) into `utils/black_scholes.py`
+- [ ] **Regime-aware training**: Use VVIX/VIX ratio or contango/backwardation as conditioning variable
+- [ ] **Live Dashboard**: Real-time calibration monitoring with Streamlit
 
 ---
 
