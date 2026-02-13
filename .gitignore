@@ -30,4 +30,5 @@ dist/
 *.log
 .python 
 data/
-alphavantage
+#api key 
+alphavantage.txt
