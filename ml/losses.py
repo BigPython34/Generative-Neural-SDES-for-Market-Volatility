@@ -28,23 +28,53 @@ def feller_condition_loss(kappa: float, theta: float, vol_of_vol: float) -> jnp.
     return jnp.maximum(0.0, vol_of_vol**2 - 2 * kappa * theta)**2
 
 @jit
-def signature_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarray) -> jnp.ndarray:
+def signature_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarray, 
+                        sig_std: jnp.ndarray = None) -> jnp.ndarray:
     """
-    Computes the MMD distance in the Signature Space (The "Signature Kernel").
+    Computes the MMD distance in the NORMALIZED Signature Space.
     
-    Theory: If E[Sig(Fake)] == E[Sig(Real)] for all orders, 
-    then Law(Fake) == Law(Real).
+    Each component is divided by its empirical std from the real data,
+    so that all dimensions contribute equally to the loss regardless
+    of their physical scale.
     
     Args:
         fake_signatures: Shape (batch_size, sig_dim)
         real_signatures: Shape (batch_size, sig_dim)
+        sig_std: Component-wise std of real signatures for normalization.
+                 If None, falls back to unnormalized L2 (backward compatible).
     """
-    # 1. Compute the "Expected Signature" (The geometric mean of the market)
+    # 1. Compute the "Expected Signature"
     mu_fake = jnp.mean(fake_signatures, axis=0)
     mu_real = jnp.mean(real_signatures, axis=0)
     
-    # 2. Minimize the Euclidean distance between these expected signatures
-    # This forces the Neural SDE to match all statistical moments (vol, skew, kurtosis...)
-    loss = jnp.sum(jnp.square(mu_fake - mu_real))
+    # 2. Normalize by component-wise std (makes all dimensions comparable)
+    if sig_std is not None:
+        # Pure-time components (s1_t, s2_tt, s3_ttt) have near-zero variance
+        # because time is deterministic. Ignore them in the loss by setting
+        # weight to 0 for components with std below threshold.
+        threshold = 1e-8
+        weights = jnp.where(sig_std > threshold, 1.0 / sig_std, 0.0)
+        diff = (mu_fake - mu_real) * weights
+    else:
+        diff = mu_fake - mu_real
+    
+    # 3. Minimize the normalized Euclidean distance
+    loss = jnp.sum(jnp.square(diff))
     
     return loss
+
+@jit
+def mean_penalty_loss(fake_paths: jnp.ndarray, real_mean: float) -> jnp.ndarray:
+    """
+    Penalizes deviation of the generated mean variance from the real mean.
+    
+    This prevents the Jensen inequality bias: when the model generates
+    log-variance, exp(log_v) systematically overshoots if the variance
+    of log_v is too large. This penalty corrects that drift.
+    
+    Args:
+        fake_paths: Generated variance paths, shape (batch, n_steps)
+        real_mean: Mean of real variance data (scalar)
+    """
+    fake_mean = jnp.mean(fake_paths)
+    return jnp.square(fake_mean - real_mean)

@@ -58,7 +58,7 @@ class MarketConstrainedTrainer:
         print(f"\nTarget Parameters from Market:")
         print(f"   eta (Vol-of-Vol):     {self.eta_target:.2f}")
         print(f"   kappa (Mean Reversion): {self.kappa_target:.2f}")
-        print(f"   theta (Long-term VIX):  {np.sqrt(self.theta_target)*100:.1f}%"))
+        print(f"   theta (Long-term VIX):  {np.sqrt(self.theta_target)*100:.1f}%")
         
     def _compute_correct_eta(self) -> float:
         """
@@ -117,9 +117,6 @@ class MarketConstrainedTrainer:
         
         σ_V = std(dV/V) / sqrt(dt) (annualized)
         """
-        # Generate paths
-        sig_engine = SignatureFeatureExtractor(truncation_order=3)
-        
         key = jax.random.PRNGKey(42)
         n_paths, n_steps = paths.shape
         
@@ -128,11 +125,10 @@ class MarketConstrainedTrainer:
         
         # Generate noise
         noise = jax.random.normal(key, (n_paths, n_steps))
-        noise_sigs = sig_engine.get_signature(noise)
         
-        # Generate variance paths
-        gen_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, 0, None))(
-            v0, noise_sigs, noise, dt
+        # Generate variance paths — model computes running signatures internally
+        gen_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+            v0, noise, dt
         )
         
         # Compute vol of vol
@@ -150,10 +146,10 @@ class MarketConstrainedTrainer:
         """
         from ml.losses import signature_mmd_loss
         
-        def loss_fn(model, noise_sigs, noise, v0, dt, sig_engine):
-            # Generate fake paths
-            fake_vars = jax.vmap(model.generate_variance_path, in_axes=(0, 0, 0, None))(
-                v0, noise_sigs, noise, dt
+        def loss_fn(model, noise, v0, dt, sig_engine):
+            # Generate fake paths — model computes running signatures internally
+            fake_vars = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+                v0, noise, dt
             )
             
             # Signature MMD loss
@@ -214,9 +210,9 @@ class MarketConstrainedTrainer:
         loss_fn = self.create_constrained_loss(target_sigs, lambda_eta=0.5)
         
         @eqx.filter_jit
-        def train_step(model, opt_state, noise, noise_sigs, v0):
+        def train_step(model, opt_state, noise, v0):
             (loss, (mmd, volvol)), grads = eqx.filter_value_and_grad(
-                lambda m: loss_fn(m, noise_sigs, noise, v0, dt, sig_engine),
+                lambda m: loss_fn(m, noise, v0, dt, sig_engine),
                 has_aux=True
             )(model)
             
@@ -241,14 +237,13 @@ class MarketConstrainedTrainer:
             # Generate noise
             key, subkey = jax.random.split(key)
             noise = jax.random.normal(subkey, (batch_size, paths.shape[1]))
-            noise_sigs = sig_engine.get_signature(noise)
             
             # Initial conditions from data
             v0 = paths_jax[batch_idx, 0]
             
             # Train step
             model, opt_state, loss, mmd, volvol = train_step(
-                model, opt_state, noise, noise_sigs, v0
+                model, opt_state, noise, v0
             )
             
             history['loss'].append(float(loss))

@@ -109,7 +109,6 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     for epoch in range(n_epochs):
         key, subkey = jax.random.split(key)
         noise = jax.random.normal(subkey, (batch_size, n_steps))
-        noise_sigs = sig_extractor.get_signature(noise)
         
         # Sample initial conditions and target signatures from same batch
         random_indices = jax.random.randint(subkey, (batch_size,), 0, len(paths))
@@ -117,8 +116,8 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
         batch_target_sigs = target_sigs[random_indices]
         
         def loss_fn(m):
-            fake_vars = jax.vmap(m.generate_variance_path, in_axes=(0, 0, 0, None))(
-                v0, noise_sigs, noise, dt
+            fake_vars = jax.vmap(m.generate_variance_path, in_axes=(0, 0, None))(
+                v0, noise, dt
             )
             fake_sigs = sig_extractor.get_signature(fake_vars)
             return signature_mmd_loss(fake_sigs, batch_target_sigs)
@@ -133,12 +132,11 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     # Generate samples for comparison
     key, subkey = jax.random.split(key)
     noise = jax.random.normal(subkey, (1000, n_steps))
-    noise_sigs = sig_extractor.get_signature(noise)
     random_indices = jax.random.randint(subkey, (1000,), 0, len(paths))
     v0 = paths_jax[random_indices, 0]
     
-    generated = jax.vmap(model.generate_variance_path, in_axes=(0, 0, 0, None))(
-        v0, noise_sigs, noise, dt
+    generated = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+        v0, noise, dt
     )
     generated_np = np.array(generated)
     

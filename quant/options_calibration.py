@@ -601,11 +601,10 @@ def run_full_calibration(use_cache: bool = False, optimize_bergomi: bool = True,
         # Generate variance paths
         key, subkey = jax.random.split(key)
         noise = jax.random.normal(subkey, (n_paths, n_steps))
-        noise_sigs = trainer.sig_extractor.get_signature(noise)
         
         v0 = jnp.full(n_paths, atm_iv**2)
-        var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, 0, None))(
-            v0, noise_sigs, noise, dt
+        var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+            v0, noise, dt
         )
         var_paths = np.array(var_paths)
         

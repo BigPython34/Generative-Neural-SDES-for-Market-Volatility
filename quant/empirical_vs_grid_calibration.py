@@ -385,7 +385,7 @@ def run_comparison():
         height=500
     )
     
-    fig.write_html("outputs/empirical_vs_grid_plot.html")
+    fig.write_html("outputs/empirical_vs_grid_plot.html", include_plotlyjs='cdn')
     fig.show()
     
     print(f"Plot saved to outputs/empirical_vs_grid_plot.html")

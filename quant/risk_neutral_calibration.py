@@ -57,8 +57,11 @@ class RiskNeutralNeuralSDE:
             # Initialize signature engine
             self.sig_engine = SignatureFeatureExtractor(truncation_order=sig_depth)
             
-            # Signature dimension from esig: for d=2, depth=3: 1+2+4+8=15
-            self.sig_dim = 15  # Hardcoded based on esig output
+            # Signature dimension: use get_feature_dim to match training
+            # JAX engine: 2+4+8=14 (no constant term)
+            # esig engine: 1+2+4+8=15 (with constant term)
+            # Training uses JAX, so we use 14
+            self.sig_dim = self.sig_engine.get_feature_dim(1)  # Returns 14 for depth=3
             
             # Initialize model with random key
             key = jax.random.PRNGKey(0)
@@ -69,22 +72,17 @@ class RiskNeutralNeuralSDE:
         """Generate spot paths using Neural SDE variance dynamics"""
         dt = T / self.n_steps
         
-        # Generate noise
+        # Generate noise (Brownian increments only)
         key, subkey = jax.random.split(key)
         noise = jax.random.normal(subkey, (n_paths, self.n_steps))
         
-        # Get signatures using JAX engine (keep as jax array!)
-        # This ensures we use the same 14-dim signatures as training
-        noise_sigs = self.sig_engine.get_signature(noise)  # JAX array → JAX engine
-        
-        # Generate variance paths
+        # Generate variance paths — model computes running signatures internally
         v0_arr = jnp.full(n_paths, v0)
         
-        # Use vmap properly
-        def single_path_variance(init_v, sigs, brownian):
-            return model.generate_variance_path(init_v, sigs, brownian, dt)
+        def single_path_variance(init_v, brownian):
+            return model.generate_variance_path(init_v, brownian, dt)
         
-        var_paths = jax.vmap(single_path_variance)(v0_arr, noise_sigs, noise)
+        var_paths = jax.vmap(single_path_variance)(v0_arr, noise)
         var_paths = jnp.clip(var_paths, 1e-6, 5.0)
         
         # Correlated spot
@@ -308,7 +306,7 @@ def main():
         template="plotly_white"
     )
     
-    fig.write_html("outputs/risk_neutral_calibration.html")
+    fig.write_html("outputs/risk_neutral_calibration.html", include_plotlyjs='cdn')
     fig.show()
     
     # Save results

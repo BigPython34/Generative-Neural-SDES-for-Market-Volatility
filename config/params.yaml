@@ -15,12 +15,13 @@ data:
 
 # Model Training
 training:
-  n_epochs: 200
+  n_epochs: 300
   batch_size: 256
   learning_rate_init: 0.001      # 1e-3
   learning_rate_final: 0.00001   # 1e-5
   decay_steps: 2000
   gradient_clip: 1.0
+  lambda_mean: 10.0              # Weight for mean penalty loss
 
 # Neural SDE Architecture
 neural_sde:
@@ -37,8 +38,10 @@ neural_sde:
 # Simulation Configuration
 simulation:
   n_steps: 20                # Match segment_length for consistency
-  T: 0.083                   # ~1 month (1/12 year) - realistic for option pricing
+  T: 0.00305                 # Real horizon: 20 bars * 15min / (252 * 6.5h * 60min) years
   n_paths: 5000              # Monte Carlo paths
+  bars_per_day: 26           # 6.5 trading hours / 15 min
+  bar_interval_min: 15       # VIX bar interval in minutes
 
 # Rough Bergomi Benchmark
 bergomi:
@@ -53,4 +56,4 @@ pricing:
   barrier: 90.0
   spot: 100.0
   risk_free_rate: 0.05
-  maturity: 0.083            # Matches T from simulation
+  maturity: 0.00305          # Matches T from simulation

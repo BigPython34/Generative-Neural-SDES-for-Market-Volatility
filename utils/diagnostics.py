@@ -45,13 +45,25 @@ def estimate_hurst(data):
 def print_distribution_stats(name: str, data: np.ndarray):
     """
     Prints comprehensive stats including Hurst and Kurtosis.
+    
+    Kurtosis is computed as the MARGINAL kurtosis: for each time step t,
+    compute the excess kurtosis of {V_t^(i)} across paths i, then average
+    over t. This avoids the inflation caused by flattening paths at
+    different VIX levels into a single array.
     """
     flat_data = data.flatten()
     n_steps = data.shape[1] if data.ndim > 1 else len(data)
     
     # Compute metrics
     h_est = estimate_hurst(data)
-    kurt = kurtosis(flat_data)
+    
+    # Marginal kurtosis: average excess kurtosis across time steps
+    # Each column data[:, t] is a sample from the marginal distribution at step t
+    if data.ndim > 1:
+        marginal_kurts = [kurtosis(data[:, t]) for t in range(n_steps)]
+        kurt = np.mean(marginal_kurts)
+    else:
+        kurt = kurtosis(data)
     
     # Sample ACF on first 100 paths (use appropriate lag for path length)
     max_lag = min(10, n_steps - 2)
@@ -61,7 +73,7 @@ def print_distribution_stats(name: str, data: np.ndarray):
     print(f"--- DIAGNOSTIC: {name} ---")
     print(f"   Mean           : {np.mean(flat_data):.5f}")
     print(f"   Median         : {np.median(flat_data):.5f}")
-    print(f"   Kurtosis       : {kurt:.2f} (Target > 3.0)")
+    print(f"   Kurtosis (marg): {kurt:.2f} (excess, averaged over time steps)")
     print(f"   Hurst (Rough)  : {h_est:.3f} (Target < 0.15)")
     print(f"   ACF (Lag 1)    : {acf_lag1:.3f} (Target > 0.9)")
     print("-" * 30)

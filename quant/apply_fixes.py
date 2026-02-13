@@ -153,13 +153,10 @@ def run_improved_calibration():
         key, subkey = jax.random.split(key)
         noise = jax.random.normal(subkey, (batch_size, n_steps))
         
-        # Get signatures (same as in training)
-        noise_sigs = sig_engine.get_signature(noise)
-        
         v0 = jnp.full(batch_size, atm_iv**2)
         
-        var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, 0, None))(
-            v0, noise_sigs, noise, dt
+        var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
+            v0, noise, dt
         )
         var_paths = np.array(var_paths)
         
@@ -302,7 +299,7 @@ def run_improved_calibration():
         height=500
     )
     
-    fig.write_html("data/improved_calibration_plot.html")
+    fig.write_html("data/improved_calibration_plot.html", include_plotlyjs='cdn')
     fig.show()
     
     return results

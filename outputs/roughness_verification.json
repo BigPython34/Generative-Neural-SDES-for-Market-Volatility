@@ -1,0 +1,23 @@
+{
+  "roughness": {
+    "H_real": 0.475482009965847,
+    "H_generated_mean": 0.4763714835319973,
+    "H_generated_std": 0.10387070229077201,
+    "gap": 0.0008894735661503228,
+    "both_rough": "True"
+  },
+  "signatures": {
+    "real_norm": 0.00815099198371172,
+    "gen_norm": 0.0034331760834902525,
+    "norm_ratio": 0.4211973249912262,
+    "mean_correlation": 0.984785160069577
+  },
+  "ablation": {
+    "mmd_neural": 0.027060598134994507,
+    "mmd_ou": 0.025491002947092056,
+    "improvement_pct": -6.157447751899874,
+    "hurst_real": 0.5000241841113219,
+    "hurst_neural": 0.4621578757056751,
+    "hurst_ou": 0.441324687879366
+  }
+}

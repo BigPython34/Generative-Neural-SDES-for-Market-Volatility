@@ -28,8 +28,8 @@ def main():
     }
 
     print("--- 1. Initializing Generative Quant Engine ---")
-    print(f"    Horizon T = {config['T']:.3f} years (~{config['T']*12:.1f} months)")
-    print(f"    Time steps = {config['n_steps']}")
+    print(f"    Horizon T = {config['T']:.5f} years (~{config['T']*252*6.5*60:.0f} min = {config['n_steps']} bars × 15 min)")
+    print(f"    Time steps = {config['n_steps']}, dt = {config['T']/config['n_steps']:.6f} years")
     
     trainer = GenerativeTrainer(config)
     real_data_np = np.array(trainer.market_paths)
@@ -46,17 +46,16 @@ def main():
     n_gen = cfg['simulation']['n_paths']
 
     # A. NEURAL SDE GENERATION
-    noise = jax.random.normal(key, (n_gen, config['n_steps']))
-    noise_sigs = trainer.sig_extractor.get_signature(noise)
+    dt = config['T'] / config['n_steps']
+    noise = jax.random.normal(key, (n_gen, config['n_steps'])) * jnp.sqrt(dt)
     
     # Use randomized initial conditions from market history
     real_v0s = trainer.market_paths[:, 0]
     random_indices = jax.random.randint(key, (n_gen,), 0, len(real_v0s))
     v0_samples = real_v0s[random_indices]
     
-    dt = config['T'] / config['n_steps']
-    fake_vars = jax.vmap(trained_model.generate_variance_path, in_axes=(0, 0, 0, None))(
-        v0_samples, noise_sigs, noise, dt
+    fake_vars = jax.vmap(trained_model.generate_variance_path, in_axes=(0, 0, None))(
+        v0_samples, noise, dt
     )
     fake_vars_np = np.array(fake_vars)
 

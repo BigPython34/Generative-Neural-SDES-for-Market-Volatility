@@ -22,29 +22,28 @@ class DeepPricingEngine:
         key_vol, key_spot = jax.random.split(key)
         
         # 1. Generate Neural Volatility
-        noise_vol = jax.random.normal(key_vol, (n_paths, self.config['n_steps']))
-        noise_sigs = self.trainer.sig_extractor.get_signature(noise_vol)
+        dt = self.config['T'] / self.config['n_steps']
+        noise_vol = jax.random.normal(key_vol, (n_paths, self.config['n_steps'])) * jnp.sqrt(dt)
         
         # Sample initial variance from empirical distribution
         real_v0s = self.trainer.market_paths[:, 0]
         random_indices = jax.random.randint(key, (n_paths,), 0, len(real_v0s))
         v0_samples = real_v0s[random_indices]
         
-        dt = self.config['T'] / self.config['n_steps']
-        
-        var_paths = jax.vmap(self.model.generate_variance_path, in_axes=(0, 0, 0, None))(
-            v0_samples, noise_sigs, noise_vol, dt
+        var_paths = jax.vmap(self.model.generate_variance_path, in_axes=(0, 0, None))(
+            v0_samples, noise_vol, dt
         )
         
         # 2. Generate Spot with Leverage
         z_spot_indep = jax.random.normal(key_spot, (n_paths, self.config['n_steps']))
         
         # Correlate spot noise with the volatility driver
-        # noise_vol represents the Brownian increments dW_vol (up to scaling)
-        spot_driver = rho * noise_vol + jnp.sqrt(1 - rho**2) * z_spot_indep
+        # noise_vol is already dW_vol = sqrt(dt)*Z, so spot_driver has correct scaling
+        spot_driver = rho * noise_vol + jnp.sqrt(1 - rho**2) * z_spot_indep * jnp.sqrt(dt)
         
         vol_paths = jnp.sqrt(var_paths)
-        log_ret = (mu - 0.5 * var_paths) * dt + vol_paths * jnp.sqrt(dt) * spot_driver
+        # spot_driver is already dW (scaled by sqrt(dt)), so no extra sqrt(dt) here
+        log_ret = (mu - 0.5 * var_paths) * dt + vol_paths * spot_driver
         log_s = jnp.cumsum(log_ret, axis=1)
         s_paths = s0 * jnp.exp(log_s)
         

@@ -1,10 +1,11 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import equinox as eqx
 import yaml
 from ml.neural_sde import NeuralRoughSimulator
-from ml.losses import signature_mmd_loss
+from ml.losses import signature_mmd_loss, mean_penalty_loss
 from ml.signature_engine import SignatureFeatureExtractor
 from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
 
@@ -25,7 +26,13 @@ class GenerativeTrainer:
         
         # Load signature config
         sig_order = self.yaml_config['neural_sde']['sig_truncation_order']
-        self.sig_extractor = SignatureFeatureExtractor(truncation_order=sig_order)
+        
+        # Compute real dt for temporal consistency
+        T = self.yaml_config['simulation']['T']
+        n_steps = config['n_steps']
+        self.dt = T / n_steps
+        
+        self.sig_extractor = SignatureFeatureExtractor(truncation_order=sig_order, dt=self.dt)
         self.input_sig_dim = self.sig_extractor.get_feature_dim(1)
         
         # Load market data based on config
@@ -42,6 +49,17 @@ class GenerativeTrainer:
         
         self.target_sigs = self.sig_extractor.get_signature(self.market_paths)
         self.target_sigs = jax.device_put(self.target_sigs)
+        
+        # Precompute signature normalization (component-wise std of real signatures)
+        self.sig_std = jnp.std(self.target_sigs, axis=0)
+        print(f"Signature normalization: std range [{float(jnp.min(self.sig_std)):.2e}, {float(jnp.max(self.sig_std)):.2e}]")
+        
+        # Precompute real mean variance for mean penalty
+        self.real_mean = float(jnp.mean(self.market_paths))
+        print(f"Real mean variance: {self.real_mean:.6f} (vol: {np.sqrt(self.real_mean)*100:.1f}%)")
+        
+        # Mean penalty weight
+        self.lambda_mean = self.yaml_config.get('training', {}).get('lambda_mean', 10.0)
 
         # Learning Rate Scheduler from config
         train_cfg = self.yaml_config['training']
@@ -55,19 +73,27 @@ class GenerativeTrainer:
             optax.clip_by_global_norm(train_cfg['gradient_clip']),
             optax.adam(learning_rate=scheduler)
         )    
-    def train_step(self, model, opt_state, noise_driver, noise_sigs, dt):
-        """Single training step using MMD loss."""
+    def train_step(self, model, opt_state, noise_driver, dt):
+        """Single training step using normalized MMD loss + mean penalty."""
         def loss_fn(m):
             random_indices = jax.random.randint(
                 jax.random.PRNGKey(0), (noise_driver.shape[0],), 0, self.market_paths.shape[0]
             )
             v0 = self.market_paths[random_indices, 0]
             
-            fake_vars = jax.vmap(m.generate_variance_path, in_axes=(0, 0, 0, None))(
-                v0, noise_sigs, noise_driver, dt
+            # Model now computes running signatures internally
+            fake_vars = jax.vmap(m.generate_variance_path, in_axes=(0, 0, None))(
+                v0, noise_driver, dt
             )
             fake_sigs = self.sig_extractor.get_signature(fake_vars)
-            return signature_mmd_loss(fake_sigs, self.target_sigs)
+            
+            # Normalized signature MMD (all components equally weighted)
+            mmd = signature_mmd_loss(fake_sigs, self.target_sigs, self.sig_std)
+            
+            # Mean penalty (prevents Jensen bias from exp(log_v))
+            mean_pen = mean_penalty_loss(fake_vars, self.real_mean)
+            
+            return mmd + self.lambda_mean * mean_pen
 
         loss, grads = eqx.filter_value_and_grad(loss_fn)(model)
         updates, opt_state = self.optim.update(grads, opt_state)
@@ -81,23 +107,54 @@ class GenerativeTrainer:
         model = NeuralRoughSimulator(self.input_sig_dim, model_key)
         opt_state = self.optim.init(eqx.filter(model, eqx.is_array))
         
-        # Assuming 1 year of daily data normalized to T=1
-        dt = 1.0 / self.config['n_steps'] 
+        # Real temporal scale: T (in years) / n_steps
+        # For VIX 15-min: T ≈ 0.00305 years for 20 steps
+        T = self.yaml_config['simulation']['T']
+        dt = T / self.config['n_steps']
         
         print("Starting Market-Driven Training...")
+        best_loss = float('inf')
+        
         for epoch in range(n_epochs):
             key, subkey = jax.random.split(key)
             
-            # Sample random noise batch
-            noise = jax.random.normal(subkey, (batch_size, self.config['n_steps']))
-            noise_sigs = self.sig_extractor.get_signature(noise)
+            # Sample random Brownian increments: dW_t = sqrt(dt) * Z
+            noise = jax.random.normal(subkey, (batch_size, self.config['n_steps'])) * jnp.sqrt(dt)
             
-            # Train against pre-computed real signatures
+            # Train: model computes running signatures internally
             model, opt_state, loss = self.train_step(
-                model, opt_state, noise, noise_sigs, dt
+                model, opt_state, noise, dt
             )
             
             if epoch % 10 == 0:
                 print(f"Epoch {epoch:04d} | MMD Loss: {loss:.8f}")
+            
+            # Save best model
+            if loss < best_loss:
+                best_loss = loss
+                self._save_model(model)
                 
+        print(f"Training complete. Best loss: {best_loss:.8f}")
         return model
+    
+    def _save_model(self, model):
+        """Save model to disk."""
+        import os
+        from pathlib import Path
+        
+        models_dir = Path("models")
+        models_dir.mkdir(exist_ok=True)
+        
+        model_path = models_dir / "neural_sde_best.eqx"
+        eqx.tree_serialise_leaves(model_path, model)
+    
+    def load_model(self):
+        """Load saved model from disk."""
+        from pathlib import Path
+        
+        model_path = Path("models/neural_sde_best.eqx")
+        if model_path.exists():
+            key = jax.random.PRNGKey(0)
+            model = NeuralRoughSimulator(self.input_sig_dim, key)
+            return eqx.tree_deserialise_leaves(model_path, model)
+        return None

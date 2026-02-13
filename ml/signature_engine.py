@@ -8,9 +8,13 @@ class SignatureFeatureExtractor:
     Dual-Engine Signature Extractor.
     - Uses 'esig' (C++) for static real data (Pre-processing).
     - Uses 'JAX' (Custom implementation) for training (Differentiable).
+    
+    Time augmentation uses the REAL time scale (in years) to ensure
+    temporal consistency between the signature and the SDE dynamics.
     """
-    def __init__(self, truncation_order: int = 3):
+    def __init__(self, truncation_order: int = 3, dt: float = None):
         self.order = truncation_order
+        self.dt = dt  # Real time step in years (e.g. 0.000153 for 15-min bars)
 
     def get_signature(self, paths):
         """
@@ -27,7 +31,11 @@ class SignatureFeatureExtractor:
         np_paths = np.array(paths)
         if np_paths.ndim == 2:
             n_paths, n_steps = np_paths.shape
-            time_axis = np.linspace(0, 1, n_steps)
+            # Use real time scale if available, otherwise normalize to [0,1]
+            if self.dt is not None:
+                time_axis = np.arange(n_steps) * self.dt
+            else:
+                time_axis = np.linspace(0, 1, n_steps)
             augmented_paths = np.array([np.column_stack([time_axis, p]) for p in np_paths])
         else:
             augmented_paths = np_paths
@@ -44,7 +52,11 @@ class SignatureFeatureExtractor:
         """
         # 1. Augment with Time: (Batch, Time) -> (Batch, Time, 2)
         batch_size, n_steps = paths.shape
-        time_axis = jnp.linspace(0, 1, n_steps)
+        # Use real time scale if available, otherwise normalize to [0,1]
+        if self.dt is not None:
+            time_axis = jnp.arange(n_steps) * self.dt
+        else:
+            time_axis = jnp.linspace(0, 1, n_steps)
         # Broadcast time across batch
         time_axis = jnp.tile(time_axis, (batch_size, 1))
         

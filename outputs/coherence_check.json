@@ -1,0 +1,58 @@
+{
+  "signatures": {
+    "esig_dim": 15,
+    "jax_dim": 14,
+    "expected_dim": 14,
+    "consistent": false,
+    "issues": [
+      "MISMATCH: esig=15 vs JAX=14"
+    ]
+  },
+  "correlation": {
+    "rho_empirical": -0.0128506853106963,
+    "rho_used": -0.7,
+    "reason": "Market-implied for Q-measure pricing"
+  },
+  "scaling": {
+    "drift_range": [
+      -0.2,
+      0.2
+    ],
+    "diff_range": [
+      0.1,
+      1.6
+    ],
+    "log_v_clip": [
+      -5.0,
+      1.0
+    ],
+    "vol_range_pct": [
+      8.20849986238988,
+      164.87212707001282
+    ]
+  },
+  "units": {
+    "eta": 8.371733329628302,
+    "kappa": 2.7166588506159104,
+    "half_life_days": 64.29702774844365,
+    "issue": "dt normalization may not match real time"
+  },
+  "mc": {
+    "status": "checked"
+  },
+  "seeds": {
+    "seed": 42,
+    "proper_splitting": true
+  },
+  "pq_measure": {
+    "training_measure": "Q (VIX)",
+    "testing_measure": "Q (IV)",
+    "consistent": true
+  },
+  "outputs": {
+    "files_checked": [
+      "risk_neutral_calibration.json",
+      "enhanced_calibration.json"
+    ]
+  }
+}
