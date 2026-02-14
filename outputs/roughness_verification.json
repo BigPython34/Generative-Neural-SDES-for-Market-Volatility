@@ -1,23 +1,23 @@
 {
   "roughness": {
-    "H_real": 0.475482009965847,
-    "H_generated_mean": 0.4763714835319973,
-    "H_generated_std": 0.10387070229077201,
-    "gap": 0.0008894735661503228,
-    "both_rough": "True"
+    "H_vix": 0.475482009965847,
+    "H_rv": 0.12996390503620708,
+    "H_generated_mean": 0.47619112483088066,
+    "H_generated_std": 0.103892064129738,
+    "gap_vs_training": 0.0007091148650336665
   },
   "signatures": {
     "real_norm": 0.00815099198371172,
-    "gen_norm": 0.0034331760834902525,
-    "norm_ratio": 0.4211973249912262,
-    "mean_correlation": 0.984785160069577
+    "gen_norm": 0.0034957779571413994,
+    "norm_ratio": 0.4288776218891144,
+    "mean_correlation": 0.985913354400965
   },
   "ablation": {
-    "mmd_neural": 0.027060598134994507,
+    "mmd_neural": 0.026839572936296463,
     "mmd_ou": 0.025491002947092056,
-    "improvement_pct": -6.157447751899874,
+    "improvement_pct": -5.29037634181533,
     "hurst_real": 0.5000241841113219,
-    "hurst_neural": 0.4621578757056751,
+    "hurst_neural": 0.4619299640143239,
     "hurst_ou": 0.441324687879366
   }
 }

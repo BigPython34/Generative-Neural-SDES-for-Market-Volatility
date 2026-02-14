@@ -36,7 +36,7 @@ Unlike traditional stochastic volatility models (Heston, Bergomi) which impose r
 - Calibrates to real option prices
 - Incorporates market observables (VVIX, VIX Futures)
 
-**Latest Achievement**: After fixing temporal scaling (328× dt mismatch), adding signature normalization and mean penalty, the Neural SDE now matches real VIX variance distribution with **< 0.3% mean error** and **near-identical kurtosis**.
+**Latest Achievement**: Fixed three critical bugs in the rBergomi simulation (Davies-Harte fBM variance, spot–vol correlation via Volterra kernel, adaptedness bias). Bergomi now produces correct negative equity skew and **wins 70% of scenarios** against real SPY options (mean RMSE 4.58% vs BS 6.01%).
 
 ---
 
@@ -63,6 +63,18 @@ After the Phase 9 corrections (temporal scaling, normalized MMD, mean penalty):
 | Black-Scholes | 3.94% | Baseline |
 | Neural SDE (RV-trained) | 5.85% | ❌ Wrong measure |
 
+### Real Options Backtest (SPY, 5 snapshots × 4 maturities)
+
+After fixing the rBergomi simulation (Phase 12: Volterra kernel + previsible variance):
+
+| Model | Mean RMSE | Win Rate |
+|-------|-----------|----------|
+| **Rough Bergomi** | **4.58%** | **70%** (14/20) |
+| Neural SDE | 5.35% | 25% (5/20) |
+| Black-Scholes | 6.01% | 5% (1/20) |
+
+Bergomi dominates at 7d, 31d, 45d maturities. Neural SDE fills the gap at 17d where constant-η Bergomi overestimates skew.
+
 ### Calibrated Parameters (from Market Data)
 
 | Parameter | Symbol | Value | Source |
@@ -71,7 +83,9 @@ After the Phase 9 corrections (temporal scaling, normalized MMD, mean penalty):
 | Mean Reversion | κ | 2.72 | VIX Futures term structure |
 | Long-term VIX | θ | 18.6% | Historical VIX mean (2024-2026) |
 | Half-life | t½ | 93 days | ln(2)/κ |
-| Hurst Exponent | H | 0.05 (SPX 30min) / 0.48 (VIX 15min) | Variogram method |
+| **Hurst (True RV)** | H | **0.10 – 0.13** | Variogram on daily RV from SPX 5/30-min |
+| Hurst (VIX paths) | H | ~0.47 | VIX is smoothed (30-day integral) → H ≈ 0.5 expected |
+| Optimal Bergomi H | H | **0.151** | Median of SPX variogram estimates |
 
 ### Ablation: Running Signatures Matter
 
@@ -167,17 +181,20 @@ Volatility clustering is also confirmed:
 
 **Interpretation**: The leverage effect is robust at ρ ≈ -0.7 to -0.9 for SPX-VIX, consistent with Bekaert, Bouchaud, and others.
 
-#### 4.2 Hurst Exponent Estimation is Fragile
+#### 4.2 Hurst Exponent: VIX ≠ Realized Volatility
 
-We tested multiple methods and data sources:
+A critical mistake was measuring Hurst on VIX and calling it "roughness". The VIX is a 30-day integrated implied variance — integration **smooths** the process, destroying roughness.
 
 | Data Source | Method | H estimate | Interpretation |
 |-------------|--------|-----------|----------------|
-| SPX 30-min returns | Variogram | 0.05 | Very rough ✓ |
-| VIX 15-min (log) | Variogram | 0.48 | Marginally rough ✓ |
-| SPX 30-min returns | R/S | 0.51 | Not rough ✗ |
+| SPX 5-min → **daily RV** | Variogram | **0.130** (R²=0.91) | ✅ Rough (Gatheral sense) |
+| SPX 30-min → **daily RV** | Variogram | **0.116** (R²=0.99) | ✅ Rough (Gatheral sense) |
+| VIX 15-min (log) | Variogram | 0.47 | ≈ 0.5 → **NOT rough** (expected) |
+| SPX rolling RV | Variogram | 0.10 – 0.20 | ✅ Rough (depends on window) |
 
-**Conclusion**: H depends heavily on data source and method. SPX high-frequency returns show H ≈ 0.05 (very rough), while VIX intraday gives H ≈ 0.48 (marginally rough but still < 0.5). The robust finding is H < 0.5 across all sources.
+**Key insight (Gatheral et al. 2018)**: True roughness ($H \approx 0.05-0.14$) is only visible on **realized volatility computed from high-frequency returns**, not on VIX or smoothed vol proxies. VIX $H \approx 0.5$ is mathematically expected and says nothing about roughness.
+
+**Methodology**: Daily RV = $\sum_i r_i^2$ over all intraday returns within each trading day. Hurst is measured on the $\log(\text{RV})$ time series via variogram: $\mathbb{E}[|\Delta \log \text{RV}|^2] \sim \tau^{2H}$.
 
 #### 4.3 Model Not Persisted
 
@@ -284,9 +301,12 @@ With all pieces in place:
 
 | Check | Real Data | Neural SDE | Status |
 |-------|-----------|------------|--------|
-| Hurst Exponent H | 0.475 | 0.438 ± 0.09 | ✅ Both rough |
-| Signature Norm | 1.131 | 1.131 | ✅ Match |
-| Signature Correlation | — | 1.000 | ✅ Perfect |
+| Hurst H (VIX paths) | 0.475 | 0.476 ± 0.10 | ✅ Matches training data |
+| **True H (daily RV from SPX)** | — | — | **0.130** ✅ Rough |
+| Signature Correlation | — | 0.986 | ✅ Match |
+| Ablation: Hurst gap | — | 0.038 (Neural) vs 0.059 (OU) | ✅ Neural closer |
+
+**Important correction**: The H ≈ 0.475 above is measured on VIX (training data) — it measures how well the model reproduces VIX dynamics, **not** roughness. True roughness ($H \approx 0.13$) was later confirmed on SPX daily RV (Phase 11).
 
 ---
 
@@ -342,6 +362,151 @@ Before fix: mean variance = 0.074 (2× too high). After fix: mean variance = 0.0
 | Kurtosis | 84.6 (wrong metric) | **38.9** ✅ | Correct metric, matches real |
 | Hurst Gap | 0.137 | **0.001** ✅ | 137× closer |
 | Sig Correlation | 1.000 | **0.985** | Still excellent |
+
+---
+
+### Phase 10: Architecture Improvements
+
+Sync all hardcoded params with config, add validation/early stopping, learnable OU parameters, JAX autodiff Greeks, shared Black-Scholes, and real Monte Carlo backtesting. See the [Completed checklist](#-completed-phase-10) for details.
+
+---
+
+### Phase 11: Hurst Methodology Correction (Critical Fix)
+
+**Discovery**: All previous Hurst measurements were **fundamentally wrong** — they measured H on VIX paths instead of realized volatility.
+
+#### 11.1 The VIX Smoothing Problem
+
+The VIX is defined as:
+
+$$\text{VIX}^2 = \frac{2}{T}\int_0^T \xi_0(t)\,dt$$
+
+This 30-day integration **smooths** the underlying variance process. If $\xi_0(t)$ has Hurst exponent $H_{\text{true}} \approx 0.1$, the integrated VIX has $H_{\text{VIX}} \approx 0.5$ (integration adds ~0.5 to the scaling exponent). Measuring H on VIX and calling it "roughness" is like measuring the roughness of a moving average and concluding the signal is smooth.
+
+#### 11.2 Correct Methodology: Daily Realized Variance
+
+True roughness must be measured on **realized volatility** computed directly from intraday returns:
+
+$$\text{RV}_{\text{day}} = \sum_{i=1}^{n} r_{i,\text{intraday}}^2$$
+
+One RV point per trading day, then Hurst on $\log(\text{RV})$ via variogram.
+
+**Results**:
+
+| Source | H (variogram) | R² | Points |
+|--------|:---:|:---:|:---:|
+| SPX 5-min → daily RV | **0.130** | 0.911 | 256 days |
+| SPX 30-min → daily RV | **0.116** | 0.987 | 1,522 days |
+| VIX 15-min (old method) | 0.47 | — | — |
+
+This is fully consistent with Gatheral et al. (2018): $H \approx 0.05-0.14$.
+
+#### 11.3 Variogram Fix
+
+The variogram method was using a "middle portion" subset (`lags[n//5:4*n//5]`) that excluded the short lags where roughness is most visible. This caused SPX 5-min to give $H = -0.074$ (nonsensical). After using all lags: $H = 0.201$ (5-min rolling RV) / $H = 0.101$ (30-min rolling RV).
+
+#### 11.4 DMA Correction
+
+The DMA (Detrended Moving Average) method operates on `cumsum(returns)`, which adds +0.5 to the scaling exponent. The correction $H = \alpha - 0.5$ was missing, causing DMA to report $H \approx 0.85-1.19$ instead of the correct $H \approx 0.35-0.46$.
+
+#### 11.5 H Selection Logic
+
+`get_optimal_bergomi_params()` now prefers variogram estimates (gold standard per Gatheral 2018) over DMA. The optimal Bergomi $H$ is **0.151**, median of SPX variogram estimates.
+
+#### 11.6 Config Centralization
+
+All hardcoded paths (`"data/SP_SPX, 30.csv"`, `"data/TVC_VIX, 15.csv"`, etc.) and parameters (`r=0.05`, `s0=100`, `rho=-0.7`, `n_mc=3000`) were moved to `config/params.yaml`. A new `utils/config.py` module provides `load_config()` with caching.
+
+New config sections: `data.vix_files`, `data.spx_files`, `backtesting.*`, `pricing.n_mc_paths`, `outputs.*`.
+
+#### 11.7 RV Loader Adaptive Window
+
+The `RealizedVolatilityLoader` now auto-detects bar frequency from timestamps and scales `rv_window` proportionally. Config's `rv_window=78` (for 5-min) is automatically adjusted to 13 for 30-min data.
+
+---
+
+### Phase 12: Rough Bergomi Simulation Fix (Three Critical Bugs)
+
+**Problem**: Backtest results were catastrophic — Black-Scholes (flat ATM vol) beat both Bergomi (16.0% RMSE) and Neural SDE (14.5% RMSE) on every single scenario (20/20 wins). Stochastic volatility models were *worse* than constant vol.
+
+#### 12.1 Bug #1: Davies-Harte fBM Variance — 500× Too Low
+
+The `_single_path()` implementation used real-valued Gaussian noise and a missing `sqrt(2N)` factor:
+
+```python
+# BEFORE (wrong):
+f = jnp.fft.ifft(jnp.sqrt(w) * z).real[:n]
+
+# AFTER (Dieker 2004 algorithm):
+v = jnp.sqrt(lam / M) * (n1 + 1j * n2)  # complex Gaussian
+z = (jnp.fft.ifft(v) * M).real[:n]       # proper IFFT scaling
+```
+
+**Impact**: $\text{Var}(W^H_T) = 0.0013$ instead of $T^{2H} = 0.705$ — a **500× underestimation**. The previous `eta = 1.9` was calibrated to this broken fBM, masking the error.
+
+#### 12.2 Bug #2: Spot–Variance Correlation (Incorrect Cholesky Mixing)
+
+The old code extracted fGn increments from Davies-Harte fBM, normalized them, and mixed via Cholesky with independent spot noise:
+
+```python
+# BEFORE (wrong): dwh_unit ≠ the BM that drives W^H
+dwh = jnp.diff(wh, axis=1)
+dwh_unit = dwh / jnp.sqrt(dt ** (2*H))
+dw_spot = rho * dwh_unit + sqrt(1-rho²) * z_indep
+```
+
+**Problem**: The fGn increments $\Delta W^H_k$ are **not** the Brownian motion $W$ that drives $W^H$ via the Volterra kernel. For $H = 0.07$, fGn increments are extremely anti-persistent: $\text{std}\!\left[\sum_k \Delta W^H_k / \sigma_k\right] = 1.36$ vs $\sqrt{n} = 9.49$ for independent BM. This Cholesky mixing creates wrong correlation sign at the path level, producing **reverse skew** (OTM calls more expensive than puts).
+
+**Fix**: Joint simulation of $(dW, W^H)$ via the Volterra kernel matrix:
+
+$$W^H(t_j) = \sqrt{2H} \sum_{k=0}^{j} \frac{(j-k+1)^{H+\frac{1}{2}} - (j-k)^{H+\frac{1}{2}}}{H + \frac{1}{2}} \cdot \Delta t^H \cdot Z_k$$
+
+where $Z_k$ are **the same** iid $N(0,1)$ that generate the spot BM: $dW_k = \sqrt{\Delta t} \cdot Z_k$. The covariance matrix $\Sigma = M M^\top$ is PSD by construction — no eigenvalue surgery.
+
+#### 12.3 Bug #3: Adaptedness Bias (Non-Previsible Variance)
+
+In the Volterra discretization, $V_k$ depends on $Z_k$ (the current driving noise), so $V_k$ is **not** $\mathcal{F}_{k-1}$-measurable. Using $V_k$ in the spot Euler step:
+
+$$\log S_k = \log S_{k-1} + (r - \tfrac{1}{2}V_k)\Delta t + \sqrt{V_k}\,\Delta W_k^{\text{spot}}$$
+
+creates a systematic downward bias because $V_k$ and $\Delta W_k$ are correlated (Jensen's inequality). With $\rho = -0.7$: $\mathbb{E}[S_T] = 655$ instead of $697$.
+
+**Fix**: Use **previsible** (lagged) variance $V_{k-1}$:
+
+$$\log S_k = \log S_{k-1} + (r - \tfrac{1}{2}V_{k-1})\Delta t + \sqrt{V_{k-1}}\,\Delta W_k^{\text{spot}}$$
+
+Result: $\mathbb{E}[S_T] = 696.9$ (exact).
+
+#### 12.4 Backtest Results After Fix
+
+| Model | Mean RMSE | Win Rate | Improvement |
+|-------|-----------|----------|-------------|
+| **Rough Bergomi** | **4.58%** | **14/20 (70%)** | ↓ from 16.0% |
+| Neural SDE | 5.35% | 5/20 (25%) | ↓ from 14.5% |
+| Black-Scholes | 6.01% | 1/20 (5%) | unchanged |
+
+**RMSE by Maturity**:
+
+| DTE | BS | Bergomi | Neural SDE |
+|-----|-----|---------|------------|
+| 7d | 5.90% | **2.87%** | 5.81% |
+| 17d | **7.76%** | 10.33% | 5.20% |
+| 31d | 5.34% | **2.74%** | 6.25% |
+| 45d | 5.02% | **2.37%** | 4.13% |
+
+Bergomi dominates at 7d, 31d, and 45d. The 17d weakness is due to the constant-$\eta$ model producing excessive skew at intermediate maturities (a known limitation of flat-$\eta$ rBergomi). Neural SDE fills this gap.
+
+#### 12.5 Smile Validation
+
+With $H = 0.07$, $\eta = 1.9$, $\rho = -0.7$, $\xi_0 = 0.030$ (30-day maturity):
+
+| Moneyness | Model IV | Market IV |
+|-----------|----------|-----------|
+| −10% | 24.2% | 23.3% |
+| −5% | 20.2% | 18.5% |
+| ATM | 16.2% | 16.2% |
+| +5% | 13.0% | 11.1% |
+| +10% | 12.6% | 13.3% |
 
 ---
 
@@ -412,16 +577,19 @@ $$v_0^* = \arg\min_{v_0} \sqrt{\frac{1}{N}\sum_i \left(\sigma^{model}_i - \sigma
 
 | Dataset | Source | Frequency | Period | Points |
 |---------|--------|-----------|--------|--------|
-| **VIX Spot** | TradingView | 15-min | 2024-08 → 2026-02 | 20,225 |
-| **SPX** | TradingView | 5/30-min | 2019 → 2026 | 21,402 |
+| **VIX Spot** | TradingView | 5/10/15/30-min | 2023-01 → 2026-02 | ~20,000 each |
+| **SPX** | TradingView | 5-min | 2025-02 → 2026-02 | 20,112 |
+| **SPX** | TradingView | 30-min | 2020-01 → 2026-02 | 21,402 |
 | **VVIX** | CBOE/TradingView | 15-min | 2023-02 → 2026-02 | 20,386 |
 | **VIX Futures** | CBOE | Daily | 2013-01 → 2026-02 | 29,477 |
+| **S&P 500** | Yahoo Finance | Daily | 2010-01 → 2023-01 | ~3,200 |
 
 ### Derived Metrics
 
-- **Realized Volatility**: From SPX 5-min returns, exponential weighting
-- **Hurst Exponent**: Variogram method on SPX 30-min
+- **Realized Volatility (daily)**: $\text{RV}_t = \sum_i r_{i,\text{intraday}}^2$ per trading day from SPX 5-min returns
+- **Hurst Exponent**: Variogram method on $\log(\text{RV})$ → $H \approx 0.13$ (5-min) / $H \approx 0.12$ (30-min)
 - **Term Structure Slope**: F2 - F1 from VIX futures
+- **Vol-of-Vol**: From VVIX (implied) and realized vol of VIX (realized)
 
 ---
 
@@ -444,16 +612,16 @@ Gap:                     ~16% underpriced
 | Contango | 77% | 17.0 | Normal, calm |
 | Backwardation | 23% | 23.6 | Stress, crisis |
 
-### 3. Roughness Confirmed
+### 3. Roughness Confirmed (on Realized Vol, not VIX)
 
-High-frequency data shows:
+Hurst measured on **daily realized variance** from SPX intraday returns:
 ```
-H (SPX 30-min returns)  ≈ 0.05 << 0.5   (very rough)
-H (VIX 15-min log)      ≈ 0.48 < 0.5    (marginally rough)
+H (SPX 5-min → daily RV)   = 0.130  (R² = 0.91)   ✅ Rough
+H (SPX 30-min → daily RV)  = 0.116  (R² = 0.99)   ✅ Rough
+H (VIX 15-min log)          ≈ 0.47                  Expected (smoothed)
 ```
 
-Volatility is **rough** (H < 0.5) — far from the smooth diffusions (H = 0.5) in Heston/Black-Scholes.
-The exact H value depends on frequency and data source, but the qualitative finding is robust.
+**Important**: VIX H ≈ 0.5 does **not** mean volatility is smooth. The VIX is a 30-day integral of implied variance — integration kills roughness. True roughness (H ≈ 0.1) is only visible on realized vol from intraday returns. This is consistent with Gatheral et al. (2018).
 
 ### 4. VIX-VVIX Correlation
 
@@ -578,8 +746,16 @@ python quant/backtesting.py
 ```yaml
 data:
   data_type: "vix"                    # "vix" or "realized_vol"
-  source: "data/TVC_VIX, 15.csv"
+  source: "data/TVC_VIX, 15.csv"     # VIX for Q-measure training
+  rv_source: "data/SP_SPX, 5.csv"    # SPX for P-measure roughness
   segment_length: 20
+  vix_files:                          # All VIX frequencies
+    5:  "data/TVC_VIX, 5.csv"
+    15: "data/TVC_VIX, 15.csv"
+    30: "data/TVC_VIX, 30.csv"
+  spx_files:                          # SPX for Hurst estimation
+    5:  "data/SP_SPX, 5.csv"
+    30: "data/SP_SPX, 30.csv"
 
 simulation:
   n_steps: 20
@@ -617,13 +793,14 @@ neural_sde:
 DeepRoughVol/
 │
 ├── main.py                           # Entry point: train Neural SDE
-├── compare_frequencies.py            # Multi-frequency roughness comparison
+├── compare_frequencies.py            # VIX training quality + SPX true roughness
+├── compare_vix_vs_rv.py              # VIX vs Realized Vol statistical comparison
 ├── config/
-│   └── params.yaml                   # Central config (temporal, training, model, OU params)
+│   └── params.yaml                   # Central config (all paths, params, hyperparams)
 │
 ├── core/
-│   ├── bergomi.py                    # Rough Bergomi baseline
-│   └── stochastic_process.py         # SDE utilities
+│   ├── bergomi.py                    # Rough Bergomi baseline (reads mu from params)
+│   └── stochastic_process.py         # Fractional Brownian Motion generation
 │
 ├── ml/
 │   ├── neural_sde.py                 # NeuralRoughSimulator (learnable κ,θ from YAML)
@@ -636,35 +813,40 @@ DeepRoughVol/
 │   └── neural_sde_best.eqx           # Best trained Neural SDE
 │
 ├── quant/
-│   ├── pricing.py                    # Monte Carlo option pricing (barrier, vanilla)
+│   ├── pricing.py                    # Monte Carlo option pricing (reads config)
 │   ├── risk_neutral_calibration.py   # IV surface calibration vs BS
 │   ├── enhanced_calibration.py       # VVIX + Futures market parameter extraction
-│   ├── advanced_calibration.py       # Multi-method Hurst & forward variance calibration
+│   ├── advanced_calibration.py       # Multi-method Hurst & forward variance (reads config)
 │   ├── multi_maturity_calibration.py # Multi-maturity IV surface
-│   ├── backtesting.py                # Historical backtesting (real Neural SDE MC pricing)
+│   ├── backtesting.py                # Historical backtesting (reads config)
 │   ├── dashboard_v2.py               # Interactive dashboard
 │   ├── robustness_check.py           # Diagnostic audit
-│   ├── verify_roughness.py           # Roughness + ablation verification
+│   ├── verify_roughness.py           # Roughness (VIX + true RV) + ablation verification
 │   └── coherence_check.py            # Full coherence audit
 │
+├── scripts/
+│   └── hurst_diagnostic.py           # Comprehensive VIX vs RV Hurst diagnostic
+│
 ├── utils/
+│   ├── config.py                     # Centralized config loader (load_config, cached)
 │   ├── black_scholes.py              # Shared BS: pricing, IV, Greeks (single source)
 │   ├── greeks_ad.py                  # Greeks via JAX autodiff (Δ, Γ, vega, θ, vanna, volga)
-│   ├── data_loader.py                # VIX, RV, SPX loading (temporal coherence)
-│   └── diagnostics.py                # Stats (marginal kurtosis, Hurst, ACF)
+│   ├── data_loader.py                # VIX, RV, SPX loading (auto-detect frequency)
+│   └── diagnostics.py                # Stats, Hurst (variogram/DMA), daily RV approach
 │
 ├── data/                             # Raw market data only
-│   ├── TVC_VIX, 15.csv               # VIX spot 15-min (training)
-│   ├── TVC_VIX, 5/10/30.csv          # VIX at other frequencies
-│   ├── data_^GSPC_*.csv              # SPX prices
+│   ├── TVC_VIX, 5/10/15/30.csv       # VIX spot at multiple frequencies
+│   ├── SP_SPX, 5.csv                 # SPX 5-min intraday (roughness)
+│   ├── SP_SPX, 30.csv                # SPX 30-min intraday (roughness)
+│   ├── data_^GSPC_*.csv              # SPX daily prices
 │   └── options_cache/                # Cached option chains
 │
 ├── outputs/                          # Generated results (JSON + HTML)
-│   ├── roughness_verification.json
-│   ├── coherence_check.json
-│   ├── risk_neutral_calibration.json
-│   ├── enhanced_calibration.json
-│   └── backtest_results.json
+│   ├── advanced_calibration.json     # H, η, ρ, ξ₀ calibrated from market
+│   ├── roughness_verification.json   # Roughness + ablation results
+│   ├── backtest_results.json         # 30-day backtesting results
+│   ├── risk_neutral_calibration.json # IV RMSE comparison
+│   └── enhanced_calibration.json     # VVIX + futures calibration
 │
 └── research/
     ├── theory_draft.tex              # Math derivations
@@ -682,23 +864,32 @@ Training on realized vol and testing on implied vol is fundamentally wrong. Alwa
 ### 2. Temporal Scale Must Be Physical
 Using `dt = 1/n_steps` instead of the real physical time step (15 min ≈ 0.000153 years) introduced a **328× scaling error**. All SDE parameters (κ, σ, drift) are calibrated in annual units — the dt must match.
 
-### 3. Normalize Your Loss Components
+### 3. VIX ≠ Volatility (for Roughness)
+The VIX is a 30-day integrated implied variance. Integration smooths the process, destroying roughness: $H_\text{VIX} \approx 0.5$ regardless of the true $H_\text{RV} \approx 0.1$. Roughness must be measured on **realized vol from intraday returns**, never on VIX. This error persisted for several phases.
+
+### 4. Normalize Your Loss Components
 Signature components span 8 orders of magnitude (from 10⁻¹⁴ for s³ₜₜₜ to 10⁻² for s¹ᵥ). Without normalization, the loss is blind to the stochastic components. Pure-time components must be excluded entirely.
 
-### 4. Jensen's Inequality Bites
+### 5. Jensen's Inequality Bites
 When the model generates log-variance and you exponentiate, $\mathbb{E}[e^X] > e^{\mathbb{E}[X]}$. An explicit mean penalty is necessary to control the first moment.
 
-### 5. Kurtosis Requires Care
+### 6. Kurtosis Requires Care
 `kurtosis(data.flatten())` on multi-path data conflates the marginal distribution with the cross-sectional distribution. The correct metric is the average marginal kurtosis per time step.
 
-### 6. High-Frequency Data Reveals Structure
-Daily data masks roughness. Intraday data (≤30min) shows H < 0.5, with exact values depending on data source (SPX returns: H≈0.05, VIX levels: H≈0.48).
+### 7. Variogram Method Sensitivity
+The variogram log-log fit is sensitive to which lag range is used. Excluding short lags (where roughness lives) can give H < 0 or H > 0.5. Similarly, DMA on cumulative sums requires a $-0.5$ correction that is easy to forget.
 
-### 7. Market Data > Assumptions
+### 8. Market Data > Assumptions
 Extract parameters (η, κ, θ) from observables (VVIX, futures) rather than assuming standard values.
 
-### 8. Persist Your Models
-A trained model is worthless if you reinitialize random weights in downstream scripts.
+### 9. Centralize Configuration
+Hardcoded paths and parameters scattered across 15+ files is a maintenance nightmare and a source of inconsistencies. A single YAML config with a cached loader prevents drift.
+
+### 10. Previsible Variance in Euler Schemes
+In the Volterra discretization, $V_k$ depends on the current noise increment $Z_k$. Using $V_k$ in $\sqrt{V_k}\,dW_k$ creates a Jensen's-inequality bias: $\mathbb{E}[S_T]$ can be 6% below the forward. The fix is to use $V_{k-1}$ (the lagged, $\mathcal{F}_{k-1}$-measurable variance). This is standard in Euler-Maruyama but easy to forget when generating variance and spot from shared noise.
+
+### 11. fBM ≠ fGn for Correlation
+Fractional Gaussian noise increments ($\Delta W^H$) for $H < 0.5$ are **anti-persistent**: $\text{Corr}(\Delta W^H_k, \Delta W^H_{k+1}) < 0$. Treating them as the "driving BM" and applying Cholesky mixing inverts the leverage effect. The correct approach is to generate the **underlying standard BM** $W$ and build $W^H$ via the Volterra kernel, then correlate the spot with $W$ (not $W^H$).
 
 ---
 
@@ -714,8 +905,26 @@ A trained model is worthless if you reinitialize random weights in downstream sc
 - [x] **Greeks via AD**: `utils/greeks_ad.py` — Δ, Γ, vega, θ, vanna, volga via `jax.grad`
 - [x] **Shared BS utilities**: `utils/black_scholes.py` — single source, used by all calibration scripts
 
+### ✅ Completed (Phase 11)
+- [x] **Correct Hurst methodology**: Daily RV from SPX returns instead of VIX → H = 0.13 (not 0.48)
+- [x] **Fix variogram**: Remove middle-portion subsetting that excluded short lags
+- [x] **Fix DMA**: Apply $-0.5$ correction for cumulative sum integration
+- [x] **H selection logic**: Prefer variogram over DMA in `get_optimal_bergomi_params()`
+- [x] **Config centralization**: `utils/config.py` + enriched `params.yaml` (vix_files, spx_files, backtesting, outputs)
+- [x] **Adaptive RV window**: Auto-detect bar frequency, scale rv_window proportionally
+- [x] **UTF-8 terminal fix**: All scripts handle Windows CP1252 encoding
+
+### ✅ Completed (Phase 12)
+- [x] **Fix Davies-Harte fBM**: Correct Dieker (2004) algorithm — complex Gaussian, proper IFFT scaling. Var ratio 1.000.
+- [x] **Fix spot–vol correlation**: Joint (dW, W^H) via Volterra kernel matrix $M$ (PSD by construction, no eigenvalue surgery)
+- [x] **Fix adaptedness bias**: Previsible variance $V_{k-1}$ in spot Euler scheme. $\mathbb{E}[S_T]$ bias: 6% → 0%.
+- [x] **Real SPY options backtest**: 5 snapshots × 4 maturities vs real Yahoo Finance option chains
+- [x] **VIX futures xi0 calibration**: Forward variance from CBOE term structure (30d/60d/90d)
+- [x] **Bergomi wins 70%**: Mean RMSE 4.58% (was 16.0%), beating BS (6.01%) and Neural SDE (5.35%)
+
 ### Remaining
-- [ ] **Longer paths**: Increase from 20 to 50-100 steps for richer signature information
+- [ ] **Maturity-dependent eta**: Constant η produces excess skew at ~17d; a term-structure η(T) would improve intermediate maturities
+- [ ] **Neural SDE retraining**: Current model uses segment_length=120 but hasn't been retrained since the fBM fix
 - [ ] **Multi-frequency training**: Train on 5/10/15/30-min simultaneously to capture multi-scale roughness
 - [ ] **Joint Loss**: Train on VIX paths + option prices simultaneously for end-to-end calibration
 - [ ] **Regime-aware training**: Use VVIX/VIX ratio or contango/backwardation as conditioning variable

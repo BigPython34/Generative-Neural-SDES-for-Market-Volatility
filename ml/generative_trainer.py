@@ -5,7 +5,7 @@ import optax
 import equinox as eqx
 import yaml
 from ml.neural_sde import NeuralRoughSimulator
-from ml.losses import signature_mmd_loss, mean_penalty_loss
+from ml.losses import kernel_mmd_loss, signature_mmd_loss, mean_penalty_loss
 from ml.signature_engine import SignatureFeatureExtractor
 from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
 
@@ -131,8 +131,8 @@ class GenerativeTrainer:
             )
             fake_sigs = self.sig_extractor.get_signature(fake_vars)
             
-            # Normalized signature MMD (all components equally weighted)
-            mmd = signature_mmd_loss(fake_sigs, self.target_sigs, self.sig_std)
+            # True kernel MMD (captures full distribution, not just mean)
+            mmd = kernel_mmd_loss(fake_sigs, self.target_sigs, self.sig_std)
             
             # Mean penalty (prevents Jensen bias from exp(log_v))
             mean_pen = mean_penalty_loss(fake_vars, self.real_mean)
@@ -232,7 +232,7 @@ class GenerativeTrainer:
         fake_sigs = self.sig_extractor.get_signature(fake_vars)
         
         # Use same normalization (from training data) for fair comparison
-        mmd = signature_mmd_loss(fake_sigs, self.val_sigs, self.sig_std)
+        mmd = kernel_mmd_loss(fake_sigs, self.val_sigs, self.sig_std)
         mean_pen = mean_penalty_loss(fake_vars, self.val_mean)
         
         return float(mmd + self.lambda_mean * mean_pen)

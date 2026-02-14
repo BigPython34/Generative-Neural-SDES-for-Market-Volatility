@@ -1,5 +1,7 @@
+import jax
 import jax.numpy as jnp
 from jax import jit
+from functools import partial
 
 @jit
 def martingale_violation_loss(paths: jnp.ndarray, dt: float, r: float = 0.0) -> jnp.ndarray:
@@ -19,6 +21,7 @@ def martingale_violation_loss(paths: jnp.ndarray, dt: float, r: float = 0.0) -> 
     
     # Target is S_0 = 1.0. We penalize the L2 distance.
     return jnp.mean(jnp.square(mean_path - 1.0))
+
 @jit
 def feller_condition_loss(kappa: float, theta: float, vol_of_vol: float) -> jnp.ndarray:
     """
@@ -27,40 +30,117 @@ def feller_condition_loss(kappa: float, theta: float, vol_of_vol: float) -> jnp.
     """
     return jnp.maximum(0.0, vol_of_vol**2 - 2 * kappa * theta)**2
 
+
+def _rbf_kernel(x: jnp.ndarray, y: jnp.ndarray, bandwidth: float) -> jnp.ndarray:
+    """
+    RBF (Gaussian) kernel: k(x, y) = exp(-||x-y||² / (2 * bandwidth²))
+    
+    Args:
+        x: (n, d) matrix
+        y: (m, d) matrix
+        bandwidth: Kernel bandwidth (sigma)
+    Returns:
+        (n, m) kernel matrix
+    """
+    # ||x_i - y_j||² = ||x_i||² + ||y_j||² - 2 * x_i·y_j
+    x_sq = jnp.sum(x ** 2, axis=1, keepdims=True)  # (n, 1)
+    y_sq = jnp.sum(y ** 2, axis=1, keepdims=True)  # (m, 1)
+    cross = x @ y.T                                  # (n, m)
+    dist_sq = x_sq + y_sq.T - 2 * cross              # (n, m)
+    return jnp.exp(-dist_sq / (2 * bandwidth ** 2))
+
+
+@partial(jit, static_argnames=['n_bandwidths'])
+def kernel_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarray,
+                    sig_std: jnp.ndarray = None,
+                    n_bandwidths: int = 5) -> jnp.ndarray:
+    """
+    True kernel MMD² (Maximum Mean Discrepancy) with multi-scale RBF kernel.
+    
+    MMD²(P, Q) = E[k(x,x')] - 2*E[k(x,y)] + E[k(y,y')]
+    
+    where x ~ P (real), y ~ Q (generated), k is a sum of RBF kernels
+    at multiple bandwidths (median heuristic * {0.25, 0.5, 1, 2, 4}).
+    
+    This compares the FULL DISTRIBUTION of signatures, not just their means.
+    It captures higher-order moments and cross-correlations.
+    
+    Args:
+        fake_signatures: (batch_fake, sig_dim) generated path signatures
+        real_signatures: (batch_real, sig_dim) real market path signatures
+        sig_std: Component-wise std for normalization (from real data)
+        n_bandwidths: Number of bandwidth scales (default 5)
+    """
+    # 1. Normalize signatures
+    if sig_std is not None:
+        threshold = 1e-8
+        weights = jnp.where(sig_std > threshold, 1.0 / sig_std, 0.0)
+        x = real_signatures * weights   # (n_real, d)
+        y = fake_signatures * weights   # (n_fake, d)
+    else:
+        x = real_signatures
+        y = fake_signatures
+    
+    # 2. Median heuristic for bandwidth selection
+    # Use all points for median distance (both x and y are already available)
+    all_pts = jnp.concatenate([x, y], axis=0)
+    
+    dists_sq = (jnp.sum(all_pts ** 2, axis=1, keepdims=True) 
+                + jnp.sum(all_pts ** 2, axis=1, keepdims=True).T 
+                - 2 * all_pts @ all_pts.T)
+    # Median of positive distances
+    median_dist = jnp.sqrt(jnp.maximum(jnp.median(jnp.abs(dists_sq)), 1e-8))
+    
+    # 3. Multi-scale MMD: sum over bandwidths = median * {0.25, 0.5, 1, 2, 4}
+    bandwidth_scales = jnp.array([0.25, 0.5, 1.0, 2.0, 4.0])
+    bandwidths = median_dist * bandwidth_scales
+    
+    mmd_sq = jnp.float32(0.0)
+    
+    def add_bandwidth_mmd(carry, bw):
+        # Kernel matrices
+        K_xx = _rbf_kernel(x, x, bw)  # (n_real, n_real)
+        K_yy = _rbf_kernel(y, y, bw)  # (n_fake, n_fake)
+        K_xy = _rbf_kernel(x, y, bw)  # (n_real, n_fake)
+        
+        # Biased MMD² estimate (always >= 0, better for optimization)
+        term_xx = jnp.mean(K_xx)
+        term_yy = jnp.mean(K_yy)
+        term_xy = jnp.mean(K_xy)
+        
+        mmd_bw = term_xx + term_yy - 2 * term_xy
+        return carry + mmd_bw, None
+    
+    mmd_sq, _ = jax.lax.scan(add_bandwidth_mmd, mmd_sq, bandwidths)
+    
+    return mmd_sq
+
+
 @jit
 def signature_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarray, 
                         sig_std: jnp.ndarray = None) -> jnp.ndarray:
     """
-    Computes the MMD distance in the NORMALIZED Signature Space.
+    LEGACY: Mean-signature L2 distance (kept for backward compatibility).
+    For new training, use kernel_mmd_loss instead.
     
-    Each component is divided by its empirical std from the real data,
-    so that all dimensions contribute equally to the loss regardless
-    of their physical scale.
+    Computes the L2 distance between mean signatures in normalized space.
     
     Args:
         fake_signatures: Shape (batch_size, sig_dim)
         real_signatures: Shape (batch_size, sig_dim)
         sig_std: Component-wise std of real signatures for normalization.
-                 If None, falls back to unnormalized L2 (backward compatible).
     """
-    # 1. Compute the "Expected Signature"
     mu_fake = jnp.mean(fake_signatures, axis=0)
     mu_real = jnp.mean(real_signatures, axis=0)
     
-    # 2. Normalize by component-wise std (makes all dimensions comparable)
     if sig_std is not None:
-        # Pure-time components (s1_t, s2_tt, s3_ttt) have near-zero variance
-        # because time is deterministic. Ignore them in the loss by setting
-        # weight to 0 for components with std below threshold.
         threshold = 1e-8
         weights = jnp.where(sig_std > threshold, 1.0 / sig_std, 0.0)
         diff = (mu_fake - mu_real) * weights
     else:
         diff = mu_fake - mu_real
     
-    # 3. Minimize the normalized Euclidean distance
     loss = jnp.sum(jnp.square(diff))
-    
     return loss
 
 @jit

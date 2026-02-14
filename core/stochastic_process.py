@@ -21,17 +21,36 @@ class JAXFractionalBrownianMotion:
         return vmap(self._single_path)(keys)
 
     def _single_path(self, key):
-        """Circulant matrix embedding for O(N log N) simulation."""
+        """
+        Circulant matrix embedding for O(N log N) fBM simulation.
+        
+        Correct Davies-Harte algorithm (Dieker 2004):
+          1. Eigenvalues lambda = FFT(first row of 2N circulant)
+          2. V_k = sqrt(lambda_k / M) * (N1 + i*N2)   [complex Gaussian]
+          3. Z = M * IFFT(V)   [undo the 1/M in IFFT]
+          4. fGn samples X = Re(Z[0:N])
+          5. fBM path = cumsum(X) * dt^H
+        
+        This ensures Var(B^H(t)) = t^{2H} exactly.
+        """
         k = jnp.arange(self.n)
-        # Autocovariance function for fBm
+        # Autocovariance function for fGn
         gamma = 0.5 * (jnp.abs(k-1)**(2*self.h) - 2*jnp.abs(k)**(2*self.h) + jnp.abs(k+1)**(2*self.h))
         c = jnp.concatenate([gamma, jnp.zeros(1), gamma[:0:-1]])
+        M = 2 * self.n
         
-        # FFT of the first row of the circulant matrix
-        w = jnp.fft.fft(c).real
-        w = jnp.maximum(w, 0) # Ensure positivity for numerical stability
+        # Eigenvalues of circulant matrix
+        lam = jnp.fft.fft(c).real
+        lam = jnp.maximum(lam, 0)
         
-        z = jax.random.normal(key, (2 * self.n,))
-        # Map Gaussian noise to the circulant spectrum
-        f = jnp.fft.ifft(jnp.sqrt(w) * z).real[:self.n]
-        return jnp.cumsum(f * (self.n**(-self.h))) * (self.T**self.h)
+        # Complex Gaussian noise
+        key1, key2 = jax.random.split(key)
+        n1 = jax.random.normal(key1, (M,))
+        n2 = jax.random.normal(key2, (M,))
+        
+        # Scale and transform
+        v = jnp.sqrt(lam / M) * (n1 + 1j * n2)
+        z = (jnp.fft.ifft(v) * M).real[:self.n]   # fGn samples
+        
+        # Cumulative sum → fBM, scaled by dt^H
+        return jnp.cumsum(z) * (self.dt ** self.h)

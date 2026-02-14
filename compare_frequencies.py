@@ -1,16 +1,24 @@
+import sys as _sys
+if _sys.stdout.encoding != 'utf-8':
+    _sys.stdout.reconfigure(encoding='utf-8'); _sys.stderr.reconfigure(encoding='utf-8')
+
 """
 Frequency Comparison Script
 ===========================
 Compare VIX data at different frequencies (5, 15, 30 min) 
-to find the best resolution for rough volatility modeling.
+for TRAINING quality (distribution matching, signature richness).
+
+IMPORTANT: Hurst roughness is NOT measured on VIX (smoothed, H≈0.5).
+True roughness (H≈0.1) is measured separately on realized vol from SPX returns.
 """
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import os
-from utils.data_loader import MarketDataLoader, load_config
-from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst
+import yaml
+from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader, load_config
+from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst, estimate_hurst_from_returns
 from ml.generative_trainer import GenerativeTrainer
 from ml.signature_engine import SignatureFeatureExtractor
 
@@ -23,10 +31,16 @@ VIX_FILES = {
     '30min': 'data/TVC_VIX, 30.csv',
 }
 
+# SPX data files for TRUE roughness comparison
+SPX_FILES = {
+    '5min': 'data/SP_SPX, 5.csv',
+    '30min': 'data/SP_SPX, 30.csv',
+}
+
 def analyze_frequency(file_path: str, freq_name: str, segment_length: int = 13):
-    """Analyze VIX data at a specific frequency."""
+    """Analyze VIX data at a specific frequency for TRAINING quality."""
     print(f"\n{'='*60}")
-    print(f"ANALYZING: {freq_name} VIX DATA")
+    print(f"ANALYZING: {freq_name} VIX DATA (training quality)")
     print(f"{'='*60}")
     
     if not os.path.exists(file_path):
@@ -63,7 +77,7 @@ def analyze_frequency(file_path: str, freq_name: str, segment_length: int = 13):
         print(f"\n  Statistics for {freq_name}:")
         print(f"     Paths: {stats['n_paths']} x {stats['path_length']} steps")
         print(f"     Mean Variance: {stats['mean']:.5f}")
-        print(f"     Hurst Exponent: {stats['hurst']:.3f} {'ROUGH' if stats['hurst'] < 0.2 else 'not rough'}")
+        print(f"     Path H: {stats['hurst']:.3f}  [VIX path H — NOT a roughness test]")
         print(f"     ACF (Lag 1): {stats['acf_lag1']:.3f}")
         print(f"     Excess Kurtosis: {stats['kurtosis']:.2f}")
         
@@ -162,10 +176,16 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
 
 def main():
     print("="*70)
-    print("   VIX FREQUENCY COMPARISON: Finding Optimal Roughness Resolution")
+    print("   VIX FREQUENCY COMPARISON: Training Quality & True Roughness")
     print("="*70)
     
     results = {}
+    
+    # ── Part 1: VIX training quality at different frequencies ──
+    print("\n" + "─"*70)
+    print("PART 1: VIX Training Data Quality by Frequency")
+    print("   (For Q-measure calibration — NOT for roughness)")
+    print("─"*70)
     
     # Analyze each frequency with appropriate segment lengths
     # 5min: more points per day (~78), can use longer segments
@@ -190,20 +210,44 @@ def main():
     
     # Summary comparison
     print("\n" + "="*70)
-    print("   SUMMARY COMPARISON")
+    print("   PART 1 SUMMARY: VIX Training Quality")
     print("="*70)
-    print(f"{'Frequency':<12} {'Paths':<10} {'Hurst':<12} {'ACF-1':<10} {'Kurtosis':<10}")
+    print(f"{'Frequency':<12} {'Paths':<10} {'Path H':<12} {'ACF-1':<10} {'Kurtosis':<10}")
     print("-"*54)
     
     for freq, stats in results.items():
-        hurst_status = "*" if stats['hurst'] < 0.2 else ""
-        print(f"{freq:<12} {stats['n_paths']:<10} {stats['hurst']:.3f} {hurst_status:<6} {stats['acf_lag1']:.3f}     {stats['kurtosis']:.2f}")
+        print(f"{freq:<12} {stats['n_paths']:<10} {stats['hurst']:.3f}        {stats['acf_lag1']:.3f}     {stats['kurtosis']:.2f}")
+    
+    # ── Part 2: TRUE ROUGHNESS from SPX returns ──
+    print("\n" + "─"*70)
+    print("PART 2: TRUE ROUGHNESS from S&P 500 Returns (Daily RV)")
+    print("   Gatheral et al. (2018): H ≈ 0.05-0.14 on realized vol")
+    print("─"*70)
+    
+    for freq_name, spx_file in SPX_FILES.items():
+        if os.path.exists(spx_file):
+            rv_result = estimate_hurst_from_returns(spx_file)
+            print(f"\n   SPX {freq_name} → Daily RV:")
+            print(f"      {rv_result['n_rv_points']} trading days")
+            print(f"      H (variogram) = {rv_result['H_variogram']:.4f}  (R² = {rv_result['R2_variogram']:.3f})")
+            print(f"      H (struct q=1) = {rv_result['H_structure']:.4f}  (R² = {rv_result['R2_structure']:.3f})")
+            if rv_result['H_variogram'] < 0.2:
+                print(f"      ✅ ROUGH — H = {rv_result['H_variogram']:.3f}")
+        else:
+            print(f"   SPX {freq_name}: file not found ({spx_file})")
     
     # Recommendation
-    print("\n" + "-"*70)
-    best_freq = min(results.keys(), key=lambda k: results[k]['hurst'])
-    print(f"RECOMMENDATION: Use {best_freq} data (Hurst = {results[best_freq]['hurst']:.3f})")
-    print("-"*70)
+    print("\n" + "="*70)
+    print("   RECOMMENDATION")
+    print("="*70)
+    
+    # Best VIX freq = most paths & richest signal
+    if results:
+        best_freq = max(results.keys(), key=lambda k: results[k]['n_paths'])
+        print(f"   Training: Use {best_freq} VIX data ({results[best_freq]['n_paths']} paths)")
+        print(f"   Roughness: Verified on SPX realized vol (H ≈ 0.1)")
+        print(f"   Note: VIX path H ≈ 0.5 is EXPECTED (30-day smoothing)")
+    print("="*70)
 
 
 if __name__ == "__main__":

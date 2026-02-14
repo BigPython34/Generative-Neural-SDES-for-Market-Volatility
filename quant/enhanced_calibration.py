@@ -1,3 +1,7 @@
+import sys as _sys
+if _sys.stdout.encoding != 'utf-8':
+    _sys.stdout.reconfigure(encoding='utf-8'); _sys.stderr.reconfigure(encoding='utf-8')
+
 """
 Enhanced Neural SDE Calibration with VVIX and VIX Futures Term Structure
 

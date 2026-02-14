@@ -16,12 +16,47 @@ class RealizedVolatilityLoader:
     This captures the TRUE rough behavior (H ~ 0.1) of market volatility.
     
     Theory: RV_t = sqrt(sum(r_i^2)) where r_i are intraday returns
+    
+    Key distinction:
+    - VIX ≈ 30-day integrated implied vol → H ≈ 0.5 (smooth, NOT rough)
+    - Realized Vol from 5-min SPX returns → H ≈ 0.05-0.14 (rough!)
+    - Gatheral, Jaisson, Rosenbaum (2018): "Volatility is Rough"
     """
-    def __init__(self, file_path: str = "data/SP_SPX, 30.csv", config_path: str = "config/params.yaml"):
+    def __init__(self, file_path: str = None, config_path: str = "config/params.yaml",
+                 bar_interval_min: int = None):
         self.config = load_config(config_path)
-        self.file_path = file_path
+        self.file_path = file_path or self.config['data'].get('rv_source', 'data/SP_SPX, 5.csv')
         self.max_gap_hours = self.config['data'].get('max_gap_hours', 4)
         self.stride_ratio = self.config['data'].get('stride_ratio', 0.5)
+        self.trading_hours = self.config['data'].get('trading_hours_per_day', 6.5)
+        
+        # Auto-detect bar frequency from data or use explicit parameter
+        if bar_interval_min is not None:
+            self._bar_min = bar_interval_min
+        else:
+            self._bar_min = self._detect_bar_interval()
+        self.bars_per_day = int(self.trading_hours * 60 / self._bar_min)
+        print(f"   RV Loader: {self._bar_min}-min bars, {self.bars_per_day} bars/day")
+    
+    def _detect_bar_interval(self) -> int:
+        """Auto-detect bar interval from data timestamps."""
+        if not os.path.exists(self.file_path):
+            # Fallback to config
+            return self.config['data'].get('rv_bar_interval_min', 5)
+        try:
+            df = pd.read_csv(self.file_path, nrows=200)
+            dt = pd.to_datetime(df['time'], unit='s')
+            deltas = dt.diff().dropna()
+            # Filter out overnight gaps (keep only < 2h)
+            intraday = deltas[deltas < pd.Timedelta(hours=2)]
+            median_min = int(intraday.median().total_seconds() / 60)
+            # Round to nearest standard frequency
+            for standard in [1, 5, 10, 15, 30, 60]:
+                if abs(median_min - standard) <= standard * 0.3:
+                    return standard
+            return median_min
+        except Exception:
+            return self.config['data'].get('rv_bar_interval_min', 5)
         
     def _check_temporal_coherence(self, df: pd.DataFrame) -> pd.DataFrame:
         """Validates temporal coherence and marks segment boundaries."""
@@ -34,9 +69,9 @@ class RealizedVolatilityLoader:
         
         gaps = df[df['time_delta'] > max_acceptable_gap]
         if len(gaps) > 0:
-            print(f"Warning: Found {len(gaps)} gaps > {self.max_gap_hours}h")
+            print(f"   Warning: Found {len(gaps)} gaps > {self.max_gap_hours}h")
             for _, row in gaps.nlargest(3, 'time_delta').iterrows():
-                print(f"   Gap: {row['time_delta']} at {row['datetime']}")
+                print(f"      Gap: {row['time_delta']} at {row['datetime']}")
         
         df['segment_id'] = (df['time_delta'] > max_acceptable_gap).cumsum()
         n_segments = df['segment_id'].nunique()
@@ -44,19 +79,32 @@ class RealizedVolatilityLoader:
         
         return df
     
-    def get_realized_vol_paths(self, segment_length: int = None, rv_window: int = 13):
+    def get_realized_vol_paths(self, segment_length: int = None, rv_window: int = None):
         """
         Computes rolling Realized Volatility from S&P 500 returns.
         
         Args:
             segment_length: Length of variance paths for training
-            rv_window: Window for RV calculation (13 = ~1 trading day for 30-min data)
+            rv_window: Window for RV calculation
+                       Default from config: 78 (= 1 trading day for 5-min bars)
+                       The annualization factor is computed automatically.
         
         Returns:
             JAX array of realized variance paths
         """
         if segment_length is None:
             segment_length = self.config['data']['segment_length']
+        if rv_window is None:
+            # Config rv_window is calibrated for rv_bar_interval_min (default 5min)
+            # If this file's bar interval differs, scale proportionally
+            config_rv_window = self.config['data'].get('rv_window', self.bars_per_day)
+            config_bar_min = self.config['data'].get('rv_bar_interval_min', 5)
+            if self._bar_min != config_bar_min:
+                # Scale: rv_window of 78 at 5-min ≈ 13 at 30-min (same real time span)
+                rv_window = max(6, int(config_rv_window * config_bar_min / self._bar_min))
+                print(f"   Adjusted rv_window: {config_rv_window} ({config_bar_min}min) → {rv_window} ({self._bar_min}min)")
+            else:
+                rv_window = config_rv_window
             
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"Please place S&P 500 data at: {self.file_path}")
@@ -82,9 +130,10 @@ class RealizedVolatilityLoader:
                 continue
             
             # Rolling Realized Variance: RV = sum(r^2) over window
-            # Annualized: multiply by (252 * 13) for 30-min bars
+            # Annualized: multiply by (252 * bars_per_day) to get annual variance
+            annualize_factor = 252 * self.bars_per_day
             seg_data['realized_var'] = seg_data['log_return'].rolling(window=rv_window).apply(
-                lambda x: np.sum(x**2) * 252 * 13, raw=True
+                lambda x: np.sum(x**2) * annualize_factor, raw=True
             )
             
             rv_values = seg_data['realized_var'].dropna().values
@@ -170,7 +219,10 @@ class MarketDataLoader:
     def get_realized_vol_paths(self, segment_length: int = None):
         """
         Reads 'time,open,high,low,close' CSV and converts VIX close to Variance paths.
-        Respects temporal boundaries to avoid overnight jumps in training data.
+        
+        For short segment_length (< max_segment), respects day boundaries.
+        For longer paths, bridges across overnight gaps since VIX variance
+        is persistent (VIX opens near previous close).
         """
         if segment_length is None:
             segment_length = self.config['data']['segment_length']
@@ -197,22 +249,22 @@ class MarketDataLoader:
         df = df.dropna(subset=['variance'])
 
         print(f"Loaded {len(df)} valid intraday points.")
+        
+        # 5. Check if segments are long enough for requested path length
+        seg_lengths = df.groupby('segment_id').size()
+        max_seg_len = int(seg_lengths.max()) if len(seg_lengths) > 0 else 0
+        
+        if max_seg_len >= segment_length:
+            # Standard mode: segment within day boundaries
+            print(f"   Using intra-segment paths (max segment: {max_seg_len} >= {segment_length})")
+            paths = self._segment_within_boundaries(df, segment_length)
+        else:
+            # Bridge mode: concatenate variance across day boundaries
+            # VIX variance is persistent → safe to bridge overnight gaps
+            print(f"   Max segment ({max_seg_len}) < path length ({segment_length})")
+            print(f"   Bridging across overnight gaps (VIX variance is persistent)")
+            paths = self._segment_bridged(df, segment_length)
 
-        # 5. Segment into training paths (respecting temporal boundaries)
-        paths = []
-        stride = max(1, int(segment_length * self.stride_ratio))
-        
-        for seg_id in df['segment_id'].unique():
-            segment_data = df[df['segment_id'] == seg_id]['variance'].values
-            
-            # Only process segments long enough
-            if len(segment_data) < segment_length:
-                continue
-                
-            for i in range(0, len(segment_data) - segment_length, stride):
-                path = segment_data[i : i + segment_length]
-                paths.append(path)
-        
         if len(paths) == 0:
             raise ValueError(f"No valid paths created. Try reducing segment_length (current: {segment_length})")
             
@@ -223,3 +275,67 @@ class MarketDataLoader:
         
         print(f"Dataset ready: {paths.shape[0]} paths of length {segment_length}")
         return jnp.array(paths)
+    
+    def _segment_within_boundaries(self, df, segment_length):
+        """Extract paths strictly within segment boundaries."""
+        paths = []
+        stride = max(1, int(segment_length * self.stride_ratio))
+        
+        for seg_id in df['segment_id'].unique():
+            segment_data = df[df['segment_id'] == seg_id]['variance'].values
+            if len(segment_data) < segment_length:
+                continue
+            for i in range(0, len(segment_data) - segment_length, stride):
+                paths.append(segment_data[i : i + segment_length])
+        
+        return paths
+    
+    def _segment_bridged(self, df, segment_length):
+        """
+        Extract paths that bridge across overnight/weekend gaps.
+        
+        For VIX variance, this is valid because:
+          - VIX opens near previous close (no gap in variance level)
+          - We're modeling the variance distribution, not return dynamics
+          - The signature captures path shape, which is continuous in VIX level
+          
+        We filter out paths where the overnight jump in variance exceeds
+        a threshold (e.g. > 50% relative change) to exclude crisis events
+        that would distort training.
+        """
+        # Concatenate all variance values in time order
+        variance_series = df.sort_values('datetime')['variance'].values
+        
+        # Also track where the gaps are (to check for large jumps)
+        gap_mask = df.sort_values('datetime')['time_delta'].dt.total_seconds() > self.max_gap_hours * 3600
+        gap_indices = np.where(gap_mask.values)[0]
+        
+        # Check overnight jumps: relative change at gap points
+        max_relative_jump = 0.5  # Filter out >50% overnight VIX jumps
+        bad_indices = set()
+        for gi in gap_indices:
+            if gi > 0 and gi < len(variance_series):
+                rel_change = abs(variance_series[gi] - variance_series[gi-1]) / (variance_series[gi-1] + 1e-8)
+                if rel_change > max_relative_jump:
+                    # Mark a window around this jump as "bad"
+                    for offset in range(-2, 3):
+                        bad_indices.add(gi + offset)
+        
+        paths = []
+        stride = max(1, int(segment_length * self.stride_ratio))
+        
+        for i in range(0, len(variance_series) - segment_length, stride):
+            # Check if this path window crosses a bad jump
+            path_range = set(range(i, i + segment_length))
+            if path_range & bad_indices:
+                continue
+            
+            path = variance_series[i : i + segment_length]
+            
+            # Additional sanity: skip paths with extreme variance ratios
+            if np.max(path) / (np.min(path) + 1e-8) > 20:
+                continue
+            
+            paths.append(path)
+        
+        return paths

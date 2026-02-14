@@ -1,3 +1,10 @@
+import sys, os
+# Force UTF-8 output on Windows to support Greek/math symbols in print()
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -5,13 +12,9 @@ import yaml
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from ml.generative_trainer import GenerativeTrainer
-from utils.diagnostics import print_distribution_stats, compute_acf
+from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst_from_returns
 from core.bergomi import RoughBergomiModel
 from quant.pricing import DeepPricingEngine
-import os
-
-# Fix OpenMP conflict on Windows
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 def load_config(config_path: str = "config/params.yaml") -> dict:
     """Loads configuration from YAML file."""
@@ -33,7 +36,7 @@ def main():
     
     trainer = GenerativeTrainer(config)
     real_data_np = np.array(trainer.market_paths)
-    print_distribution_stats("1. REAL MARKET (TARGET)", real_data_np)
+    print_distribution_stats("1. REAL MARKET (TARGET)", real_data_np, is_vix_derived=True)
 
     # Train Neural Model
     trained_model = trainer.run(
@@ -78,9 +81,30 @@ def main():
     bergomi_model = RoughBergomiModel(bergomi_params)
     bergomi_vars_np = np.array(bergomi_model.simulate_variance_paths(n_gen))
 
-    # Comparative Stats
-    print_distribution_stats("2. BERGOMI (MATHS)", bergomi_vars_np)
-    print_distribution_stats("3. NEURAL SDE (AI)", fake_vars_np)
+    # Comparative Stats (on VIX-derived variance paths)
+    print_distribution_stats("2. BERGOMI (MATHS)", bergomi_vars_np, is_vix_derived=True)
+    print_distribution_stats("3. NEURAL SDE (AI)", fake_vars_np, is_vix_derived=True)
+
+    # ── TRUE ROUGHNESS CHECK: Realized Vol from SPX Returns ──
+    print("\n--- 2b. TRUE ROUGHNESS CHECK (Realized Vol from S&P 500 returns) ---")
+    rv_source = cfg['data'].get('rv_source', 'data/SP_SPX, 5.csv')
+    if os.path.exists(rv_source):
+        rv_results = estimate_hurst_from_returns(
+            rv_source,
+            rv_window=cfg['data'].get('rv_window', 78)
+        )
+        print(f"   Source: {rv_source}")
+        print(f"   RV window: {rv_results['rv_window']} bars ({rv_results['n_rv_points']} RV points)")
+        print(f"   H (variogram) = {rv_results['H_variogram']:.4f}  (R² = {rv_results['R2_variogram']:.3f})")
+        print(f"   H (struct q=1) = {rv_results['H_structure']:.4f}  (R² = {rv_results['R2_structure']:.3f})")
+        if rv_results['H_variogram'] < 0.20:
+            print(f"   ✅ TRUE ROUGHNESS CONFIRMED: H = {rv_results['H_variogram']:.3f} < 0.20")
+        else:
+            print(f"   ⚠️  H = {rv_results['H_variogram']:.3f} — expected < 0.15 (check data/window)")
+        print(f"   Note: VIX-based H ~ 0.5 is EXPECTED (30-day integration smooths roughness)")
+    else:
+        print(f"   ⚠️  No SPX data found at {rv_source} — skipping true roughness check")
+    print("-" * 30)
 
     print("\n--- 3. The Ultimate Pricing Test ---")
     

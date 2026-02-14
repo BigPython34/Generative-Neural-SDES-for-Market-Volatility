@@ -1,3 +1,7 @@
+import sys as _sys
+if _sys.stdout.encoding != 'utf-8':
+    _sys.stdout.reconfigure(encoding='utf-8'); _sys.stderr.reconfigure(encoding='utf-8')
+
 """
 Advanced Calibration using high-frequency TradingView data
 Estimates Hurst exponent from multiple timeframes and calibrates forward variance curve
@@ -15,17 +19,26 @@ from scipy.interpolate import interp1d
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from utils.config import load_config
+
 
 class HighFrequencyAnalyzer:
     """Analyze high-frequency data for rough volatility estimation"""
     
-    def __init__(self, data_dir: str = "data"):
+    def __init__(self, data_dir: str = None):
+        cfg = load_config()
+        if data_dir is None:
+            # Extract directory from first available SPX file
+            data_dir = str(Path(cfg['data']['rv_source']).parent)
         self.data_dir = Path(data_dir)
+        self.cfg = cfg
         self.results = {}
         
     def load_tradingview_data(self, filename: str) -> pd.DataFrame:
         """Load TradingView CSV data"""
-        filepath = self.data_dir / filename
+        filepath = Path(filename)
+        if not filepath.is_absolute() and not filepath.exists():
+            filepath = self.data_dir / filename
         df = pd.read_csv(filepath)
         
         # Convert Unix timestamp to datetime
@@ -63,16 +76,8 @@ class HighFrequencyAnalyzer:
         log_lags = np.log(lags)
         log_var = np.log(variogram + 1e-10)
         
-        # Robust fit using only middle portion (avoid edge effects)
-        n = len(lags)
-        start_idx = max(0, n // 5)
-        end_idx = min(n, 4 * n // 5)
-        
-        if end_idx - start_idx < 3:
-            start_idx = 0
-            end_idx = n
-        
-        slope, intercept = np.polyfit(log_lags[start_idx:end_idx], log_var[start_idx:end_idx], 1)
+        # Use all lags — small lags capture roughness, excluding them biases H upward
+        slope, intercept = np.polyfit(log_lags, log_var, 1)
         H = slope / 2
         
         return H, lags, variogram
@@ -111,10 +116,14 @@ class HighFrequencyAnalyzer:
         scales_used = np.array([f[0] for f in fluctuations])
         F_values = np.array([f[1] for f in fluctuations])
         
-        # Log-log fit: log(F) = H * log(scale) + const
+        # Log-log fit: log(F) = alpha * log(scale) + const
+        # For DMA on raw series: H = alpha - 0.5 (the cumsum adds 1 to scaling)
+        # For DMA on cumsum: H = alpha
+        # Since we cumsum the input, the raw slope = H + 0.5
         slope, _ = np.polyfit(np.log(scales_used), np.log(F_values + 1e-10), 1)
+        H = slope - 0.5  # Correct for cumulative sum integration
         
-        return slope, scales_used, F_values
+        return H, scales_used, F_values
     
     def compute_realized_volatility(self, df: pd.DataFrame, window_points: int = None) -> pd.Series:
         """Compute realized volatility over rolling windows"""
@@ -139,14 +148,18 @@ class HighFrequencyAnalyzer:
         
         results = {}
         
-        for freq in ['5', '30']:
-            filename = f"SP_SPX, {freq}.csv"
-            if not (self.data_dir / filename).exists():
-                print(f"  Warning: {filename} not found")
+        # Use config file paths for SPX data
+        spx_files = self.cfg['data'].get('spx_files', {})
+        
+        for freq_str, filepath in spx_files.items():
+            freq = str(freq_str)
+            p = Path(filepath)
+            if not p.exists():
+                print(f"  Warning: {filepath} not found")
                 continue
                 
             print(f"\nSPX {freq}min data:")
-            df = self.load_tradingview_data(filename)
+            df = self.load_tradingview_data(str(p))
             
             print(f"   Period: {df.index[0].date()} → {df.index[-1].date()}")
             print(f"   Points: {len(df):,}")
@@ -172,10 +185,12 @@ class HighFrequencyAnalyzer:
             print(f"      Variogram method: H = {H_var:.3f}")
             print(f"      DMA method:       H = {H_dma:.3f}")
             
-            if H_var < 0.5 or H_dma < 0.5:
-                print(f"      ROUGH VOLATILITY CONFIRMED (H < 0.5)")
+            if H_var < 0.2:
+                print(f"      ✅ ROUGH VOLATILITY CONFIRMED (H_var = {H_var:.3f} < 0.2)")
+            elif H_var < 0.5:
+                print(f"      ⚠️  Sub-diffusive (H_var = {H_var:.3f} < 0.5) but not rough in Gatheral sense (needs H < 0.2)")
             else:
-                print(f"      Not rough (H >= 0.5)")
+                print(f"      ❌ Not rough (H_var = {H_var:.3f} >= 0.5)")
             
             results[f'spx_{freq}min'] = {
                 'H_variogram': float(H_var),
@@ -198,13 +213,16 @@ class HighFrequencyAnalyzer:
         
         results = {}
         
-        for freq in ['5', '10', '15', '30']:
-            filename = f"TVC_VIX, {freq}.csv"
-            if not (self.data_dir / filename).exists():
+        vix_files = self.cfg['data'].get('vix_files', {})
+        
+        for freq_str, filepath in vix_files.items():
+            freq = str(freq_str)
+            p = Path(filepath)
+            if not p.exists():
                 continue
                 
             print(f"\nVIX {freq}min data:")
-            df = self.load_tradingview_data(filename)
+            df = self.load_tradingview_data(str(p))
             
             print(f"   Period: {df.index[0].date()} → {df.index[-1].date()}")
             print(f"   Points: {len(df):,}")
@@ -251,7 +269,8 @@ class HighFrequencyAnalyzer:
         # In practice, you'd use VIX futures (VX1, VX2, etc.)
         
         # Use the latest VIX value as spot variance
-        vix_15 = self.load_tradingview_data("TVC_VIX, 15.csv")
+        vix_source = self.cfg['data']['source']  # VIX training source from config
+        vix_15 = self.load_tradingview_data(vix_source)
         current_vix = vix_15['close'].iloc[-1]
         
         # VIX is in percentage, convert to decimal variance
@@ -298,21 +317,26 @@ class HighFrequencyAnalyzer:
         print("=" * 60)
         
         # Get H from SPX realized volatility (most reliable)
-        H_estimates = []
+        # Prefer variogram (standard in literature) over DMA
+        H_variogram_estimates = []
+        H_dma_estimates = []
         
         if 'spx' in self.results:
             for key, data in self.results['spx'].items():
-                H_estimates.append(data['H_variogram'])
-                H_estimates.append(data['H_dma'])
+                h_var = data['H_variogram']
+                h_dma = data['H_dma']
+                if 0 < h_var < 0.5:
+                    H_variogram_estimates.append(h_var)
+                if 0 < h_dma < 0.5:
+                    H_dma_estimates.append(h_dma)
         
-        # Filter outliers and average
-        H_estimates = [h for h in H_estimates if 0 < h < 0.5]  # Only rough estimates
-        
-        if H_estimates:
-            H_optimal = np.median(H_estimates)
+        if H_variogram_estimates:
+            # Variogram is the gold standard (Gatheral et al. 2018)
+            H_optimal = np.median(H_variogram_estimates)
+        elif H_dma_estimates:
+            H_optimal = np.median(H_dma_estimates)
         else:
-            # Fallback to VIX-based estimate
-            H_optimal = 0.1  # Literature value
+            H_optimal = 0.1  # Literature fallback
         
         # Get variance from forward variance calibration
         if 'forward_variance' in self.results:
@@ -369,7 +393,8 @@ class HighFrequencyAnalyzer:
         optimal_params = self.get_optimal_bergomi_params()
         
         # Save results
-        output_path = Path("outputs") / "advanced_calibration.json"
+        output_cfg = self.cfg.get('outputs', {})
+        output_path = Path(output_cfg.get('calibration', 'outputs/advanced_calibration.json'))
         output_path.parent.mkdir(exist_ok=True)
         with open(output_path, 'w') as f:
             json.dump(self.results, f, indent=2, default=str)
