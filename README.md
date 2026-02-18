@@ -698,7 +698,7 @@ GenerativeTrainer (with validation, early stopping, LR warmup)
 ### Installation
 
 ```bash
-git clone https://github.com/your-repo/DeepRoughVol.git
+git clone https://github.com/BigPython34/Generative-Neural-SDES-for-Market-Volatility
 cd DeepRoughVol
 
 python -m venv .venv
