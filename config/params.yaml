@@ -26,6 +26,7 @@ data:
   # Temporal coherence
   max_gap_hours: 4                      # Max acceptable gap between consecutive points
   trading_hours_per_day: 6.5            # NYSE trading hours (9:30 - 16:00)
+  options_cache_dir: "data/options_cache"
 
 # Model Training
 training:
@@ -33,12 +34,17 @@ training:
   batch_size: 256
   learning_rate_init: 0.001             # 1e-3
   learning_rate_final: 0.00001          # 1e-5
-  decay_steps: 2000
+  decay_steps: 500                      # Match n_epochs for full cosine decay utilization
   gradient_clip: 1.0
   lambda_mean: 10.0                     # Weight for mean penalty loss
   warmup_steps: 50                      # Linear LR warmup (stabilizes early signature feedback)
   validation_split: 0.15                # Fraction of data held out for validation
   early_stopping_patience: 50           # Epochs without improvement before stopping
+  # Mean penalty mode:
+  #   "global"   — single scalar E[V] matching (fast, default)
+  #   "marginal" — per-step E[V_t] matching (tighter Jensen correction,
+  #                Bayer & Stemper 2018)
+  mean_penalty_mode: "global"
 
 # Neural SDE Architecture
 neural_sde:
@@ -52,6 +58,13 @@ neural_sde:
   # Physical Prior (Ornstein-Uhlenbeck) — initial values, learnable if above is true
   kappa: 2.72                           # Mean-reversion speed (from VIX futures calibration)
   theta: -3.5                           # Long-term log-variance target (exp(-3.5) ~ 0.03 ~ 17% vol)
+  # Log-variance clipping bounds (configurable)
+  # Default: [-7, 2] → variance in [~0.001, ~7.4] (vol ~3% to ~272%)
+  # Wider than previous [-5, 1] to avoid truncating tails in extreme regimes.
+  # For equity VIX: [-7, 2] covers VIX ∈ [3%, 272%], sufficient for all
+  # historical regimes including 2008 crisis (VIX ~80%) and COVID (VIX ~82%).
+  log_v_clip_min: -7.0
+  log_v_clip_max: 2.0
 
 # Simulation Configuration
 simulation:
@@ -66,7 +79,16 @@ bergomi:
   hurst: 0.07                           # Roughness (H < 0.15 for rough regime)
   eta: 1.9                              # Vol-of-vol
   rho: -0.7                             # Spot-vol correlation (leverage)
-  xi0: 0.0225                            # Initial forward variance (VIX~15% → 0.15²)
+  xi0: 0.0225                           # Initial forward variance (VIX~15% → 0.15²)
+  # fBM simulation method:
+  #   "volterra"      — Riemann-Liouville fBM via discretized Volterra kernel (default).
+  #                      Correct for rBergomi (Bayer, Friz & Gatheral 2016).
+  #                      Exact spot-vol correlation. O(N²) memory.
+  #   "davies_harte"  — Standard fBM via circulant embedding / FFT.
+  #                      Faster O(N log N) but different covariance structure
+  #                      for H ≠ 0.5, no spot-vol correlation guarantee.
+  #                      Reference: Dietrich & Newsam (1997), Dieker (2004).
+  fBm_method: "volterra"
 
 # Pricing Configuration
 pricing:
@@ -80,7 +102,7 @@ pricing:
 # Backtesting Configuration
 backtesting:
   n_days: 30                            # Number of backtest days
-  n_mc_paths: 10000                      # MC paths per scenario (speed vs accuracy)
+  n_mc_paths: 10000                     # MC paths per scenario (speed vs accuracy)
   rv_source: "data/SP_SPX, 30.csv"      # SPX data for RV scenarios
   maturity_days: 30                     # Option maturity in days
   moneyness_range: [-0.15, 0.15]        # log-moneyness bounds

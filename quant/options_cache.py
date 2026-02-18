@@ -17,9 +17,16 @@ class OptionsDataCache:
     Caches options data locally for faster access and historical analysis.
     """
     
-    def __init__(self, cache_dir: str = "data/options_cache"):
-        self.cache_dir = cache_dir
-        os.makedirs(cache_dir, exist_ok=True)
+    def __init__(self, cache_dir: str = None):
+        if cache_dir is None:
+            try:
+                from utils.config import load_config
+                cfg = load_config()
+                cache_dir = cfg.get("data", {}).get("options_cache_dir", "data/options_cache")
+            except Exception:
+                cache_dir = "data/options_cache"
+        self.cache_dir = os.path.abspath(cache_dir)
+        os.makedirs(self.cache_dir, exist_ok=True)
         self.metadata_file = os.path.join(cache_dir, "metadata.json")
         self.metadata = self._load_metadata()
         
@@ -105,17 +112,72 @@ class OptionsDataCache:
     def list_snapshots(self, ticker: str = None) -> pd.DataFrame:
         """List all cached snapshots."""
         snapshots = self.metadata["snapshots"]
-        
+
         if ticker:
             snapshots = [s for s in snapshots if s["ticker"] == ticker]
-        
+
         if not snapshots:
             print("No snapshots in cache.")
             return pd.DataFrame()
-        
+
         df = pd.DataFrame(snapshots)
         df['datetime'] = pd.to_datetime(df['datetime'])
         return df.sort_values('datetime', ascending=False)
+
+    def reindex_from_disk(self) -> int:
+        """
+        Scan cache directory for surface files not in metadata and add them.
+        Handles: SPY_surface_YYYYMMDD_HHMMSS.csv or .parquet
+        Returns number of newly indexed files.
+        """
+        import re
+        known = {s["filename"] for s in self.metadata["snapshots"]}
+        added = 0
+
+        for fname in os.listdir(self.cache_dir):
+            if fname == "metadata.json":
+                continue
+            m = re.match(r"([A-Z]+)_surface_(\d{8})_(\d{6})\.(csv|parquet)", fname)
+            if not m or fname in known:
+                continue
+
+            ticker, ymd, hms, ext = m.groups()
+            ts = f"{ymd}_{hms}"
+            dt_str = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:8]}T{hms[:2]}:{hms[2:4]}:{hms[4:6]}"
+
+            try:
+                path = os.path.join(self.cache_dir, fname)
+                df = pd.read_parquet(path) if ext == "parquet" else pd.read_csv(path)
+            except Exception as e:
+                print(f"  Skip {fname}: {e}")
+                continue
+
+            # Infer spot from moneyness: S = K / exp(moneyness)
+            if "moneyness" in df.columns and "strike" in df.columns:
+                row = df.iloc[df["moneyness"].abs().argmin()]
+                spot = float(row["strike"] / np.exp(row["moneyness"]))
+            else:
+                spot = float(df["strike"].median())
+
+            info = {
+                "filename": fname,
+                "ticker": ticker,
+                "spot": spot,
+                "timestamp": ts,
+                "datetime": dt_str,
+                "n_options": len(df),
+                "maturities": sorted(df["dte"].unique().tolist()) if "dte" in df.columns else [],
+                "strike_range": [float(df["strike"].min()), float(df["strike"].max())] if "strike" in df.columns else [0, 0],
+            }
+            self.metadata["snapshots"].append(info)
+            known.add(fname)
+            added += 1
+            print(f"  Indexed: {fname}")
+
+        if added:
+            self._save_metadata()
+            print(f"Reindexed {added} file(s). Total snapshots: {len(self.metadata['snapshots'])}")
+        return added
 
 
 class EnhancedOptionsLoader:
@@ -270,7 +332,3 @@ def download_and_cache_options():
     print(cache.list_snapshots())
     
     return surface
-
-
-if __name__ == "__main__":
-    download_and_cache_options()

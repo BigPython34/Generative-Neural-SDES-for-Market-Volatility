@@ -5,10 +5,6 @@ Better layout, fixed 3D surface, improved styling.
 """
 
 import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import plotly.io as pio
 from datetime import datetime
 import os
 import sys
@@ -29,14 +25,14 @@ class DashboardV2:
         """Load all available data."""
         
         # Calibration report
-        if os.path.exists('data/calibration_report.json'):
-            with open('data/calibration_report.json', 'r') as f:
+        if os.path.exists('outputs/calibration_report.json'):
+            with open('outputs/calibration_report.json', 'r') as f:
                 self.metrics['calibration'] = json.load(f)
             print("Calibration report loaded")
         
         # Backtest results
-        if os.path.exists('data/backtest_results.json'):
-            with open('data/backtest_results.json', 'r') as f:
+        if os.path.exists('outputs/backtest_results.json'):
+            with open('outputs/backtest_results.json', 'r') as f:
                 self.metrics['backtest'] = json.load(f)
             print("Backtest results loaded")
         
@@ -331,7 +327,7 @@ class DashboardV2:
         
         # Fill NaN with interpolation
         pivot = pivot.interpolate(method='linear', axis=0).interpolate(method='linear', axis=1)
-        pivot = pivot.fillna(method='ffill').fillna(method='bfill')
+        pivot = pivot.ffill().bfill()
         
         x = pivot.columns.tolist()  # DTE
         y = pivot.index.tolist()     # Moneyness
@@ -449,6 +445,18 @@ class DashboardV2:
         '''
 
 
-if __name__ == "__main__":
+def generate_dashboard():
+    """Main entry point for dashboard generation."""
+    print("=" * 70)
+    print("   INTERACTIVE DASHBOARD GENERATOR")
+    print("=" * 70)
+    os.makedirs("outputs", exist_ok=True)
     dashboard = DashboardV2()
-    dashboard.generate("dashboard.html")
+    output = dashboard.generate("outputs/dashboard.html")
+    try:
+        import webbrowser
+        webbrowser.open(f"file://{os.path.abspath(output)}")
+        print("   Dashboard opened in browser!")
+    except Exception:
+        print(f"   Open {output} manually in your browser.")
+    return output

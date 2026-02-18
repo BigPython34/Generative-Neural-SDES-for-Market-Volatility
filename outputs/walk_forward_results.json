@@ -1,0 +1,11 @@
+[
+  {
+    "fold": 0,
+    "test_start": "2026-02-18",
+    "test_end": "2026-02-18",
+    "n_scenarios": 24,
+    "bs_rmse_avg": 6.133376005976199,
+    "bergomi_rmse_avg": 3.4593990890586226,
+    "neural_rmse_avg": 5.84619814854561
+  }
+]

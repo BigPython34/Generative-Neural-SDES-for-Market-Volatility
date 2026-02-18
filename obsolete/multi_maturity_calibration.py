@@ -12,10 +12,11 @@ from scipy.optimize import minimize
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+from pathlib import Path
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from quant.options_cache import OptionsDataCache, EnhancedOptionsLoader

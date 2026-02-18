@@ -201,7 +201,7 @@ def run_diagnostic():
         print(f"   Variogram H     = {h_var:.4f}  (R² = {r2_var:.3f})")
         print(f"   Structure q=1 H = {h_sf1:.4f}  (R² = {r2_sf1:.3f})")
         print(f"   Structure q=2 H = {h_sf2:.4f}  (R² = {r2_sf2:.3f})")
-        print(f"   ⚠️  Expected: H >> 0.15 because VIX integrates over 30 days!")
+        print(f"   [WARN] Expected: H >> 0.15 because VIX integrates over 30 days!")
         
         results[f"VIX_{freq}"] = {"H_variogram": h_var, "H_sf1": h_sf1, "H_sf2": h_sf2}
     
@@ -243,11 +243,11 @@ def run_diagnostic():
         print(f"   Structure q=2 H = {h_sf2:.4f}  (R² = {r2_sf2:.3f})")
         
         if h_var < 0.2:
-            print(f"   ✅ ROUGH! H < 0.2 — consistent with Gatheral et al.")
+            print(f"   [OK] ROUGH! H < 0.2 - consistent with Gatheral et al.")
         elif h_var < 0.35:
-            print(f"   ⚠️  Slightly rough (H < 0.35)")
+            print(f"   [WARN] Slightly rough (H < 0.35)")
         else:
-            print(f"   ❌ NOT rough (H ≥ 0.35) — check data/methodology")
+            print(f"   [FAIL] NOT rough (H >= 0.35) - check data/methodology")
         
         results[f"RV_{freq}_daily"] = {
             "H_variogram": h_var, "H_sf1": h_sf1, "H_sf2": h_sf2,
@@ -283,8 +283,8 @@ def run_diagnostic():
         import jax
         import jax.numpy as jnp
         import equinox as eqx
-        from ml.neural_sde import NeuralRoughSimulator
-        from ml.signature_engine import SignatureFeatureExtractor
+        from engine.neural_sde import NeuralRoughSimulator
+        from engine.signature_engine import SignatureFeatureExtractor
         import yaml
         
         with open("config/params.yaml", 'r', encoding='utf-8') as f:

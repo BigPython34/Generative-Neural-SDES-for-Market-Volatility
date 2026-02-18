@@ -216,7 +216,7 @@ def print_distribution_stats(name: str, data: np.ndarray, is_vix_derived: bool =
         print(f"   ℹ️  True roughness (H~0.1) must be measured on realized vol from SPX returns")
     else:
         target = "< 0.15" 
-        status = "✅" if h_est < 0.20 else "⚠️"
+        status = "[OK]" if h_est < 0.20 else "[WARN]"
         print(f"  {status} (Target {target} for rough vol)")
     print(f"   ACF (Lag 1)    : {acf_lag1:.3f} (Target > 0.9)")
     print("-" * 30)

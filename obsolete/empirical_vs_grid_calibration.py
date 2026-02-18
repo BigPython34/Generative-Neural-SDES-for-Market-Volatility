@@ -20,7 +20,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quant.options_cache import OptionsDataCache
-from scipy.stats import norm
 
 # Suppress JAX warnings
 import os
@@ -127,26 +126,9 @@ class BergomiPricer:
         return price
     
     def implied_vol(self, price: float, spot: float, strike: float, T: float, option_type: str) -> float:
-        """Extract implied volatility from price using Black-Scholes inversion"""
-        
-        def bs_price(sigma):
-            d1 = (np.log(spot / strike) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
-            d2 = d1 - sigma * np.sqrt(T)
-            if option_type == 'call':
-                return spot * norm.cdf(d1) - strike * norm.cdf(d2)
-            else:
-                return strike * norm.cdf(-d2) - spot * norm.cdf(-d1)
-        
-        # Bisection
-        low, high = 0.01, 2.0
-        for _ in range(50):
-            mid = (low + high) / 2
-            if bs_price(mid) < price:
-                low = mid
-            else:
-                high = mid
-        
-        return mid
+        """Extract implied volatility from price using Black-Scholes inversion."""
+        from utils.black_scholes import BlackScholes
+        return BlackScholes.implied_vol(price, spot, strike, T, r=0.0, opt_type=option_type)
 
 
 def run_comparison():
@@ -169,7 +151,7 @@ def run_comparison():
         emp_params = {'H': 0.05, 'eta': 1.0, 'rho': -0.75, 'xi_0': 0.03}
     
     # Load grid search calibration
-    grid_path = Path("data/calibration_report.json")
+    grid_path = Path("outputs/calibration_report.json")
     if grid_path.exists():
         with open(grid_path) as f:
             grid = json.load(f)

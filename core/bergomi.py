@@ -17,17 +17,22 @@ class RoughBergomiModel:
 
         Ŵ^H(t) = sqrt(2H) * ∫₀ᵗ (t-s)^{H-0.5} dW(s)
 
-    Implementation
-    --------------
-    We discretize the Volterra kernel at the grid level and collect
-    everything in a matrix  M  (2n × n) such that
+    Two fBM simulation methods are available (configurable via
+    bergomi.fBm_method in config/params.yaml):
 
-        [dW₁ … dWₙ , Ŵ^H₁ … Ŵ^Hₙ]ᵀ  =  M · Z,   Z ~ N(0, Iₙ)
+    - "volterra" (default, recommended): Discretized Volterra kernel.
+      Produces RL-fBM which is the theoretically correct process for
+      rBergomi. Exact spot-vol correlation by construction.
+      Reference: Bayer, Friz & Gatheral (2016), Bennedsen et al. (2017).
 
-    The covariance  Σ = M Mᵀ  is PSD by construction ─ no eigenvalue
-    surgery needed.  The spot Euler scheme uses the **previsible**
-    variance  V_{k-1}  (not V_k) to avoid the adaptedness bias that
-    arises when the current noise Z_k enters both V_k and dW_spot_k.
+    - "davies_harte": Circulant embedding / FFT method. Produces standard
+      fBM (Mandelbrot-Van Ness). Faster (O(N log N) vs O(N²)) but has a
+      different covariance structure for H ≠ 0.5, and does not share the
+      same driving BM as the spot (no exact spot-vol correlation).
+      Reference: Dietrich & Newsam (1997), Dieker (2004).
+
+    The spot Euler scheme uses the **previsible** variance V_{k-1}
+    to avoid the adaptedness bias.
     """
 
     def __init__(self, params: dict):
@@ -39,12 +44,9 @@ class RoughBergomiModel:
         self.T = params['T']
         self.mu = params.get('mu', 0.05)
         self.dt = self.T / self.n_steps
+        self.fBm_method = params.get('fBm_method', 'volterra')
 
-        # Pre-compute Volterra kernel matrix  A  (n × n, lower-triangular)
-        # and the exact per-step variance  var_wh[k] = Var(Ŵ^H(t_k))
         self._A, self._var_wh = self._build_volterra_kernel()
-
-        # Still keep DH generator for variance-only paths (e.g. diagnostics)
         self.fbm_gen = JAXFractionalBrownianMotion(self.n_steps, self.T, self.h)
 
     # ------------------------------------------------------------------
@@ -73,14 +75,29 @@ class RoughBergomiModel:
         return jnp.array(A), jnp.array(var_wh)
 
     # ------------------------------------------------------------------
-    #  Variance-only  (fast, uses Davies-Harte fBM)
+    #  Variance-only
     # ------------------------------------------------------------------
     def simulate_variance_paths(self, n_paths: int, key=None):
-        """Variance paths via exact Davies-Harte fBM (for diagnostics)."""
+        """
+        Variance paths using the configured fBm method.
+
+        - 'volterra': Uses Volterra RL-fBM (same as spot-vol sim).
+          Consistent with simulate_spot_vol_paths.
+        - 'davies_harte': Uses standard fBM via circulant embedding.
+          Faster but different covariance structure for H ≠ 0.5.
+        """
         if key is None:
             key = jax.random.PRNGKey(42)
-        wh = self.fbm_gen.generate_paths(key, n_paths)
-        return self._compute_variance_dh(wh)
+
+        if self.fBm_method == 'davies_harte':
+            wh = self.fbm_gen.generate_paths(key, n_paths)
+            return self._compute_variance_dh(wh)
+        else:
+            Z = jax.random.normal(key, (n_paths, self.n_steps))
+            Wh = Z @ self._A.T
+            return self.xi0 * jnp.exp(
+                self.eta * Wh - 0.5 * self.eta ** 2 * self._var_wh
+            )
 
     # ------------------------------------------------------------------
     #  Joint Spot + Vol  (Volterra kernel, correct correlation)

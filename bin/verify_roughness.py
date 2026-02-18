@@ -56,7 +56,7 @@ def estimate_hurst_variogram(series, max_lag=50):
 
 def compute_signature_stats(paths, truncation_order=3):
     """Compute signature statistics for a batch of paths."""
-    from ml.signature_engine import SignatureFeatureExtractor
+    from engine.signature_engine import SignatureFeatureExtractor
     
     sig_engine = SignatureFeatureExtractor(truncation_order=truncation_order)
     
@@ -76,8 +76,8 @@ def compute_signature_stats(paths, truncation_order=3):
 
 def generate_neural_sde_paths(n_paths=1000, n_steps=100):
     """Generate paths using the trained Neural SDE."""
-    from ml.neural_sde import NeuralRoughSimulator
-    from ml.signature_engine import SignatureFeatureExtractor
+    from engine.neural_sde import NeuralRoughSimulator
+    from engine.signature_engine import SignatureFeatureExtractor
     import equinox as eqx
     
     # Load real dt from config
@@ -137,31 +137,51 @@ def generate_neural_sde_paths(n_paths=1000, n_steps=100):
     return np.array(all_paths)
 
 
-def generate_ou_paths(n_paths=1000, n_steps=100, kappa=2.72, theta=0.035, sigma=0.3, init_vars=None):
-    """Generate paths using simple OU process on variance (no roughness, no signatures).
+def generate_ou_paths(n_paths=1000, n_steps=100, kappa=2.72, theta=-3.5, sigma=0.8, init_vars=None):
+    """Generate paths using OU process on LOG-variance (no signatures).
     
-    This is the ABLATION baseline: same mean-reverting dynamics but without
-    path-dependent signature conditioning. Uses CIR-like dynamics to stay positive.
+    This is the ABLATION baseline: same OU-on-log-V dynamics as the
+    Neural SDE prior, but without path-dependent signature conditioning.
+    Operating on log-V (not V) ensures a fair comparison with the
+    Neural SDE which uses the same parametrization.
+    
+    Reference: the Neural SDE prior is
+        d(log V) = kappa*(theta - log V)*dt + sigma*dW
     
     Args:
-        init_vars: Array of initial variances (if None, uses theta for all).
+        kappa: Mean-reversion speed (same as neural SDE config)
+        theta: Long-term log-variance target (e.g. -3.5 → ~3% variance → 17% vol)
+        sigma: Vol-of-vol on log-variance scale
+        init_vars: Array of initial VARIANCES (converted to log internally).
     """
-    # Load real dt from config
     with open("config/params.yaml", 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
     dt = cfg['simulation']['T'] / n_steps
+    
+    # Use config OU params for consistency with neural SDE prior
+    sde_cfg = cfg.get('neural_sde', {})
+    kappa = sde_cfg.get('kappa', kappa)
+    theta = sde_cfg.get('theta', theta)
     
     all_paths = []
     np.random.seed(42)
     
     for i in range(n_paths):
-        v0 = float(init_vars[i % len(init_vars)]) if init_vars is not None else theta
-        path = [v0]
+        if init_vars is not None:
+            v0 = float(init_vars[i % len(init_vars)])
+            log_v = np.log(max(v0, 1e-6))
+        else:
+            log_v = theta
+        
+        log_path = [log_v]
         for _ in range(n_steps - 1):
             dW = np.random.normal(0, np.sqrt(dt))
-            v_next = path[-1] + kappa * (theta - path[-1]) * dt + sigma * np.sqrt(max(path[-1], 0.001)) * dW
-            path.append(max(v_next, 0.001))
-        all_paths.append(path)
+            log_v_next = log_v + kappa * (theta - log_v) * dt + sigma * dW
+            log_v_next = np.clip(log_v_next, -7.0, 2.0)
+            log_path.append(log_v_next)
+            log_v = log_v_next
+        
+        all_paths.append(np.exp(log_path))
     
     return np.array(all_paths)
 
@@ -172,8 +192,8 @@ def run_ablation_study():
     print("ABLATION STUDY: Signatures Impact")
     print("="*60)
     
-    from ml.losses import signature_mmd_loss
-    from ml.signature_engine import SignatureFeatureExtractor
+    from engine.losses import signature_mmd_loss
+    from engine.signature_engine import SignatureFeatureExtractor
     
     # Load config for real dt
     with open("config/params.yaml", 'r', encoding='utf-8') as f:
@@ -361,9 +381,9 @@ def verify_generated_roughness():
     vix_values = vix_df['close'].values
     
     H_vix = estimate_hurst_variogram(np.log(vix_values))
-    print(f"\n   A. VIX (30-day integrated implied vol):")
-    print(f"      H (variogram on log-VIX) = {H_vix:.3f}")
-    print(f"      ℹ️  H ≈ 0.5 is EXPECTED (VIX is a smoothed integral)")
+    print(f"\nA. VIX (30-day integrated implied vol):")
+    print(f"H (variogram on log-VIX) = {H_vix:.3f}")
+    print(f"H ≈ 0.5 is EXPECTED (VIX is a smoothed integral)")
     print(f"      This is NOT a roughness test — VIX integration kills roughness.")
     
     # ── B. Realized Vol from SPX (expected: H ≈ 0.05-0.14) ──
@@ -377,19 +397,19 @@ def verify_generated_roughness():
         H_rv = rv_results['H_variogram']
         
         print(f"\n   B. REALIZED VOLATILITY from S&P 500 returns:")
-        print(f"      Source: {rv_source} ({rv_results['n_rv_points']} RV points)")
-        print(f"      H (variogram)   = {rv_results['H_variogram']:.4f}  (R² = {rv_results['R2_variogram']:.3f})")
-        print(f"      H (struct q=1)  = {rv_results['H_structure']:.4f}  (R² = {rv_results['R2_structure']:.3f})")
+        print(f"Source: {rv_source} ({rv_results['n_rv_points']} RV points)")
+        print(f"H (variogram)   = {rv_results['H_variogram']:.4f}  (R² = {rv_results['R2_variogram']:.3f})")
+        print(f"H (struct q=1)  = {rv_results['H_structure']:.4f}  (R² = {rv_results['R2_structure']:.3f})")
         
         if H_rv < 0.20:
-            print(f"      ✅ TRUE ROUGHNESS CONFIRMED: H = {H_rv:.3f}")
+            print(f"TRUE ROUGHNESS CONFIRMED: H = {H_rv:.3f}")
         else:
-            print(f"      ⚠️  H = {H_rv:.3f} — higher than expected (check data/window)")
+            print(f"H = {H_rv:.3f} — higher than expected (check data/window)")
     else:
-        print(f"\n   B. No SPX data found at {rv_source} — cannot verify true roughness")
+        print(f"\n B. No SPX data found at {rv_source} — cannot verify true roughness")
     
     # ── C. Neural SDE generated paths ──
-    print("\n   C. Neural SDE generated paths:")
+    print("\n C. Neural SDE generated paths:")
     try:
         neural_paths = generate_neural_sde_paths(n_paths=100, n_steps=200)
         
@@ -401,24 +421,24 @@ def verify_generated_roughness():
         H_gen_mean = np.mean(H_generated)
         H_gen_std = np.std(H_generated)
         
-        print(f"      H (gen mean): {H_gen_mean:.3f} ± {H_gen_std:.3f}")
+        print(f"H (gen mean): {H_gen_mean:.3f} ± {H_gen_std:.3f}")
         
         # Compare with VIX (training data) H, since model is trained on VIX
-        print(f"\n   Comparison:")
-        print(f"      VIX H:          {H_vix:.3f}  (training data — smoothed)")
-        print(f"      Generated H:    {H_gen_mean:.3f}  (model output)")
+        print(f"\n Comparison:")
+        print(f"VIX H: {H_vix:.3f}  (training data — smoothed)")
+        print(f"Generated H: {H_gen_mean:.3f}  (model output)")
         if H_rv is not None:
-            print(f"      True RV H:      {H_rv:.3f}  (5-min SPX returns)")
+            print(f"True RV H: {H_rv:.3f}  (5-min SPX returns)")
         
         gap_vix = abs(H_vix - H_gen_mean)
-        print(f"      Gap vs VIX:     {gap_vix:.3f}")
+        print(f"Gap vs VIX:{gap_vix:.3f}")
         
         if gap_vix < 0.15:
-            print(f"      → Model faithfully reproduces VIX dynamics (H ≈ {H_gen_mean:.2f})")
+            print(f"-> Model faithfully reproduces VIX dynamics (H ≈ {H_gen_mean:.2f})")
         
         if H_rv is not None and H_rv < 0.15:
-            print(f"\n      ⚠️  Model trained on VIX cannot capture H_RV ≈ {H_rv:.2f}")
-            print(f"         To get rough paths, train on REALIZED VOL (data_type: 'realized_vol')")
+            print(f"\n Model trained on VIX cannot capture H_RV ≈ {H_rv:.2f}")
+            print(f"To get rough paths, train on REALIZED VOL (data_type: 'realized_vol')")
         
         return {
             'H_vix': float(H_vix),
@@ -429,7 +449,7 @@ def verify_generated_roughness():
         }
     
     except Exception as e:
-        print(f"   Error generating paths: {e}")
+        print(f"Error generating paths: {e}")
         return {'H_vix': float(H_vix), 'H_rv': float(H_rv) if H_rv else None, 'error': str(e)}
 
 
@@ -439,7 +459,7 @@ def compare_signature_distributions():
     print("2. SIGNATURE DISTRIBUTION COMPARISON")
     print("="*60)
     
-    from ml.signature_engine import SignatureFeatureExtractor
+    from engine.signature_engine import SignatureFeatureExtractor
     
     # Load config for real dt
     with open("config/params.yaml", 'r', encoding='utf-8') as f:
@@ -471,9 +491,9 @@ def compare_signature_distributions():
     }
     
     print(f"\n   Real signatures:")
-    print(f"      Shape: {real_sigs.shape}")
-    print(f"      Norm (mean): {real_stats['norm']:.4f}")
-    print(f"      First 5 components mean: {real_stats['mean'][:5]}")
+    print(f"Shape: {real_sigs.shape}")
+    print(f"Norm (mean): {real_stats['norm']:.4f}")
+    print(f"First 5 components mean: {real_stats['mean'][:5]}")
     
     # Generated signatures
     try:
@@ -486,22 +506,22 @@ def compare_signature_distributions():
         }
         
         print(f"\n   Generated signatures:")
-        print(f"      Shape: {gen_sigs.shape}")
-        print(f"      Norm (mean): {gen_stats['norm']:.4f}")
-        print(f"      First 5 components mean: {gen_stats['mean'][:5]}")
+        print(f"Shape: {gen_sigs.shape}")
+        print(f"Norm (mean): {gen_stats['norm']:.4f}")
+        print(f"First 5 components mean: {gen_stats['mean'][:5]}")
         
         # Compare
         norm_ratio = gen_stats['norm'] / real_stats['norm']
         mean_corr = np.corrcoef(real_stats['mean'], gen_stats['mean'])[0, 1]
         
         print(f"\n   Comparison:")
-        print(f"      Norm ratio (gen/real): {norm_ratio:.2f}")
-        print(f"      Mean correlation: {mean_corr:.3f}")
+        print(f"Norm ratio (gen/real): {norm_ratio:.2f}")
+        print(f"Mean correlation: {mean_corr:.3f}")
         
         if mean_corr > 0.8:
-            print(f"      --> Signatures match well!")
+            print(f"--> Signatures match well!")
         else:
-            print(f"      --> Signature mismatch (check model)")
+            print(f"--> Signature mismatch (check model)")
         
         return {
             'real_norm': float(real_stats['norm']),

@@ -12,11 +12,9 @@ Features:
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from scipy.stats import norm
-from scipy.optimize import minimize_scalar, minimize
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import sys
 import json
@@ -28,178 +26,9 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Import our new modules
 from quant.options_cache import OptionsDataCache, EnhancedOptionsLoader
-from quant.bergomi_optimizer import BergomiOptimizer, calibrate_bergomi_to_smile
-
-
-class OptionsDataLoader:
-    """Fetches and processes SPY options data from Yahoo Finance."""
-    
-    def __init__(self, ticker: str = "SPY"):
-        self.ticker = ticker
-        self.spot = None
-        
-    def get_spot_price(self) -> float:
-        """Get current spot price."""
-        tick = yf.Ticker(self.ticker)
-        self.spot = tick.history(period="1d")['Close'].iloc[-1]
-        return self.spot
-    
-    def get_options_chain(self, days_to_expiry: int = 30) -> pd.DataFrame:
-        """
-        Fetch options chain for a specific maturity.
-        """
-        tick = yf.Ticker(self.ticker)
-        self.spot = self.get_spot_price()
-        
-        # Find closest expiry to target
-        expirations = tick.options
-        target_date = datetime.now() + timedelta(days=days_to_expiry)
-        
-        closest_exp = min(expirations, key=lambda x: abs(
-            datetime.strptime(x, "%Y-%m-%d") - target_date
-        ))
-        
-        exp_date = datetime.strptime(closest_exp, "%Y-%m-%d")
-        actual_dte = (exp_date - datetime.now()).days
-        
-        print(f"   Expiry: {closest_exp} ({actual_dte} DTE)")
-        
-        # Fetch chain
-        chain = tick.option_chain(closest_exp)
-        
-        # Process calls
-        calls = chain.calls[['strike', 'lastPrice', 'bid', 'ask', 'impliedVolatility', 'volume', 'openInterest']].copy()
-        calls['type'] = 'call'
-        calls['mid'] = (calls['bid'] + calls['ask']) / 2
-        
-        # Process puts  
-        puts = chain.puts[['strike', 'lastPrice', 'bid', 'ask', 'impliedVolatility', 'volume', 'openInterest']].copy()
-        puts['type'] = 'put'
-        puts['mid'] = (puts['bid'] + puts['ask']) / 2
-        
-        # Combine
-        df = pd.concat([calls, puts], ignore_index=True)
-        
-        # Add moneyness
-        df['moneyness'] = np.log(df['strike'] / self.spot)
-        df['T'] = actual_dte / 365.0
-        df['dte'] = actual_dte
-        
-        # Filter: only liquid options near ATM
-        df = df[
-            (df['volume'] > 5) &
-            (df['bid'] > 0.01) &
-            (abs(df['moneyness']) < 0.20)
-        ]
-        
-        return df
-    
-    def get_volatility_surface(self, maturities: list = [7, 14, 30, 60, 90]) -> pd.DataFrame:
-        """
-        Build a full volatility surface across multiple maturities.
-        """
-        print(f"Spot price: ${self.get_spot_price():.2f}")
-        print(f"\nLoading options for {len(maturities)} maturities...")
-        
-        all_data = []
-        
-        for dte in maturities:
-            try:
-                df = self.get_options_chain(days_to_expiry=dte)
-                all_data.append(df)
-            except Exception as e:
-                print(f"   Warning: Could not load {dte} DTE: {e}")
-        
-        if not all_data:
-            raise ValueError("No options data loaded!")
-            
-        surface = pd.concat(all_data, ignore_index=True)
-        
-        # Use OTM options for cleaner smile
-        otm_mask = ((surface['type'] == 'call') & (surface['strike'] >= self.spot)) | \
-                   ((surface['type'] == 'put') & (surface['strike'] <= self.spot))
-        surface = surface[otm_mask]
-        
-        # Remove duplicates
-        surface = surface.sort_values('volume', ascending=False).drop_duplicates(['strike', 'dte']).sort_values(['dte', 'moneyness'])
-        
-        print(f"Surface built: {len(surface)} points across {surface['dte'].nunique()} maturities")
-        
-        return surface
-
-
-class BlackScholesModel:
-    """Black-Scholes model for benchmarking."""
-    
-    @staticmethod
-    def price(S, K, T, r, sigma, option_type='call'):
-        """BS price for European option."""
-        if T <= 0:
-            return max(S - K, 0) if option_type == 'call' else max(K - S, 0)
-        
-        d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        
-        if option_type == 'call':
-            return S * norm.cdf(d1) - K * np.exp(-r*T) * norm.cdf(d2)
-        else:
-            return K * np.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    
-    @staticmethod
-    def implied_vol(price, S, K, T, r, option_type='call'):
-        """Invert BS to get implied volatility."""
-        if price <= 0 or T <= 0:
-            return np.nan
-            
-        def objective(sigma):
-            return (BlackScholesModel.price(S, K, T, r, sigma, option_type) - price)**2
-        
-        try:
-            result = minimize_scalar(objective, bounds=(0.01, 3.0), method='bounded')
-            return result.x if result.success and result.fun < 1e-6 else np.nan
-        except:
-            return np.nan
-
-
-class MonteCarloOptionPricer:
-    """Monte Carlo pricing for options using stochastic vol models."""
-    
-    def __init__(self, spot: float, r: float = 0.05):
-        self.spot = spot
-        self.r = r
-        
-    def price_european(self, spot_paths: np.ndarray, strike: float, T: float, 
-                       option_type: str = 'call') -> float:
-        """
-        Price European option from spot paths.
-        
-        Args:
-            spot_paths: (n_paths, n_steps+1) array of spot prices
-            strike: Option strike
-            T: Time to maturity
-            option_type: 'call' or 'put'
-        """
-        S_T = spot_paths[:, -1]
-        
-        if option_type == 'call':
-            payoff = np.maximum(S_T - strike, 0)
-        else:
-            payoff = np.maximum(strike - S_T, 0)
-        
-        # Discounted expected payoff
-        return np.exp(-self.r * T) * np.mean(payoff)
-    
-    def compute_model_smile(self, spot_paths: np.ndarray, strikes: np.ndarray,
-                           T: float, option_types: list) -> np.ndarray:
-        """Compute implied vols for a set of strikes."""
-        ivs = []
-        
-        for K, opt_type in zip(strikes, option_types):
-            price = self.price_european(spot_paths, K, T, opt_type)
-            iv = BlackScholesModel.implied_vol(price, self.spot, K, T, self.r, opt_type)
-            ivs.append(iv)
-            
-        return np.array(ivs)
+from quant.calibration.bergomi_optimizer import BergomiOptimizer, calibrate_bergomi_to_smile
+from quant.mc_pricer import MonteCarloOptionPricer
+from utils.black_scholes import BlackScholes
 
 
 class VolatilitySurfaceVisualizer:
@@ -588,9 +417,9 @@ def run_full_calibration(use_cache: bool = False, optimize_bergomi: bool = True,
     print("\n   [2/3] Neural SDE (Loading trained model)...")
     
     try:
-        from ml.generative_trainer import GenerativeTrainer
-        from utils.data_loader import load_config
-        
+        from engine.generative_trainer import GenerativeTrainer
+        from utils.config import load_config
+
         cfg = load_config()
         config = {'n_steps': n_steps, 'T': T}
         
@@ -598,26 +427,26 @@ def run_full_calibration(use_cache: bool = False, optimize_bergomi: bool = True,
         trainer = GenerativeTrainer(config)
         model = trainer.run(n_epochs=50, batch_size=128)
         
-        # Generate variance paths
+        # Generate variance paths with properly scaled Brownian increments
         key, subkey = jax.random.split(key)
-        noise = jax.random.normal(subkey, (n_paths, n_steps))
+        dW_vol = jax.random.normal(subkey, (n_paths, n_steps)) * jnp.sqrt(dt)
         
         v0 = jnp.full(n_paths, atm_iv**2)
         var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
-            v0, noise, dt
+            v0, dW_vol, dt
         )
         var_paths = np.array(var_paths)
         
-        # Generate correlated spot
-        rho = -0.7
+        rho = cfg['bergomi']['rho']
+        r = cfg['pricing']['risk_free_rate']
         key, subkey = jax.random.split(key)
-        z_indep = jax.random.normal(subkey, (n_paths, n_steps))
-        z_indep = np.array(z_indep)
+        dW_perp = np.array(jax.random.normal(subkey, (n_paths, n_steps))) * np.sqrt(dt)
+        dW_spot = rho * np.array(dW_vol) + np.sqrt(1 - rho**2) * dW_perp
         
-        spot_noise = rho * np.array(noise) + np.sqrt(1 - rho**2) * z_indep
-        
-        vol_paths = np.sqrt(var_paths)
-        log_ret = (0.05 - 0.5 * var_paths) * dt + vol_paths * np.sqrt(dt) * spot_noise
+        v0_col = np.full((n_paths, 1), atm_iv**2)
+        var_prev = np.hstack([v0_col, var_paths[:, :-1]])
+        vol_paths = np.sqrt(var_prev)
+        log_ret = (r - 0.5 * var_prev) * dt + vol_paths * dW_spot
         log_s = np.cumsum(log_ret, axis=1)
         s_neural = spot * np.exp(np.hstack([np.zeros((n_paths, 1)), log_s]))
         

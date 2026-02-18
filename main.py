@@ -8,21 +8,16 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import jax
 import jax.numpy as jnp
 import numpy as np
-import yaml
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from ml.generative_trainer import GenerativeTrainer
+from engine.generative_trainer import GenerativeTrainer
 from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst_from_returns
 from core.bergomi import RoughBergomiModel
 from quant.pricing import DeepPricingEngine
 
-def load_config(config_path: str = "config/params.yaml") -> dict:
-    """Loads configuration from YAML file."""
-    with open(config_path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+from utils.config import load_config
 
 def main():
-    # Load configuration from YAML
     cfg = load_config()
     
     config = {
@@ -98,12 +93,12 @@ def main():
         print(f"   H (variogram) = {rv_results['H_variogram']:.4f}  (R² = {rv_results['R2_variogram']:.3f})")
         print(f"   H (struct q=1) = {rv_results['H_structure']:.4f}  (R² = {rv_results['R2_structure']:.3f})")
         if rv_results['H_variogram'] < 0.20:
-            print(f"   ✅ TRUE ROUGHNESS CONFIRMED: H = {rv_results['H_variogram']:.3f} < 0.20")
+            print(f"   [OK] TRUE ROUGHNESS CONFIRMED: H = {rv_results['H_variogram']:.3f} < 0.20")
         else:
-            print(f"   ⚠️  H = {rv_results['H_variogram']:.3f} — expected < 0.15 (check data/window)")
+            print(f"   [WARN] H = {rv_results['H_variogram']:.3f} - expected < 0.15 (check data/window)")
         print(f"   Note: VIX-based H ~ 0.5 is EXPECTED (30-day integration smooths roughness)")
     else:
-        print(f"   ⚠️  No SPX data found at {rv_source} — skipping true roughness check")
+        print(f"   [WARN] No SPX data found at {rv_source} - skipping true roughness check")
     print("-" * 30)
 
     print("\n--- 3. The Ultimate Pricing Test ---")

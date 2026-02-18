@@ -12,14 +12,16 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 import json
-from scipy.optimize import minimize
-from scipy.interpolate import interp1d
-
 # Add parent to path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.config import load_config
+from quant.calibration.hurst import (
+    estimate_hurst_variogram,
+    estimate_hurst_dma,
+    compute_realized_volatility,
+)
 
 
 class HighFrequencyAnalyzer:
@@ -50,96 +52,7 @@ class HighFrequencyAnalyzer:
         df = df.dropna()
         
         return df
-    
-    def estimate_hurst_variogram(self, returns: np.ndarray, max_lag: int = 100) -> tuple:
-        """
-        Estimate Hurst exponent using variogram method (preferred for rough volatility)
-        
-        For fBM: E[|X(t+h) - X(t)|^2] ~ h^(2H)
-        For rough volatility: log-variance increments follow this scaling
-        """
-        max_possible_lag = min(max_lag, len(returns) // 10)
-        if max_possible_lag < 5:
-            return np.nan, np.array([]), np.array([])
-            
-        lags = np.arange(1, max_possible_lag)
-        variogram = []
-        
-        for lag in lags:
-            # Compute squared increments at this lag
-            increments = returns[lag:] - returns[:-lag]
-            variogram.append(np.mean(increments**2))
-        
-        variogram = np.array(variogram)
-        
-        # Fit log-log regression: log(variogram) = 2H * log(lag) + const
-        log_lags = np.log(lags)
-        log_var = np.log(variogram + 1e-10)
-        
-        # Use all lags — small lags capture roughness, excluding them biases H upward
-        slope, intercept = np.polyfit(log_lags, log_var, 1)
-        H = slope / 2
-        
-        return H, lags, variogram
-    
-    def estimate_hurst_dma(self, returns: np.ndarray, min_scale: int = 10, max_scale: int = 500) -> tuple:
-        """
-        Detrended Moving Average (DMA) method for Hurst estimation
-        More robust for non-stationary financial data
-        """
-        scales = np.logspace(np.log10(min_scale), np.log10(min(max_scale, len(returns) // 4)), 20).astype(int)
-        scales = np.unique(scales)
-        
-        fluctuations = []
-        
-        cumsum = np.cumsum(returns - np.mean(returns))
-        
-        for scale in scales:
-            # Moving average
-            ma = pd.Series(cumsum).rolling(window=scale, center=True).mean().values
-            
-            # Remove NaN edges
-            valid = ~np.isnan(ma)
-            if np.sum(valid) < scale:
-                continue
-                
-            # Detrended series
-            detrended = cumsum[valid] - ma[valid]
-            
-            # RMS fluctuation
-            F = np.sqrt(np.mean(detrended**2))
-            fluctuations.append((scale, F))
-        
-        if len(fluctuations) < 5:
-            return np.nan, [], []
-            
-        scales_used = np.array([f[0] for f in fluctuations])
-        F_values = np.array([f[1] for f in fluctuations])
-        
-        # Log-log fit: log(F) = alpha * log(scale) + const
-        # For DMA on raw series: H = alpha - 0.5 (the cumsum adds 1 to scaling)
-        # For DMA on cumsum: H = alpha
-        # Since we cumsum the input, the raw slope = H + 0.5
-        slope, _ = np.polyfit(np.log(scales_used), np.log(F_values + 1e-10), 1)
-        H = slope - 0.5  # Correct for cumulative sum integration
-        
-        return H, scales_used, F_values
-    
-    def compute_realized_volatility(self, df: pd.DataFrame, window_points: int = None) -> pd.Series:
-        """Compute realized volatility over rolling windows"""
-        # Determine frequency from data
-        time_diff = (df.index[1] - df.index[0]).total_seconds() / 60
-        
-        # Use adaptive window: ~1 hour of data or minimum 6 points
-        if window_points is None:
-            window_points = max(6, int(60 / time_diff))
-        
-        # Annualization factor (252 trading days, ~6.5h per day)
-        annual_factor = np.sqrt(252 * 6.5 * 60 / time_diff)
-        
-        rv = df['log_return'].rolling(window=window_points).std() * annual_factor
-        return rv.dropna()
-    
+
     def analyze_spx(self):
         """Analyze SPX data at multiple frequencies"""
         print("=" * 60)
@@ -165,32 +78,28 @@ class HighFrequencyAnalyzer:
             print(f"   Points: {len(df):,}")
             print(f"   Trading days: ~{len(df) * int(freq) / (6.5 * 60):.0f}")
             
-            # Compute realized volatility
-            rv = self.compute_realized_volatility(df)
+            rv = compute_realized_volatility(df)
             log_rv = np.log(rv.values + 1e-6)
             
-            # Estimate H using variogram on log(RV)
-            H_var, lags, variogram = self.estimate_hurst_variogram(log_rv)
+            H_var, lags, variogram = estimate_hurst_variogram(log_rv)
+            H_dma, scales, fluct = estimate_hurst_dma(log_rv)
             
-            # Estimate H using DMA
-            H_dma, scales, fluct = self.estimate_hurst_dma(log_rv)
+            print(f"\n Realized Volatility stats:")
+            print(f"Mean RV: {rv.mean()*100:.1f}%")
+            print(f"Std RV:  {rv.std()*100:.1f}%")
+            print(f"Min RV:  {rv.min()*100:.1f}%")
+            print(f"Max RV:  {rv.max()*100:.1f}%")
             
-            print(f"\n   Realized Volatility stats:")
-            print(f"      Mean RV: {rv.mean()*100:.1f}%")
-            print(f"      Std RV:  {rv.std()*100:.1f}%")
-            print(f"      Min RV:  {rv.min()*100:.1f}%")
-            print(f"      Max RV:  {rv.max()*100:.1f}%")
-            
-            print(f"\n   Hurst Exponent Estimation:")
-            print(f"      Variogram method: H = {H_var:.3f}")
-            print(f"      DMA method:       H = {H_dma:.3f}")
+            print(f"\nHurst Exponent Estimation:")
+            print(f"Variogram method: H = {H_var:.3f}")
+            print(f"DMA method:  H = {H_dma:.3f}")
             
             if H_var < 0.2:
-                print(f"      ✅ ROUGH VOLATILITY CONFIRMED (H_var = {H_var:.3f} < 0.2)")
+                print(f"ROUGH VOLATILITY CONFIRMED (H_var = {H_var:.3f} < 0.2)")
             elif H_var < 0.5:
-                print(f"      ⚠️  Sub-diffusive (H_var = {H_var:.3f} < 0.5) but not rough in Gatheral sense (needs H < 0.2)")
+                print(f"Sub-diffusive (H_var = {H_var:.3f} < 0.5) but not rough in Gatheral sense (needs H < 0.2)")
             else:
-                print(f"      ❌ Not rough (H_var = {H_var:.3f} >= 0.5)")
+                print(f"Not rough (H_var = {H_var:.3f} >= 0.5)")
             
             results[f'spx_{freq}min'] = {
                 'H_variogram': float(H_var),
@@ -231,9 +140,8 @@ class HighFrequencyAnalyzer:
             vix_values = df['close'].values
             log_vix = np.log(vix_values)
             
-            # Estimate H on log(VIX)
-            H_var, _, _ = self.estimate_hurst_variogram(log_vix)
-            H_dma, _, _ = self.estimate_hurst_dma(log_vix)
+            H_var, _, _ = estimate_hurst_variogram(log_vix)
+            H_dma, _, _ = estimate_hurst_dma(log_vix)
             
             print(f"\n   VIX stats:")
             print(f"      Mean VIX: {vix_values.mean():.1f}")
@@ -353,8 +261,8 @@ class HighFrequencyAnalyzer:
         else:
             eta_optimal = 2.0
         
-        # ρ (correlation) - typically -0.7 to -0.9 for equity indices
-        rho_optimal = -0.75
+        # ρ: use config value (calibrated from SPX-VIX data), fallback -0.75
+        rho_optimal = self.cfg.get('bergomi', {}).get('rho', -0.75)
         
         params = {
             'H': float(H_optimal),
@@ -409,7 +317,7 @@ def compare_with_previous():
     data_dir = Path("data")
     
     # Load previous calibration
-    prev_path = data_dir / "calibration_report.json"
+    prev_path = Path("outputs/calibration_report.json")
     if prev_path.exists():
         with open(prev_path) as f:
             prev = json.load(f)
@@ -424,19 +332,3 @@ def compare_with_previous():
         print(f"      η = {prev_bergomi.get('eta', 'N/A')}")
         print(f"      ρ = {prev_bergomi.get('rho', 'N/A')}")
         print(f"      RMSE = {prev_bergomi.get('rmse', 'N/A')}")
-
-
-if __name__ == "__main__":
-    analyzer = HighFrequencyAnalyzer(data_dir="data")
-    optimal = analyzer.run_full_analysis()
-    compare_with_previous()
-    
-    print("\n" + "=" * 60)
-    print("📋 SUMMARY - USE THESE PARAMETERS FOR BERGOMI")
-    print("=" * 60)
-    print(f"""
-    H   = {optimal['H']:.3f}   # From SPX realized volatility
-    η   = {optimal['eta']:.2f}    # From VIX volatility  
-    ρ   = {optimal['rho']:.2f}   # Equity index typical
-    ξ₀  = {optimal['xi_0']:.4f}  # From current VIX
-    """)

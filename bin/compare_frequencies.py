@@ -2,25 +2,29 @@ import sys as _sys
 if _sys.stdout.encoding != 'utf-8':
     _sys.stdout.reconfigure(encoding='utf-8'); _sys.stderr.reconfigure(encoding='utf-8')
 
+import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 """
 Frequency Comparison Script
 ===========================
-Compare VIX data at different frequencies (5, 15, 30 min) 
+Compare VIX data at different frequencies (5, 15, 30 min)
 for TRAINING quality (distribution matching, signature richness).
 
-IMPORTANT: Hurst roughness is NOT measured on VIX (smoothed, H≈0.5).
-True roughness (H≈0.1) is measured separately on realized vol from SPX returns.
+IMPORTANT: Hurst roughness is NOT measured on VIX (smoothed, H~0.5).
+True roughness (H~0.1) is measured separately on realized vol from SPX returns.
 """
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import os
-import yaml
-from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader, load_config
+from utils.config import load_config
+from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
 from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst, estimate_hurst_from_returns
-from ml.generative_trainer import GenerativeTrainer
-from ml.signature_engine import SignatureFeatureExtractor
+from engine.generative_trainer import GenerativeTrainer
+from engine.signature_engine import SignatureFeatureExtractor
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -77,7 +81,7 @@ def analyze_frequency(file_path: str, freq_name: str, segment_length: int = 13):
         print(f"\n  Statistics for {freq_name}:")
         print(f"     Paths: {stats['n_paths']} x {stats['path_length']} steps")
         print(f"     Mean Variance: {stats['mean']:.5f}")
-        print(f"     Path H: {stats['hurst']:.3f}  [VIX path H — NOT a roughness test]")
+        print(f"     Path H: {stats['hurst']:.3f}  [VIX path H - NOT a roughness test]")
         print(f"     ACF (Lag 1): {stats['acf_lag1']:.3f}")
         print(f"     Excess Kurtosis: {stats['kurtosis']:.2f}")
         
@@ -111,8 +115,8 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     paths_jax = jnp.array(paths)
     target_sigs = sig_extractor.get_signature(paths_jax)
     
-    from ml.neural_sde import NeuralRoughSimulator
-    from ml.losses import signature_mmd_loss
+    from engine.neural_sde import NeuralRoughSimulator
+    from engine.losses import signature_mmd_loss
     import optax
     import equinox as eqx
     
@@ -181,21 +185,16 @@ def main():
     
     results = {}
     
-    # ── Part 1: VIX training quality at different frequencies ──
-    print("\n" + "─"*70)
+    # Part 1: VIX training quality at different frequencies
+    print("\n" + "-"*70)
     print("PART 1: VIX Training Data Quality by Frequency")
-    print("   (For Q-measure calibration — NOT for roughness)")
-    print("─"*70)
-    
-    # Analyze each frequency with appropriate segment lengths
-    # 5min: more points per day (~78), can use longer segments
-    # 15min: ~26 points per day
-    # 30min: ~13 points per day
+    print("   (For Q-measure calibration - NOT for roughness)")
+    print("-"*70)
     
     segment_configs = {
-        '5min': 20,   # ~1.5 hours of 5-min data
-        '15min': 15,  # ~4 hours of 15-min data  
-        '30min': 13,  # ~6.5 hours of 30-min data (1 trading day)
+        '5min': 20,
+        '15min': 15,
+        '30min': 13,
     }
     
     for freq_name, file_path in VIX_FILES.items():
@@ -204,8 +203,6 @@ def main():
         if result:
             stats, paths = result
             results[freq_name] = stats
-            
-            # Quick training comparison
             quick_train_test(paths, freq_name, n_epochs=50)
     
     # Summary comparison
@@ -218,35 +215,28 @@ def main():
     for freq, stats in results.items():
         print(f"{freq:<12} {stats['n_paths']:<10} {stats['hurst']:.3f}        {stats['acf_lag1']:.3f}     {stats['kurtosis']:.2f}")
     
-    # ── Part 2: TRUE ROUGHNESS from SPX returns ──
-    print("\n" + "─"*70)
+    # Part 2: TRUE ROUGHNESS from SPX returns
+    print("\n" + "-"*70)
     print("PART 2: TRUE ROUGHNESS from S&P 500 Returns (Daily RV)")
-    print("   Gatheral et al. (2018): H ≈ 0.05-0.14 on realized vol")
-    print("─"*70)
+    print("   Gatheral et al. (2018): H ~ 0.05-0.14 on realized vol")
+    print("-"*70)
     
     for freq_name, spx_file in SPX_FILES.items():
         if os.path.exists(spx_file):
             rv_result = estimate_hurst_from_returns(spx_file)
-            print(f"\n   SPX {freq_name} → Daily RV:")
+            print(f"\n   SPX {freq_name} -> Daily RV:")
             print(f"      {rv_result['n_rv_points']} trading days")
-            print(f"      H (variogram) = {rv_result['H_variogram']:.4f}  (R² = {rv_result['R2_variogram']:.3f})")
-            print(f"      H (struct q=1) = {rv_result['H_structure']:.4f}  (R² = {rv_result['R2_structure']:.3f})")
+            print(f"      H (variogram) = {rv_result['H_variogram']:.4f}  (R2 = {rv_result['R2_variogram']:.3f})")
+            print(f"      H (struct q=1) = {rv_result['H_structure']:.4f}  (R2 = {rv_result['R2_structure']:.3f})")
             if rv_result['H_variogram'] < 0.2:
-                print(f"      ✅ ROUGH — H = {rv_result['H_variogram']:.3f}")
+                print(f"      ROUGH - H = {rv_result['H_variogram']:.3f}")
         else:
             print(f"   SPX {freq_name}: file not found ({spx_file})")
     
-    # Recommendation
-    print("\n" + "="*70)
-    print("   RECOMMENDATION")
-    print("="*70)
-    
-    # Best VIX freq = most paths & richest signal
     if results:
         best_freq = max(results.keys(), key=lambda k: results[k]['n_paths'])
-        print(f"   Training: Use {best_freq} VIX data ({results[best_freq]['n_paths']} paths)")
-        print(f"   Roughness: Verified on SPX realized vol (H ≈ 0.1)")
-        print(f"   Note: VIX path H ≈ 0.5 is EXPECTED (30-day smoothing)")
+        print(f"\n   Training: Use {best_freq} VIX data ({results[best_freq]['n_paths']} paths)")
+        print(f"   Roughness: Verified on SPX realized vol (H ~ 0.1)")
     print("="*70)
 
 

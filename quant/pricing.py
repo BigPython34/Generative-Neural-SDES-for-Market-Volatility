@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-from ml.generative_trainer import GenerativeTrainer
+from engine.generative_trainer import GenerativeTrainer
 from utils.config import load_config
 
 class DeepPricingEngine:
@@ -49,9 +49,10 @@ class DeepPricingEngine:
         # noise_vol is already dW_vol = sqrt(dt)*Z, so spot_driver has correct scaling
         spot_driver = rho * noise_vol + jnp.sqrt(1 - rho**2) * z_spot_indep * jnp.sqrt(dt)
         
-        # Use *previsible* variance: V_{k-1} at each step to avoid
-        # adaptedness bias (V_k depends on same noise as spot driver)
-        v0_col = jnp.full((n_paths, 1), jnp.mean(v0_samples))
+        # Use *previsible* variance V_{k-1} at each step to avoid
+        # adaptedness bias (V_k depends on same noise as spot driver).
+        # Per-path v0 preserves the heterogeneity of initial conditions.
+        v0_col = v0_samples.reshape(-1, 1)
         var_prev = jnp.concatenate([v0_col, var_paths[:, :-1]], axis=1)
 
         vol_paths = jnp.sqrt(var_prev)

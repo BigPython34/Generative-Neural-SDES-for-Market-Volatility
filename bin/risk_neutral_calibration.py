@@ -25,8 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from ml.neural_sde import NeuralRoughSimulator
-from ml.signature_engine import SignatureFeatureExtractor
+from engine.neural_sde import NeuralRoughSimulator
+from engine.signature_engine import SignatureFeatureExtractor
 from utils.black_scholes import BlackScholes
 import yaml
 
@@ -45,13 +45,13 @@ class RiskNeutralNeuralSDE:
         self.n_steps = n_steps
         self.sig_depth = sig_depth
         
-        # Load config for consistent dt
         with open('config/params.yaml', 'r', encoding='utf-8') as f:
             self.yaml_config = yaml.safe_load(f)
         
+        self.r = self.yaml_config['pricing']['risk_free_rate']
+        
         if use_trained:
-            # Load the trained model from disk (don't retrain!)
-            from ml.generative_trainer import GenerativeTrainer
+            from engine.generative_trainer import GenerativeTrainer
             
             config = {'n_steps': n_steps}
             trainer = GenerativeTrainer(config)
@@ -64,7 +64,6 @@ class RiskNeutralNeuralSDE:
                 self.model = trainer.run(n_epochs=100, batch_size=128)
             self.sig_engine = trainer.sig_extractor
         else:
-            # Initialize signature engine with real dt
             T = self.yaml_config['simulation']['T']
             dt = T / n_steps
             self.sig_engine = SignatureFeatureExtractor(truncation_order=sig_depth, dt=dt)
@@ -77,42 +76,43 @@ class RiskNeutralNeuralSDE:
                        rho: float, n_paths: int, key) -> np.ndarray:
         """Generate spot paths using Neural SDE variance dynamics."""
         dt = T / self.n_steps
+        r = self.r
         
-        # Generate Brownian increments with proper scaling: dW = sqrt(dt) * Z
         key, subkey = jax.random.split(key)
         dW = jax.random.normal(subkey, (n_paths, self.n_steps)) * jnp.sqrt(dt)
         
-        # Generate variance paths
         v0_arr = jnp.full(n_paths, v0)
         var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
             v0_arr, dW, dt
         )
         var_paths = jnp.clip(var_paths, 1e-6, 5.0)
         
-        # Correlated spot noise (also properly scaled)
         key, subkey = jax.random.split(key)
         z_indep = jax.random.normal(subkey, (n_paths, self.n_steps)) * jnp.sqrt(dt)
         spot_dW = rho * dW + jnp.sqrt(1 - rho**2) * z_indep
         
-        # Simulate spot: dS/S = r*dt + sqrt(V)*dW_S
-        vol_paths = jnp.sqrt(var_paths)
-        log_ret = -0.5 * var_paths * dt + vol_paths * spot_dW
+        # Risk-neutral spot: dS/S = r*dt + sqrt(V)*dW_S
+        # Previsible variance for adaptedness
+        v0_col = jnp.full((n_paths, 1), v0)
+        var_prev = jnp.concatenate([v0_col, var_paths[:, :-1]], axis=1)
+        vol_paths = jnp.sqrt(var_prev)
+        log_ret = (r - 0.5 * var_prev) * dt + vol_paths * spot_dW
         log_s = jnp.cumsum(log_ret, axis=1)
         S_T = spot * jnp.exp(log_s[:, -1])
         
         return np.array(S_T)
     
-    def price_option(self, S_T: np.ndarray, K: float, opt_type: str) -> float:
-        """Price option from terminal spot distribution"""
+    def price_option(self, S_T: np.ndarray, K: float, T: float, opt_type: str) -> float:
+        """Price option from terminal spot distribution with discounting."""
         if opt_type == 'call':
             payoffs = np.maximum(S_T - K, 0)
         else:
             payoffs = np.maximum(K - S_T, 0)
-        return float(np.mean(payoffs))
+        return float(np.exp(-self.r * T) * np.mean(payoffs))
     
     def bs_iv(self, price: float, spot: float, K: float, T: float, opt_type: str) -> float:
         """Extract IV from price using shared BS utilities."""
-        return BlackScholes.implied_vol(price, spot, K, T, r=0.0, opt_type=opt_type)
+        return BlackScholes.implied_vol(price, spot, K, T, r=self.r, opt_type=opt_type)
     
     def compute_model_ivs(self, model, spot: float, v0: float, T: float,
                          strikes: np.ndarray, types: list, rho: float,
@@ -123,7 +123,7 @@ class RiskNeutralNeuralSDE:
         
         ivs = []
         for K, opt_type in zip(strikes, types):
-            price = self.price_option(S_T, K, opt_type)
+            price = self.price_option(S_T, K, T, opt_type)
             iv = self.bs_iv(price, spot, K, T, opt_type)
             ivs.append(iv)
         
@@ -253,11 +253,12 @@ def main():
     
     # Calibrate
     calibrator = RiskNeutralNeuralSDE(n_steps=20, sig_depth=3)
+    cfg = calibrator.yaml_config
     results = calibrator.calibrate(
         smile, spot, T, 
-        rho=-0.7, 
+        rho=cfg['bergomi']['rho'], 
         n_epochs=50, 
-        n_paths=20000
+        n_paths=cfg.get('pricing', {}).get('n_mc_paths', 20000)
     )
     
     # Plot

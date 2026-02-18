@@ -25,7 +25,6 @@ Key fixes vs previous version:
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
@@ -40,7 +39,7 @@ from quant.options_cache import OptionsDataCache
 from core.bergomi import RoughBergomiModel
 from utils.black_scholes import BlackScholes
 from utils.config import load_config
-from ml.generative_trainer import GenerativeTrainer
+from engine.generative_trainer import GenerativeTrainer
 
 
 # ===================================================================
@@ -51,28 +50,52 @@ def load_vix_term_structure() -> dict:
     """
     Load VIX futures term structure from CBOE data.
     Returns  {dte_days: last_known_close}  for interpolation.
+    Prefers vix_futures_all.csv (source of truth), falls back to vix_*_front / vix_futures_*.
     """
     base = "data/cboe_vix_futures_full"
     ts = {}
 
-    for months, fname in [(1, "vix_1m_front.csv"),
-                          (2, "vix_2m_front.csv"),
-                          (3, "vix_3m_front.csv")]:
+    # 1) Try vix_futures_all.csv (canonical source)
+    all_path = os.path.join(base, "vix_futures_all.csv")
+    if os.path.exists(all_path):
+        df = pd.read_csv(all_path)
+        if "Futures" in df.columns:
+            df["expiration_date"] = pd.to_datetime(
+                df["Futures"].str.extract(r"\((.*?)\)")[0], format="%b %Y", errors="coerce"
+            )
+        df = df.dropna(subset=["expiration_date"])
+        last_date = df["Trade Date"].max()
+        last_group = df[df["Trade Date"] == last_date].sort_values("expiration_date")
+        price_col = next((c for c in ["Close", "close", "Settle", "settle"]
+                         if c in last_group.columns), None)
+        if price_col:
+            for i, dte in enumerate([30, 60, 90]):
+                if i < len(last_group):
+                    val = last_group.iloc[i][price_col]
+                    if pd.notna(val) and val > 0:
+                        ts[dte] = float(val)
+        if ts:
+            return ts
+
+    # 2) Fallback: vix_1m_front / vix_futures_front_month etc.
+    fallbacks = [
+        (30, "vix_1m_front.csv"), (30, "vix_futures_front_month.csv"),
+        (60, "vix_2m_front.csv"), (60, "vix_futures_2M.csv"),
+        (90, "vix_3m_front.csv"), (90, "vix_futures_3M.csv"),
+    ]
+    for dte, fname in fallbacks:
+        if dte in ts:
+            continue
         path = os.path.join(base, fname)
         if not os.path.exists(path):
             continue
         df = pd.read_csv(path)
-        # Pick best price column
-        price_col = None
-        for c in ['close', 'Close', 'settle', 'Settle']:
-            if c in df.columns and df[c].replace(0, np.nan).dropna().shape[0] > 0:
-                price_col = c
-                break
-        if price_col is None:
-            continue
-        vals = df[price_col].replace(0, np.nan).dropna()
-        if len(vals) > 0:
-            ts[months * 30] = float(vals.iloc[-1])
+        price_col = next((c for c in ["close", "Close", "settle", "Settle"]
+                         if c in df.columns and df[c].replace(0, np.nan).dropna().shape[0] > 0), None)
+        if price_col:
+            vals = df[price_col].replace(0, np.nan).dropna()
+            if len(vals) > 0:
+                ts[dte] = float(vals.iloc[-1])
 
     return ts
 
@@ -184,7 +207,8 @@ class HistoricalBacktester:
         the OU prior (kappa*(theta-x)*dt) and neural correction (f(sig)*dt)
         were learned at that exact time scale.
 
-        For maturities > T_train:  chain multiple 120-step blocks.
+        For maturities > T_train:  chain multiple 120-step blocks, carrying
+        the signature state across blocks (Chevyrev & Kormilitzin, 2016).
         For maturities < T_train:  use only the first portion.
         """
         import jax
@@ -195,7 +219,6 @@ class HistoricalBacktester:
         train_T = sim_cfg['T']            # 0.01832
         train_dt = train_T / train_n
 
-        # How many blocks of 120 steps for target maturity?
         n_blocks = max(1, int(np.ceil(T_target / train_T)))
         total_steps = n_blocks * train_n
 
@@ -204,43 +227,57 @@ class HistoricalBacktester:
 
         v0_arr = jnp.full(n_mc, atm_vol ** 2)
 
-        # Generate variance in blocks (carry final variance forward)
         if n_blocks == 1:
             var_paths = jax.vmap(
                 neural_model.generate_variance_path, in_axes=(0, 0, None)
             )(v0_arr, dW_vol, train_dt)
         else:
+            # Chain blocks while propagating signature state to preserve
+            # the non-Markovian memory across block boundaries.
+            d = 2
+            sig_state = (
+                jnp.zeros((n_mc, d)),
+                jnp.zeros((n_mc, d ** 2)),
+                jnp.zeros((n_mc, d ** 3)),
+            )
+
             all_var = []
             v_init = v0_arr
             for b in range(n_blocks):
                 dW_block = dW_vol[:, b * train_n:(b + 1) * train_n]
-                var_block = jax.vmap(
-                    neural_model.generate_variance_path, in_axes=(0, 0, None)
-                )(v_init, dW_block, train_dt)
+
+                def _gen_with_state(v0_i, dw_i, s1_i, s2_i, s3_i):
+                    return neural_model.generate_variance_path_with_state(
+                        v0_i, dw_i, train_dt, init_sig_state=(s1_i, s2_i, s3_i)
+                    )
+
+                var_block, new_sig = jax.vmap(
+                    _gen_with_state, in_axes=(0, 0, 0, 0, 0)
+                )(v_init, dW_block, sig_state[0], sig_state[1], sig_state[2])
+
                 all_var.append(var_block)
                 v_init = var_block[:, -1]
+                sig_state = new_sig
+
             var_paths = jnp.concatenate(all_var, axis=1)
 
         var_paths = jnp.clip(var_paths, 1e-6, 5.0)
 
-        # Select the first n_pricing_steps that cover T_target
         n_price = int(round(T_target / train_dt))
         n_price = max(1, min(n_price, var_paths.shape[1]))
         var_pricing = var_paths[:, :n_price]
 
-        # Exact dt for spot integration (to hit T_target exactly)
-        dt_spot = T_target / n_price
+        # Use train_dt consistently for both vol and spot noise to avoid
+        # correlation bias from mismatched scaling.
         dW_vol_price = dW_vol[:, :n_price]
-
-        z_indep = jax.random.normal(sk_spot, (n_mc, n_price)) * jnp.sqrt(dt_spot)
+        z_indep = jax.random.normal(sk_spot, (n_mc, n_price)) * jnp.sqrt(train_dt)
         dw_spot = rho * dW_vol_price + jnp.sqrt(1 - rho**2) * z_indep
 
-        # Use *previsible* variance V_{k-1} (V_k depends on same noise Z_k)
         v0_col = jnp.full((n_mc, 1), float(atm_vol) ** 2)
         var_prev = jnp.concatenate([v0_col, var_pricing[:, :-1]], axis=1)
 
         vol_paths = jnp.sqrt(var_prev)
-        log_ret = (self.r - 0.5 * var_prev) * dt_spot + vol_paths * dw_spot
+        log_ret = (self.r - 0.5 * var_prev) * train_dt + vol_paths * dw_spot
         S_T = float(spot) * jnp.exp(jnp.sum(log_ret, axis=1))
 
         return np.array(S_T)
@@ -249,7 +286,8 @@ class HistoricalBacktester:
     #  Main backtest loop
     # ---------------------------------------------------------------
     def run_real_backtest(self, target_dtes: list = None,
-                         n_mc: int = None) -> pd.DataFrame:
+                         n_mc: int = None,
+                         date_range: tuple = None) -> pd.DataFrame:
         bt_cfg = self.cfg['backtesting']
         if target_dtes is None:
             target_dtes = [7, 17, 31, 45]
@@ -265,6 +303,21 @@ class HistoricalBacktester:
             return pd.DataFrame()
 
         snapshots = snapshots_df.to_dict('records')
+
+        # Optional date filter for walk-forward
+        if date_range is not None:
+            start_d, end_d = date_range
+            def in_range(r):
+                try:
+                    dt = pd.to_datetime(r.get('datetime', r.get('timestamp', ''))).date()
+                    return start_d <= dt <= end_d
+                except Exception:
+                    return False
+            snapshots = [s for s in snapshots if in_range(s)]
+            if not snapshots:
+                print(f"No snapshots in date range {start_d} to {end_d}")
+                return pd.DataFrame()
+
         print(f"\n{'='*70}")
         print(f"   REAL OPTIONS BACKTEST")
         print(f"   {len(snapshots)} snapshots x {len(target_dtes)} maturities  |  MC={n_mc}")
@@ -312,7 +365,7 @@ class HistoricalBacktester:
             print(f"\n--- Snapshot {snap_idx+1}/{len(snapshots)}: "
                   f"Spot=${spot:.2f} ({snap_time}) ---")
 
-            fpath = os.path.join("data/options_cache", snapshot['filename'])
+            fpath = os.path.join(self.cache.cache_dir, snapshot['filename'])
             surface = (pd.read_parquet(fpath) if fpath.endswith('.parquet')
                        else pd.read_csv(fpath))
 
@@ -653,7 +706,3 @@ def run_backtest():
         bt.save_results()
 
     return results
-
-
-if __name__ == "__main__":
-    run_backtest()

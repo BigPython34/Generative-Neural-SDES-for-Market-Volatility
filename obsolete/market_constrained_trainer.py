@@ -18,11 +18,12 @@ import optax
 import json
 from pathlib import Path
 import sys
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ml.neural_sde import NeuralRoughSimulator
 from ml.signature_engine import SignatureFeatureExtractor
-from ml.generative_trainer import GenerativeTrainer, load_config
+from ml.generative_trainer import GenerativeTrainer
+from utils.config import load_config
 
 
 class MarketConstrainedTrainer:

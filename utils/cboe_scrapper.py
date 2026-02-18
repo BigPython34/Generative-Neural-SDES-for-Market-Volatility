@@ -8,7 +8,7 @@ import io
 # ------------------------------
 # Configuration
 # ------------------------------
-OUTPUT_DIR = "cboe_vix_futures_full"
+OUTPUT_DIR = "../data/cboe_vix_futures_full"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Expiration dates à partir de 2013

@@ -1,13 +1,9 @@
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-import yaml
 import os
 
-def load_config(config_path: str = "config/params.yaml") -> dict:
-    """Loads configuration from YAML file."""
-    with open(config_path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+from utils.config import load_config
 
 
 class RealizedVolatilityLoader:
@@ -130,8 +126,12 @@ class RealizedVolatilityLoader:
                 continue
             
             # Rolling Realized Variance: RV = sum(r^2) over window
-            # Annualized: multiply by (252 * bars_per_day) to get annual variance
-            annualize_factor = 252 * self.bars_per_day
+            # Annualization: each squared return r_i^2 has E[r_i^2] = sigma^2 * dt_bar
+            # where dt_bar = 1 / (252 * bars_per_day) in years.
+            # sum_{i in window} r_i^2 ≈ sigma^2 * rv_window * dt_bar
+            # To annualize: multiply by (252 * bars_per_day / rv_window)
+            # Reference: Andersen & Bollerslev (1998), Barndorff-Nielsen & Shephard (2002)
+            annualize_factor = 252 * self.bars_per_day / rv_window
             seg_data['realized_var'] = seg_data['log_return'].rolling(window=rv_window).apply(
                 lambda x: np.sum(x**2) * annualize_factor, raw=True
             )
