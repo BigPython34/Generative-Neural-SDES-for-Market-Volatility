@@ -22,6 +22,7 @@ import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.config import load_config
 
 
 # ---------------------------------------------------------
@@ -174,15 +175,20 @@ def run_diagnostic():
     print("=" * 70)
     
     results = {}
+    cfg = load_config()
+    vix_files_cfg = cfg['data'].get('vix_files', {})
+    spx_files_cfg = cfg['data'].get('spx_files', {})
     
     # -- A. VIX (smoothed, integrated) --------------------------
     print("\n" + "-" * 60)
     print("A. VIX Index (30-day implied vol — SMOOTHED quantity)")
     print("-" * 60)
     
-    for freq, fname in [("5min", "data/TVC_VIX, 5.csv"), 
-                        ("15min", "data/TVC_VIX, 15.csv"),
-                        ("30min", "data/TVC_VIX, 30.csv")]:
+    for freq, fname in [
+        ("5min", vix_files_cfg.get(5, "data/market/vix/vix_5m.csv")),
+        ("15min", vix_files_cfg.get(15, "data/market/vix/vix_15m.csv")),
+        ("30min", vix_files_cfg.get(30, "data/market/vix/vix_30m.csv")),
+    ]:
         if not Path(fname).exists():
             print(f"   [{freq}] File not found: {fname}")
             continue
@@ -213,8 +219,8 @@ def run_diagnostic():
     print("-" * 60)
     
     for freq, fname in [
-        ("5min",  "data/SP_SPX, 5.csv"),
-        ("30min", "data/SP_SPX, 30.csv"),
+        ("5min", spx_files_cfg.get(5, "data/market/spx/spx_5m.csv")),
+        ("30min", spx_files_cfg.get(30, "data/market/spx/spx_30m.csv")),
     ]:
         if not Path(fname).exists():
             print(f"   [{freq}] File not found: {fname}")
@@ -261,7 +267,7 @@ def run_diagnostic():
     print("   Testing H stability across different max lags")
     
     # Use 30-min SPX data (most points)
-    fname_30m = "data/SP_SPX, 30.csv"
+    fname_30m = spx_files_cfg.get(30, "data/market/spx/spx_30m.csv")
     if Path(fname_30m).exists():
         df30 = pd.read_csv(fname_30m)
         rv_daily = compute_daily_rv(df30)

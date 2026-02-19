@@ -5,19 +5,23 @@
 # Data Configuration
 data:
   # VIX sources (for training in Q-measure)
-  source: "data/TVC_VIX, 15.csv"       # VIX 15min for IV training (Q-measure)
+  source: "data/market/vix/vix_15m.csv"       # VIX 15min for IV training (Q-measure)
   vix_files:
-    5:  "data/TVC_VIX, 5.csv"
-    10: "data/TVC_VIX, 10.csv"
-    15: "data/TVC_VIX, 15.csv"
-    30: "data/TVC_VIX, 30.csv"
+    5:  "data/market/vix/vix_5m.csv"
+    10: "data/market/vix/vix_10m.csv"
+    15: "data/market/vix/vix_15m.csv"
+    30: "data/market/vix/vix_30m.csv"
   # SPX sources (for P-measure roughness / realized vol)
-  rv_source: "data/SP_SPX, 5.csv"
+  rv_source: "data/market/spx/spx_5m.csv"
   spx_files:
-    5:  "data/SP_SPX, 5.csv"
-    30: "data/SP_SPX, 30.csv"
+    5:  "data/market/spx/spx_5m.csv"
+    30: "data/market/spx/spx_30m.csv"
   # Historical S&P 500 daily (for pricing benchmarks)
-  spx_daily: "data/data_^GSPC_2010-01-01_2023-01-01.csv"
+  spx_daily: "data/market/spx/spx_daily_2010_latest.csv"
+  # VVIX (vol-of-vol) for eta calibration
+  vvix_source: "data/market/vvix/vvix_daily.csv"
+  # Risk-free rates
+  sofr_source: "data/rates/sofr_daily_nyfed.csv"
   data_type: "vix"                      # 'realized_vol' or 'vix'
   segment_length: 120                   # Path length for training (~4.6 trading days at 15min)
   stride_ratio: 0.5                     # 50% overlap between paths
@@ -30,64 +34,58 @@ data:
 
 # Model Training
 training:
-  n_epochs: 500
+  n_epochs: 100
   batch_size: 256
-  learning_rate_init: 0.001             # 1e-3
-  learning_rate_final: 0.00001          # 1e-5
-  decay_steps: 500                      # Match n_epochs for full cosine decay utilization
+  learning_rate_init: 0.001
+  learning_rate_final: 0.00001
+  decay_steps: 500
   gradient_clip: 1.0
-  lambda_mean: 10.0                     # Weight for mean penalty loss
-  warmup_steps: 50                      # Linear LR warmup (stabilizes early signature feedback)
-  validation_split: 0.15                # Fraction of data held out for validation
-  early_stopping_patience: 50           # Epochs without improvement before stopping
-  # Mean penalty mode:
-  #   "global"   — single scalar E[V] matching (fast, default)
-  #   "marginal" — per-step E[V_t] matching (tighter Jensen correction,
-  #                Bayer & Stemper 2018)
-  mean_penalty_mode: "global"
+  lambda_mean: 10.0
+  warmup_steps: 50
+  validation_split: 0.15
+  early_stopping_patience: 50
+  mean_penalty_mode: "global"           # "global" or "marginal" (Bayer & Stemper 2018)
+  # Q-measure specific
+  q_measure:
+    lambda_martingale: 5.0              # Weight for martingale violation loss
+    lambda_smile: 1.0                   # Weight for smile fitting loss
+    lambda_jump_reg: 0.1                # Weight for jump regularization
 
 # Neural SDE Architecture
 neural_sde:
   sig_truncation_order: 3
   mlp_width: 64
   mlp_depth: 3
-  drift_scale: 0.5                      # Constraints neural drift authority
+  drift_scale: 0.5
   diffusion_min: 0.1
   diffusion_max: 1.6
-  learn_ou_params: true                 # Allow kappa/theta to be learned during training
-  # Physical Prior (Ornstein-Uhlenbeck) — initial values, learnable if above is true
-  kappa: 2.72                           # Mean-reversion speed (from VIX futures calibration)
-  theta: -3.5                           # Long-term log-variance target (exp(-3.5) ~ 0.03 ~ 17% vol)
-  # Log-variance clipping bounds (configurable)
-  # Default: [-7, 2] → variance in [~0.001, ~7.4] (vol ~3% to ~272%)
-  # Wider than previous [-5, 1] to avoid truncating tails in extreme regimes.
-  # For equity VIX: [-7, 2] covers VIX ∈ [3%, 272%], sufficient for all
-  # historical regimes including 2008 crisis (VIX ~80%) and COVID (VIX ~82%).
+  learn_ou_params: true
+  # OU prior
+  kappa: 2.72
+  theta: -3.5
+  # Log-variance clipping
   log_v_clip_min: -7.0
   log_v_clip_max: 2.0
+  # Jump-diffusion (Merton 1976)
+  jumps:
+    lambda_init: 2.0                    # Initial jump intensity (jumps/year)
+    mu_j_init: 0.5                      # Mean jump size in log-variance
+    sigma_j_init: 0.3                   # Jump size volatility
 
 # Simulation Configuration
 simulation:
-  n_steps: 120                          # Match segment_length for consistency
-  T: 0.01832                            # Real horizon: 120 bars * 15min / (252 * 6.5h * 60min) years ≈ 4.6 days
-  n_paths: 5000                         # Monte Carlo paths
-  bars_per_day: 26                      # 6.5 trading hours / 15 min
-  bar_interval_min: 15                  # VIX bar interval in minutes
+  n_steps: 120
+  T: 0.01832                            # ~4.6 trading days at 15-min bars
+  n_paths: 5000
+  bars_per_day: 26
+  bar_interval_min: 15
 
 # Rough Bergomi Benchmark
 bergomi:
-  hurst: 0.07                           # Roughness (H < 0.15 for rough regime)
-  eta: 1.9                              # Vol-of-vol
-  rho: -0.7                             # Spot-vol correlation (leverage)
-  xi0: 0.0225                           # Initial forward variance (VIX~15% → 0.15²)
-  # fBM simulation method:
-  #   "volterra"      — Riemann-Liouville fBM via discretized Volterra kernel (default).
-  #                      Correct for rBergomi (Bayer, Friz & Gatheral 2016).
-  #                      Exact spot-vol correlation. O(N²) memory.
-  #   "davies_harte"  — Standard fBM via circulant embedding / FFT.
-  #                      Faster O(N log N) but different covariance structure
-  #                      for H ≠ 0.5, no spot-vol correlation guarantee.
-  #                      Reference: Dietrich & Newsam (1997), Dieker (2004).
+  hurst: 0.07
+  eta: 1.9
+  rho: -0.7
+  xi0: 0.0225
   fBm_method: "volterra"
 
 # Pricing Configuration
@@ -95,18 +93,101 @@ pricing:
   strike: 100.0
   barrier: 90.0
   spot: 100.0
-  risk_free_rate: 0.05
-  maturity: 0.01832                     # Matches T from simulation
-  n_mc_paths: 5000                      # Monte Carlo paths for pricing
+  risk_free_rate: 0.05                  # Fallback — overridden by SOFR when available
+  maturity: 0.01832
+  n_mc_paths: 5000
+  use_sofr: true                        # Use real SOFR rates instead of fixed r
 
 # Backtesting Configuration
 backtesting:
-  n_days: 30                            # Number of backtest days
-  n_mc_paths: 10000                     # MC paths per scenario (speed vs accuracy)
-  rv_source: "data/SP_SPX, 30.csv"      # SPX data for RV scenarios
-  maturity_days: 30                     # Option maturity in days
-  moneyness_range: [-0.15, 0.15]        # log-moneyness bounds
-  n_strikes: 11                         # Number of strikes in smile
+  n_days: 30
+  n_mc_paths: 10000
+  rv_source: "data/SP_SPX, 30.csv"
+  maturity_days: 30
+  moneyness_range: [-0.15, 0.15]
+  n_strikes: 11
+
+# Risk Engine Configuration
+risk:
+  confidence_levels: [0.95, 0.99]
+  var_horizon_days: 1                   # VaR holding period
+  stressed_var_multiplier: 1.5
+  n_mc_paths: 50000                     # MC paths for risk (higher for tail accuracy)
+  stress_scenarios:
+    black_monday:
+      spot_shock: -0.22
+      vol_shock: 1.50
+    lehman:
+      spot_shock: -0.08
+      vol_shock: 0.80
+    covid:
+      spot_shock: -0.12
+      vol_shock: 2.00
+    flash_crash:
+      spot_shock: -0.09
+      vol_shock: 0.50
+    volmageddon:
+      spot_shock: -0.04
+      vol_shock: 1.00
+
+# Hedging Configuration
+hedging:
+  transaction_cost_bps: 2.0             # One-way transaction cost in basis points
+  default_hedge_freq: "daily"           # 'daily', 'intraday_4h', 'intraday_1h', 'weekly'
+  rebalance_threshold_delta: 0.01       # Min delta change to trigger rebalance
+
+# Regime Detection
+regime:
+  signals:
+    vix_level:
+      weight: 0.30
+      thresholds: {calm: 13, normal: 20, stressed: 30}
+    vvix:
+      weight: 0.20
+      thresholds: {calm: 80, normal: 100, stressed: 130}
+    term_structure:
+      weight: 0.20
+    vrp:
+      weight: 0.15
+    vix_percentile:
+      weight: 0.15
+  # Per-regime model overrides
+  regime_params:
+    calm:
+      H: 0.10
+      eta: 1.5
+      rho: -0.65
+    normal:
+      H: 0.07
+      eta: 1.9
+      rho: -0.70
+    stressed:
+      H: 0.06
+      eta: 2.5
+      rho: -0.80
+    crisis:
+      H: 0.03
+      eta: 3.5
+      rho: -0.90
+
+# Exotic Pricing
+exotics:
+  asian:
+    averaging: "arithmetic"             # 'arithmetic' or 'geometric'
+  autocallable:
+    coupon_rate: 0.08
+    autocall_barrier: 1.0               # 100% of S0
+    ki_barrier: 0.6                     # 60% of S0 (knock-in put)
+  cliquet:
+    local_cap: 0.05
+    local_floor: -0.03
+    global_floor: 0.0
+
+# API Server
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
 
 # Output paths
 outputs:

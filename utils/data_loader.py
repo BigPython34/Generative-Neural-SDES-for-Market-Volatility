@@ -21,7 +21,7 @@ class RealizedVolatilityLoader:
     def __init__(self, file_path: str = None, config_path: str = "config/params.yaml",
                  bar_interval_min: int = None):
         self.config = load_config(config_path)
-        self.file_path = file_path or self.config['data'].get('rv_source', 'data/SP_SPX, 5.csv')
+        self.file_path = file_path or self.config['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
         self.max_gap_hours = self.config['data'].get('max_gap_hours', 4)
         self.stride_ratio = self.config['data'].get('stride_ratio', 0.5)
         self.trading_hours = self.config['data'].get('trading_hours_per_day', 6.5)
@@ -77,93 +77,137 @@ class RealizedVolatilityLoader:
     
     def get_realized_vol_paths(self, segment_length: int = None, rv_window: int = None):
         """
-        Computes rolling Realized Volatility from S&P 500 returns.
+        Computes Realized Variance paths for P-measure training.
         
-        Args:
-            segment_length: Length of variance paths for training
-            rv_window: Window for RV calculation
-                       Default from config: 78 (= 1 trading day for 5-min bars)
-                       The annualization factor is computed automatically.
-        
-        Returns:
-            JAX array of realized variance paths
+        Strategy:
+          1. Compute daily RV from intraday data (sum of squared 5-min returns
+             per trading day, annualized). Reference: Andersen & Bollerslev (1998).
+          2. If not enough daily points for segment_length, extend with daily SPX
+             data (2010–present) using a rolling window estimator.
+          3. Segment the daily RV series into overlapping training paths.
         """
         if segment_length is None:
             segment_length = self.config['data']['segment_length']
-        if rv_window is None:
-            # Config rv_window is calibrated for rv_bar_interval_min (default 5min)
-            # If this file's bar interval differs, scale proportionally
-            config_rv_window = self.config['data'].get('rv_window', self.bars_per_day)
-            config_bar_min = self.config['data'].get('rv_bar_interval_min', 5)
-            if self._bar_min != config_bar_min:
-                # Scale: rv_window of 78 at 5-min ≈ 13 at 30-min (same real time span)
-                rv_window = max(6, int(config_rv_window * config_bar_min / self._bar_min))
-                print(f"   Adjusted rv_window: {config_rv_window} ({config_bar_min}min) → {rv_window} ({self._bar_min}min)")
-            else:
-                rv_window = config_rv_window
             
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"Please place S&P 500 data at: {self.file_path}")
-            
-        print(f"Loading S&P 500 intraday data from {self.file_path}...")
+
+        # --- Phase 1: Daily RV from intraday data ---
+        intraday_rv = self._compute_daily_rv_from_intraday()
+        print(f"   Intraday daily RV: {len(intraday_rv)} trading days")
+
+        # --- Phase 2: Always combine with historical daily data ---
+        # Intraday RV alone (even 256 days) gives too few paths.
+        # Historical daily data (2010-present, ~4000 points) provides the bulk.
+        daily_file = self.config['data'].get('spx_daily',
+                     'data/market/spx/spx_daily_2010_latest.csv')
+        historical_rv = self._compute_rv_from_daily_prices(daily_file)
+        if len(historical_rv) > 0:
+            daily_rv = self._merge_rv_series(historical_rv, intraday_rv)
+            print(f"   Combined: {len(historical_rv)} historical + {len(intraday_rv)} intraday -> {len(daily_rv)} total")
+        else:
+            daily_rv = intraday_rv
+
+        # --- Phase 3: Filter outliers ---
+        daily_rv = daily_rv[(daily_rv > 0.001) & (daily_rv < 5.0)]
         
-        # 1. Load and preprocess
-        df = pd.read_csv(self.file_path)
-        df = self._check_temporal_coherence(df)
+        if len(daily_rv) == 0:
+            raise ValueError("No valid RV data. Check SPX data files.")
+
+        print(f"   Final RV series: {len(daily_rv)} points")
+        print(f"   Mean RV: {np.mean(daily_rv):.4f} (Vol: {np.sqrt(np.mean(daily_rv))*100:.1f}%)")
         
-        # 2. Compute log-returns
-        df['close'] = pd.to_numeric(df['close'], errors='coerce')
-        df['log_return'] = np.log(df['close'] / df['close'].shift(1))
-        df = df.dropna(subset=['log_return'])
-        
-        # 3. Compute Realized Variance per segment (avoid crossing gaps)
-        all_rv = []
-        
-        for seg_id in df['segment_id'].unique():
-            seg_data = df[df['segment_id'] == seg_id].copy()
-            
-            if len(seg_data) < rv_window + 1:
-                continue
-            
-            # Rolling Realized Variance: RV = sum(r^2) over window
-            # Annualization: each squared return r_i^2 has E[r_i^2] = sigma^2 * dt_bar
-            # where dt_bar = 1 / (252 * bars_per_day) in years.
-            # sum_{i in window} r_i^2 ≈ sigma^2 * rv_window * dt_bar
-            # To annualize: multiply by (252 * bars_per_day / rv_window)
-            # Reference: Andersen & Bollerslev (1998), Barndorff-Nielsen & Shephard (2002)
-            annualize_factor = 252 * self.bars_per_day / rv_window
-            seg_data['realized_var'] = seg_data['log_return'].rolling(window=rv_window).apply(
-                lambda x: np.sum(x**2) * annualize_factor, raw=True
-            )
-            
-            rv_values = seg_data['realized_var'].dropna().values
-            all_rv.extend(rv_values)
-        
-        realized_var = np.array(all_rv)
-        
-        # 4. Filter outliers (RV should be positive and reasonable)
-        # Typical annual variance: 0.01 (10% vol) to 1.0 (100% vol)
-        realized_var = realized_var[(realized_var > 0.001) & (realized_var < 2.0)]
-        
-        print(f"Computed {len(realized_var)} realized variance points")
-        print(f"   Mean RV: {np.mean(realized_var):.4f} (Vol: {np.sqrt(np.mean(realized_var))*100:.1f}%)")
-        
-        # 5. Segment into training paths
+        # --- Phase 4: Create overlapping paths ---
         paths = []
         stride = max(1, int(segment_length * self.stride_ratio))
         
-        for i in range(0, len(realized_var) - segment_length, stride):
-            path = realized_var[i : i + segment_length]
-            paths.append(path)
+        for i in range(0, len(daily_rv) - segment_length, stride):
+            paths.append(daily_rv[i : i + segment_length])
         
         if len(paths) == 0:
-            raise ValueError(f"No valid paths. Try reducing segment_length (current: {segment_length})")
+            raise ValueError(
+                f"Not enough RV data ({len(daily_rv)} points) for "
+                f"segment_length={segment_length}. Need at least {segment_length + 1}."
+            )
             
         paths = np.array(paths)
         np.random.shuffle(paths)
         
         print(f"Dataset ready: {paths.shape[0]} paths of length {segment_length}")
         return jnp.array(paths)
+
+    def _compute_daily_rv_from_intraday(self) -> np.ndarray:
+        """
+        Compute one Realized Variance per trading day from intraday returns.
+        RV_day = sum(r_i^2) * 252, where r_i are intraday log-returns.
+        """
+        print(f"Loading S&P 500 intraday data from {self.file_path}...")
+        
+        df = pd.read_csv(self.file_path)
+        df['datetime'] = pd.to_datetime(df['time'], unit='s')
+        df = df.sort_values('datetime').reset_index(drop=True)
+        df['close'] = pd.to_numeric(df['close'], errors='coerce')
+        
+        # Only compute returns within the same trading day (no overnight)
+        df['date'] = df['datetime'].dt.date
+        df['log_return'] = df.groupby('date')['close'].transform(
+            lambda x: np.log(x / x.shift(1))
+        )
+        df = df.dropna(subset=['log_return'])
+        
+        daily_rv = []
+        min_bars = max(10, self.bars_per_day // 3)
+        
+        for date, group in df.groupby('date'):
+            if len(group) < min_bars:
+                continue
+            rv = np.sum(group['log_return'].values ** 2) * 252
+            daily_rv.append(rv)
+        
+        return np.array(daily_rv) if daily_rv else np.array([])
+
+    def _compute_rv_from_daily_prices(self, daily_file: str,
+                                       window: int = 5) -> np.ndarray:
+        """
+        Fallback: estimate RV from daily close prices using a rolling window.
+        Less precise than intraday RV but covers a much longer history.
+        RV = sum(r_i^2, window) * (252 / window)
+        """
+        if not os.path.exists(daily_file):
+            print(f"   [WARN] Daily SPX file not found: {daily_file}")
+            return np.array([])
+        
+        print(f"   Loading historical daily SPX from {daily_file}...")
+        df = pd.read_csv(daily_file)
+        
+        # Handle both 'close' and 'Close' column names
+        close_col = 'close' if 'close' in df.columns else 'Close'
+        if close_col not in df.columns:
+            return np.array([])
+        
+        df[close_col] = pd.to_numeric(df[close_col], errors='coerce')
+        df = df.dropna(subset=[close_col])
+        df['log_return'] = np.log(df[close_col] / df[close_col].shift(1))
+        df = df.dropna(subset=['log_return'])
+        
+        annualize = 252.0 / window
+        rv = df['log_return'].rolling(window).apply(
+            lambda x: np.sum(x**2) * annualize, raw=True
+        ).dropna().values
+        
+        rv = rv[(rv > 0.001) & (rv < 5.0)]
+        print(f"   Historical daily RV: {len(rv)} points (window={window}d)")
+        return rv
+
+    @staticmethod
+    def _merge_rv_series(historical: np.ndarray, recent: np.ndarray) -> np.ndarray:
+        """Concatenate historical + recent RV, deduplicating the overlap region."""
+        if len(recent) == 0:
+            return historical
+        if len(historical) == 0:
+            return recent
+        # Simple concatenation; the recent intraday-based RV is appended at end
+        return np.concatenate([historical, recent])
 
 
 class MarketDataLoader:

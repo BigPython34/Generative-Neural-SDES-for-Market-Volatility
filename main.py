@@ -82,7 +82,7 @@ def main():
 
     # ── TRUE ROUGHNESS CHECK: Realized Vol from SPX Returns ──
     print("\n--- 2b. TRUE ROUGHNESS CHECK (Realized Vol from S&P 500 returns) ---")
-    rv_source = cfg['data'].get('rv_source', 'data/SP_SPX, 5.csv')
+    rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
     if os.path.exists(rv_source):
         rv_results = estimate_hurst_from_returns(
             rv_source,

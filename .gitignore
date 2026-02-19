@@ -32,3 +32,4 @@ dist/
 data/
 #api key 
 alphavantage.txt
+models/

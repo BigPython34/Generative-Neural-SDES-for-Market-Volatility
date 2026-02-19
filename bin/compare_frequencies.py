@@ -28,17 +28,19 @@ from engine.signature_engine import SignatureFeatureExtractor
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+CFG = load_config()
+
 # VIX data files at different frequencies
 VIX_FILES = {
-    '5min': 'data/TVC_VIX, 5.csv',
-    '15min': 'data/TVC_VIX, 15.csv',
-    '30min': 'data/TVC_VIX, 30.csv',
+    '5min': CFG['data']['vix_files'][5],
+    '15min': CFG['data']['vix_files'][15],
+    '30min': CFG['data']['vix_files'][30],
 }
 
 # SPX data files for TRUE roughness comparison
 SPX_FILES = {
-    '5min': 'data/SP_SPX, 5.csv',
-    '30min': 'data/SP_SPX, 30.csv',
+    '5min': CFG['data']['spx_files'][5],
+    '30min': CFG['data']['spx_files'][30],
 }
 
 def analyze_frequency(file_path: str, freq_name: str, segment_length: int = 13):

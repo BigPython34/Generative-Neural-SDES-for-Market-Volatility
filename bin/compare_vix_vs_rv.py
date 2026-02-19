@@ -58,7 +58,7 @@ def main():
     print("2. REALIZED VOLATILITY (from S&P 500 returns)")
     print("-"*70)
     
-    rv_source = cfg['data'].get('rv_source', 'data/SP_SPX, 5.csv')
+    rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
     rv_loader = RealizedVolatilityLoader(file_path=rv_source)
     rv_paths = rv_loader.get_realized_vol_paths(segment_length=segment_length)
     rv_np = np.array(rv_paths)

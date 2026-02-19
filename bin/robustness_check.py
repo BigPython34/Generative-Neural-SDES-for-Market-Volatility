@@ -16,6 +16,7 @@ from datetime import datetime
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.config import load_config
 
 
 class RobustHurstEstimator:
@@ -265,7 +266,8 @@ def run_robustness_check():
     print("-" * 50)
     
     # Load SPX 30min data (longest history)
-    spx_path = data_dir / "SP_SPX, 30.csv"
+    cfg = load_config()
+    spx_path = Path(cfg['data'].get('spx_files', {}).get(30, "data/market/spx/spx_30m.csv"))
     if spx_path.exists():
         df = pd.read_csv(spx_path)
         df['datetime'] = pd.to_datetime(df['time'], unit='s')

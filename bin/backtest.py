@@ -14,9 +14,10 @@ from quant.backtesting import HistoricalBacktester
 
 
 def main():
-    bt = HistoricalBacktester()
+    bt = HistoricalBacktester(fair_mode=True, smile_grid_points=41)
     df = bt.run_real_backtest()
     if not df.empty:
+        bt.save_results()
         print("\nBacktest complete. Results saved to outputs/backtest_results.json")
     return df
 

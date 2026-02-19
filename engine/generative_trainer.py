@@ -1,10 +1,33 @@
+"""
+Multi-Measure Generative Trainer
+=================================
+Trains Neural SDE models under different probability measures:
+
+  P-measure (physical / real-world):
+    - Data: Realized volatility from SPX high-frequency returns
+    - Loss: MMD on signatures + mean penalty
+    - Use for: VaR, CVaR, stress testing, vol forecasting
+
+  Q-measure (risk-neutral):
+    - Data: VIX (implied vol, already risk-neutral)
+    - Loss: MMD on signatures + mean penalty + martingale constraint
+    - Use for: Option pricing, delta hedging, calibration
+
+Usage:
+    trainer = GenerativeTrainer(config, measure='Q')
+    model = trainer.run(n_epochs=500)
+"""
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import equinox as eqx
 from engine.neural_sde import NeuralRoughSimulator
-from engine.losses import kernel_mmd_loss, signature_mmd_loss, mean_penalty_loss, marginal_mean_penalty_loss
+from engine.losses import (
+    kernel_mmd_loss, mean_penalty_loss, marginal_mean_penalty_loss,
+    martingale_violation_loss, jump_regularization_loss,
+)
 from engine.signature_engine import SignatureFeatureExtractor
 from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
 from utils.config import load_config
@@ -13,19 +36,33 @@ from utils.config import load_config
 class GenerativeTrainer:
     """
     Trains a Neural SDE to generate synthetic volatility paths.
-    Supports both VIX and Realized Volatility data sources.
 
-    Features:
+    Supports:
+    - P-measure and Q-measure training
+    - Optional jump component
     - LR warmup + cosine decay
     - Validation split with early stopping
-    - Normalized MMD + mean penalty loss
     - Learnable OU parameters (kappa, theta)
     """
 
-    def __init__(self, config: dict, config_path: str = "config/params.yaml"):
+    def __init__(self, config: dict, config_path: str = "config/params.yaml",
+                 measure: str = "auto"):
+        """
+        Args:
+            config: dict with 'n_steps', 'T'
+            config_path: path to YAML config
+            measure: 'P' (physical), 'Q' (risk-neutral), or 'auto' (from config)
+        """
         self.config = config
         self.yaml_config = load_config(config_path)
         self.config_path = config_path
+
+        # Determine measure
+        if measure == "auto":
+            data_type = self.yaml_config['data'].get('data_type', 'vix')
+            self.measure = 'P' if data_type == 'realized_vol' else 'Q'
+        else:
+            self.measure = measure.upper()
 
         sig_order = self.yaml_config['neural_sde']['sig_truncation_order']
         T = self.yaml_config['simulation']['T']
@@ -35,13 +72,18 @@ class GenerativeTrainer:
         self.sig_extractor = SignatureFeatureExtractor(truncation_order=sig_order, dt=self.dt)
         self.input_sig_dim = self.sig_extractor.get_feature_dim(1)
 
-        data_type = self.yaml_config['data'].get('data_type', 'vix')
-        if data_type == 'realized_vol':
-            print("Using REALIZED VOLATILITY (S&P 500)")
+        # Data loading depends on measure
+        if self.measure == 'P':
+            print(f"[{self.measure}-measure] Using REALIZED VOLATILITY (S&P 500)")
             loader = RealizedVolatilityLoader(config_path=config_path)
         else:
-            print("Using VIX data")
-            loader = MarketDataLoader(config_path=config_path)
+            data_type = self.yaml_config['data'].get('data_type', 'vix')
+            if data_type == 'realized_vol':
+                print(f"[{self.measure}-measure] Using REALIZED VOLATILITY (override)")
+                loader = RealizedVolatilityLoader(config_path=config_path)
+            else:
+                print(f"[{self.measure}-measure] Using VIX data")
+                loader = MarketDataLoader(config_path=config_path)
 
         all_paths = loader.get_realized_vol_paths(segment_length=config['n_steps'])
         all_paths = jax.device_put(all_paths)
@@ -71,11 +113,26 @@ class GenerativeTrainer:
 
         self.lambda_mean = train_cfg.get('lambda_mean', 10.0)
         self.patience = train_cfg.get('early_stopping_patience', 50)
-
-        # "global" (default): single scalar E[V] matching
-        # "marginal": per-step E[V_t] matching (tighter, Bayer & Stemper 2018)
         self.mean_penalty_mode = train_cfg.get('mean_penalty_mode', 'global')
 
+        # Q-measure specific parameters
+        q_cfg = train_cfg.get('q_measure', {})
+        self.lambda_martingale = q_cfg.get('lambda_martingale', 5.0)
+        self.lambda_jump_reg = q_cfg.get('lambda_jump_reg', 0.1)
+
+        # SOFR integration for Q-measure
+        self._risk_free_rate = self.yaml_config['pricing']['risk_free_rate']
+        if self.measure == 'Q':
+            try:
+                from utils.sofr_loader import get_sofr
+                sofr = get_sofr()
+                if sofr.is_available:
+                    self._risk_free_rate = sofr.get_rate()
+                    print(f"[Q-measure] Using SOFR rate: {self._risk_free_rate:.4f}")
+            except Exception:
+                pass
+
+        # Learning rate schedule
         warmup_steps = train_cfg.get('warmup_steps', 50)
         lr_init = train_cfg.get('learning_rate_init', 0.001)
         lr_final = train_cfg.get('learning_rate_final', 0.00001)
@@ -109,15 +166,45 @@ class GenerativeTrainer:
             )
             fake_sigs = self.sig_extractor.get_signature(fake_vars)
 
+            # MMD loss
             mmd = kernel_mmd_loss(fake_sigs, self.target_sigs, self.sig_std)
 
+            # Mean penalty
             if self.mean_penalty_mode == 'marginal':
                 real_batch = self.market_paths[random_indices]
                 mean_pen = marginal_mean_penalty_loss(fake_vars, real_batch)
             else:
                 mean_pen = mean_penalty_loss(fake_vars, self.real_mean)
 
-            return mmd + self.lambda_mean * mean_pen
+            total = mmd + self.lambda_mean * mean_pen
+
+            # Q-measure: add martingale constraint
+            if self.measure == 'Q':
+                rho = self.yaml_config['bergomi']['rho']
+                n_mc, n_steps_gen = fake_vars.shape
+
+                k_spot = jax.random.fold_in(key, 999)
+                z_indep = jax.random.normal(k_spot, (n_mc, n_steps_gen))
+
+                v0_col = v0.reshape(-1, 1)
+                var_prev = jnp.concatenate([v0_col, fake_vars[:, :-1]], axis=1)
+                vol_prev = jnp.sqrt(var_prev)
+
+                dw_spot = rho * noise_driver + jnp.sqrt(1 - rho**2) * z_indep * jnp.sqrt(dt)
+                log_ret = (self._risk_free_rate - 0.5 * var_prev) * dt + vol_prev * dw_spot
+                spot_normalized = jnp.exp(jnp.cumsum(log_ret, axis=1))
+
+                mart_loss = martingale_violation_loss(
+                    spot_normalized, dt, self._risk_free_rate
+                )
+                total = total + self.lambda_martingale * mart_loss
+
+            # Jump regularization
+            if m.enable_jumps:
+                j_reg = jump_regularization_loss(m.jump_params.log_lambda)
+                total = total + self.lambda_jump_reg * j_reg
+
+            return total
 
         diff_model, static_model = eqx.partition(model, self._filter_spec)
         loss, grads = eqx.filter_value_and_grad(loss_fn)(diff_model, static_model)
@@ -126,7 +213,7 @@ class GenerativeTrainer:
         model = eqx.combine(diff_model, static_model)
         return model, opt_state, loss
 
-    def run(self, n_epochs=500, batch_size=256):
+    def run(self, n_epochs=500, batch_size=256, enable_jumps=False):
         key = jax.random.PRNGKey(42)
         model_key, _ = jax.random.split(key)
 
@@ -134,16 +221,18 @@ class GenerativeTrainer:
         model = NeuralRoughSimulator(
             self.input_sig_dim, model_key,
             config_path=self.config_path,
-            learn_ou_params=learn_ou
+            learn_ou_params=learn_ou,
+            enable_jumps=enable_jumps,
         )
 
-        # Partition model into trainable / frozen parameters.
-        # When learn_ou_params=False, kappa and theta are frozen.
-        # Uses eqx.partition for clean gradient handling.
+        # Partition trainable / frozen parameters
         filter_spec = jax.tree_util.tree_map(lambda _: True, model)
         if not learn_ou:
             filter_spec = eqx.tree_at(lambda m: m.kappa, filter_spec, False)
             filter_spec = eqx.tree_at(lambda m: m.theta, filter_spec, False)
+        if not enable_jumps:
+            filter_spec = eqx.tree_at(lambda m: m.jump_params, filter_spec,
+                                      jax.tree_util.tree_map(lambda _: False, model.jump_params))
         self._filter_spec = filter_spec
         self._learn_ou = learn_ou
 
@@ -153,22 +242,29 @@ class GenerativeTrainer:
         T = self.yaml_config['simulation']['T']
         dt = T / self.config['n_steps']
 
-        # Pre-generate fixed validation noise for deterministic early stopping
-        # (Bergmeir & Benítez, 2012: validation loss must be deterministic)
         val_key_fixed = jax.random.PRNGKey(999)
         self._val_noise_fixed = jax.random.normal(
             val_key_fixed, (batch_size, self.config['n_steps'])
         ) * jnp.sqrt(dt)
-        vk1, vk2 = jax.random.split(val_key_fixed)
+        vk1, _ = jax.random.split(val_key_fixed)
         self._val_indices_fixed = jax.random.randint(
             vk1, (batch_size,), 0, self.val_paths.shape[0]
         )
 
-        print("Starting Market-Driven Training...")
+        measure_str = f"[{self.measure}-measure]"
+        jump_str = " + JUMPS" if enable_jumps else ""
+        print(f"\nStarting {measure_str} Training{jump_str}...")
         print(f"   LR warmup: {self.yaml_config.get('training',{}).get('warmup_steps',50)} steps")
         print(f"   Early stopping patience: {self.patience} epochs")
+        if self.measure == 'Q':
+            print(f"   Martingale penalty: λ={self.lambda_martingale}")
+            print(f"   Risk-free rate: {self._risk_free_rate:.4f}")
         if learn_ou:
-            print(f"   Learnable OU params: k0={float(model.kappa):.3f}, theta0={float(model.theta):.3f}")
+            print(f"   Learnable OU: κ₀={float(model.kappa):.3f}, θ₀={float(model.theta):.3f}")
+        if enable_jumps:
+            jp = model.jump_params
+            print(f"   Jump params: λ={float(jp.intensity):.2f}, "
+                  f"μ_J={float(jp.mu_j):.3f}, σ_J={float(jp.sigma_j):.3f}")
 
         best_val_loss = float('inf')
         best_train_loss = float('inf')
@@ -184,8 +280,8 @@ class GenerativeTrainer:
             if epoch % 10 == 0:
                 val_loss = self._compute_val_loss(model, dt)
 
-                kappa_str = f" | k={float(model.kappa):.3f}" if learn_ou else ""
-                theta_str = f" theta={float(model.theta):.2f}" if learn_ou else ""
+                kappa_str = f" | κ={float(model.kappa):.3f}" if learn_ou else ""
+                theta_str = f" θ={float(model.theta):.2f}" if learn_ou else ""
                 print(f"Epoch {epoch:04d} | Train: {loss:.6f} | Val: {val_loss:.6f}{kappa_str}{theta_str}")
 
                 if val_loss < best_val_loss:
@@ -206,7 +302,11 @@ class GenerativeTrainer:
 
         print(f"Training complete. Best train: {best_train_loss:.6f}, Best val: {best_val_loss:.6f}")
         if learn_ou:
-            print(f"   Final OU params: k={float(best_model.kappa):.3f}, theta={float(best_model.theta):.2f}")
+            print(f"   Final OU: κ={float(best_model.kappa):.3f}, θ={float(best_model.theta):.2f}")
+        if enable_jumps:
+            jp = best_model.jump_params
+            print(f"   Final jumps: λ={float(jp.intensity):.2f}, "
+                  f"μ_J={float(jp.mu_j):.3f}, σ_J={float(jp.sigma_j):.3f}")
         return best_model
 
     def _compute_val_loss(self, model, dt):
@@ -228,18 +328,52 @@ class GenerativeTrainer:
         return float(mmd + self.lambda_mean * mean_pen)
 
     def _save_model(self, model):
-        import os
         from pathlib import Path
         models_dir = Path("models")
         models_dir.mkdir(exist_ok=True)
-        model_path = models_dir / "neural_sde_best.eqx"
+
+        suffix = f"_{self.measure.lower()}"
+        if model.enable_jumps:
+            suffix += "_jump"
+        model_path = models_dir / f"neural_sde_best{suffix}.eqx"
         eqx.tree_serialise_leaves(model_path, model)
 
-    def load_model(self):
+        # Also save as generic "best" for backward compatibility
+        generic_path = models_dir / "neural_sde_best.eqx"
+        eqx.tree_serialise_leaves(generic_path, model)
+
+    def load_model(self, model_path=None, enable_jumps=False):
         from pathlib import Path
-        model_path = Path("models/neural_sde_best.eqx")
-        if model_path.exists():
-            key = jax.random.PRNGKey(0)
-            model = NeuralRoughSimulator(self.input_sig_dim, key, config_path=self.config_path)
+        if model_path is None:
+            model_path = Path("models/neural_sde_best.eqx")
+        else:
+            model_path = Path(model_path)
+
+        if not model_path.exists():
+            return None
+
+        key = jax.random.PRNGKey(0)
+
+        # Try loading with requested architecture first
+        try:
+            model = NeuralRoughSimulator(
+                self.input_sig_dim, key,
+                config_path=self.config_path,
+                enable_jumps=enable_jumps,
+            )
             return eqx.tree_deserialise_leaves(model_path, model)
+        except Exception:
+            pass
+
+        # Backward compatibility: model saved with old architecture (no jumps).
+        # Load into a jump-disabled skeleton, then wrap into the new structure.
+        try:
+            from engine._legacy_loader import load_legacy_model
+            return load_legacy_model(
+                model_path, self.input_sig_dim, self.config_path
+            )
+        except Exception:
+            pass
+
+        print("   [WARN] Could not load model - architecture mismatch. Retrain with bin/train_multi.py")
         return None

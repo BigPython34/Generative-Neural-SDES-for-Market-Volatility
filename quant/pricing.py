@@ -14,6 +14,19 @@ class DeepPricingEngine:
         self.model = model
         self.config = trainer.config
         self._pricing_cfg = load_config()['pricing']
+        self._r = self._resolve_rate()
+
+    def _resolve_rate(self) -> float:
+        """Use real SOFR rate when available, fall back to config."""
+        if self._pricing_cfg.get('use_sofr', True):
+            try:
+                from utils.sofr_loader import get_sofr
+                sofr = get_sofr()
+                if sofr.is_available:
+                    return sofr.get_rate()
+            except Exception:
+                pass
+        return self._pricing_cfg['risk_free_rate']
 
     def generate_market_paths(self, n_paths, s0=None, mu=None, rho=None):
         """
@@ -23,7 +36,7 @@ class DeepPricingEngine:
         if s0 is None:
             s0 = self._pricing_cfg['spot']
         if mu is None:
-            mu = self._pricing_cfg['risk_free_rate']
+            mu = self._r
         if rho is None:
             rho = load_config()['bergomi']['rho']
         key = jax.random.PRNGKey(42)
@@ -67,7 +80,7 @@ class DeepPricingEngine:
     def generate_bs_paths(self, n_paths, s0, vol, mu=None):
         """Generates standard Geometric Brownian Motion paths (Black-Scholes)."""
         if mu is None:
-            mu = self._pricing_cfg['risk_free_rate']
+            mu = self._r
         dt = self.config['T'] / self.config['n_steps']
         key = jax.random.PRNGKey(123)
         z = jax.random.normal(key, (n_paths, self.config['n_steps']))
@@ -100,7 +113,7 @@ class DeepPricingEngine:
             T: Maturity. If None, uses the model's horizon for consistency.
         """
         if r is None:
-            r = self._pricing_cfg['risk_free_rate']
+            r = self._r
         if T is None:
             T = self.config['T']  # Use consistent horizon
         min_s = np.min(s_paths, axis=1)

@@ -102,7 +102,7 @@ def generate_neural_sde_paths(n_paths=1000, n_steps=100):
         print("   WARNING: Using untrained model (no saved model found)")
     
     # Load real data for initial variance — use VARIANCE = (VIX/100)^2
-    vix_path = Path("data/TVC_VIX, 15.csv")
+    vix_path = Path(cfg['data'].get('source', 'data/market/vix/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
     vix_var = (vix_df['close'].values / 100) ** 2  # Variance
     
@@ -204,7 +204,7 @@ def run_ablation_study():
     
     # Load real VIX data — convert to VARIANCE to match training format
     # Training uses (VIX/100)^2, NOT VIX/100
-    vix_path = Path("data/TVC_VIX, 15.csv")
+    vix_path = Path(cfg['data'].get('source', 'data/market/vix/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
     vix_values = (vix_df['close'].values / 100) ** 2  # Variance = (VIX/100)^2
     
@@ -376,7 +376,7 @@ def verify_generated_roughness():
         cfg = yaml.safe_load(f)
     
     # ── A. VIX (expected: H ≈ 0.5, NOT rough) ──
-    vix_path = Path("data/TVC_VIX, 15.csv")
+    vix_path = Path(cfg['data'].get('source', 'data/market/vix/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
     vix_values = vix_df['close'].values
     
@@ -387,7 +387,7 @@ def verify_generated_roughness():
     print(f"      This is NOT a roughness test — VIX integration kills roughness.")
     
     # ── B. Realized Vol from SPX (expected: H ≈ 0.05-0.14) ──
-    rv_source = cfg['data'].get('rv_source', 'data/SP_SPX, 5.csv')
+    rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
     rv_window = cfg['data'].get('rv_window', 78)
     
     H_rv = None
@@ -467,7 +467,7 @@ def compare_signature_distributions():
     T = cfg['simulation']['T']
     
     # Load real VIX data — convert to VARIANCE to match training format
-    vix_path = Path("data/TVC_VIX, 15.csv")
+    vix_path = Path(cfg['data'].get('source', 'data/market/vix/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
     vix_values = (vix_df['close'].values / 100) ** 2  # Variance = (VIX/100)^2
     

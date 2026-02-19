@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-02-20T00:19:47.382142",
+  "profiles": {
+    "risk": {
+      "model_path": "models/neural_sde_best_p.eqx",
+      "config_path": "config/params.yaml",
+      "risk_scenarios": {
+        "horizon_days_equiv": 4.61664,
+        "VaR_95": 0.040308449417352676,
+        "ES_95": 0.05112046003341675,
+        "VaR_99": 0.05778384581208229,
+        "ES_99": 0.0651748776435852,
+        "terminal_vol_mean": 0.17720215022563934,
+        "terminal_vol_p95": 0.21028266847133636,
+        "panic_prob_vol_gt_40pct": 0.0
+      },
+      "pricing_prior_local_recalibration": {
+        "snapshot_time": "2026-02-20T00:12:55.386700",
+        "target_dte": 27,
+        "market_atm_iv": 0.1620567193603515,
+        "prior_atm_iv": 0.1770256608724594,
+        "local_scale_factor": 0.9154419679139483,
+        "recalibrated_atm_iv": 0.1620567193603515
+      }
+    },
+    "pricing": {
+      "model_path": "models/neural_sde_best_q.eqx",
+      "config_path": "config/params.yaml",
+      "risk_scenarios": {
+        "horizon_days_equiv": 4.61664,
+        "VaR_95": 0.03944256156682968,
+        "ES_95": 0.04955710843205452,
+        "VaR_99": 0.055325306951999664,
+        "ES_99": 0.06279949098825455,
+        "terminal_vol_mean": 0.1719241589307785,
+        "terminal_vol_p95": 0.1872418075799942,
+        "panic_prob_vol_gt_40pct": 0.0
+      },
+      "pricing_prior_local_recalibration": {
+        "snapshot_time": "2026-02-20T00:12:55.386700",
+        "target_dte": 27,
+        "market_atm_iv": 0.1620567193603515,
+        "prior_atm_iv": 0.17215771973133087,
+        "local_scale_factor": 0.9413270552912585,
+        "recalibrated_atm_iv": 0.1620567193603515
+      }
+    },
+    "scenarios": {
+      "model_path": "models/neural_sde_best.eqx",
+      "config_path": "config/params.yaml",
+      "risk_scenarios": {
+        "horizon_days_equiv": 4.61664,
+        "VaR_95": 0.03944256156682968,
+        "ES_95": 0.04955710843205452,
+        "VaR_99": 0.055325306951999664,
+        "ES_99": 0.06279949098825455,
+        "terminal_vol_mean": 0.1719241589307785,
+        "terminal_vol_p95": 0.1872418075799942,
+        "panic_prob_vol_gt_40pct": 0.0
+      },
+      "pricing_prior_local_recalibration": {
+        "snapshot_time": "2026-02-20T00:12:55.386700",
+        "target_dte": 27,
+        "market_atm_iv": 0.1620567193603515,
+        "prior_atm_iv": 0.17215771973133087,
+        "local_scale_factor": 0.9413270552912585,
+        "recalibrated_atm_iv": 0.1620567193603515
+      }
+    }
+  },
+  "regime_analysis": {
+    "n_days": 3305,
+    "contango_freq": 0.8511346444780635,
+    "backwardation_freq": 0.14523449319213314,
+    "panic_freq_f1_ge_30": 0.046898638426626324,
+    "front_second_spread_mean": 0.713963691376702
+  }
+}

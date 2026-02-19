@@ -100,6 +100,54 @@ def load_vix_term_structure() -> dict:
     return ts
 
 
+def load_vix_futures_history() -> pd.DataFrame:
+    """
+    Load full VIX futures history for fair backtesting (no look-ahead).
+
+    Returns a normalized dataframe with columns:
+      - trade_date (datetime64[ns])
+      - expiration_date (datetime64[ns])
+      - dte_days (int)
+      - price (float)
+    """
+    all_path = os.path.join("data", "cboe_vix_futures_full", "vix_futures_all.csv")
+    if not os.path.exists(all_path):
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(all_path)
+    except Exception:
+        return pd.DataFrame()
+
+    if "Trade Date" not in df.columns:
+        return pd.DataFrame()
+
+    df["trade_date"] = pd.to_datetime(df["Trade Date"], errors="coerce")
+
+    if "expiration_date" in df.columns:
+        df["expiration_date"] = pd.to_datetime(df["expiration_date"], errors="coerce")
+    elif "Futures" in df.columns:
+        df["expiration_date"] = pd.to_datetime(
+            df["Futures"].astype(str).str.extract(r"\((.*?)\)")[0],
+            format="%b %Y",
+            errors="coerce",
+        )
+    else:
+        return pd.DataFrame()
+
+    price_col = next((c for c in ["Close", "close", "Settle", "settle"] if c in df.columns), None)
+    if price_col is None:
+        return pd.DataFrame()
+
+    df["price"] = pd.to_numeric(df[price_col], errors="coerce")
+    df["dte_days"] = (df["expiration_date"] - df["trade_date"]).dt.days
+
+    out = df[["trade_date", "expiration_date", "dte_days", "price"]].copy()
+    out = out.dropna()
+    out = out[(out["dte_days"] > 0) & (out["price"] > 0)]
+    return out.sort_values(["trade_date", "expiration_date"]).reset_index(drop=True)
+
+
 def xi0_from_term_structure(ts: dict, dte: int, spot_vix: float = None) -> float:
     """
     Interpolate forward variance xi0 from VIX futures.
@@ -123,6 +171,56 @@ def xi0_from_term_structure(ts: dict, dte: int, spot_vix: float = None) -> float
     return (v / 100.0) ** 2
 
 
+def xi0_from_history_at_date(hist: pd.DataFrame,
+                             snapshot_dt,
+                             dte: int,
+                             spot_vix: float = None) -> float:
+    """
+    Fair xi0 estimate using only futures information available at snapshot date.
+    """
+    if hist is None or hist.empty:
+        v = spot_vix if spot_vix else 15.0
+        return (v / 100.0) ** 2
+
+    snap = pd.to_datetime(snapshot_dt, errors="coerce")
+    if pd.isna(snap):
+        v = spot_vix if spot_vix else 15.0
+        return (v / 100.0) ** 2
+
+    available = hist[hist["trade_date"] <= snap]
+    if available.empty:
+        v = spot_vix if spot_vix else 15.0
+        return (v / 100.0) ** 2
+
+    last_date = available["trade_date"].max()
+    curve = available[available["trade_date"] == last_date].sort_values("dte_days")
+    if curve.empty:
+        v = spot_vix if spot_vix else 15.0
+        return (v / 100.0) ** 2
+
+    x = curve["dte_days"].to_numpy(dtype=float)
+    y = curve["price"].to_numpy(dtype=float)
+
+    # Consolidate duplicate DTE rows (multiple contracts could map to same coarse expiry date)
+    ux = np.unique(x)
+    if ux.size != x.size:
+        y2 = []
+        for u in ux:
+            y2.append(float(np.nanmean(y[x == u])))
+        x = ux
+        y = np.asarray(y2, dtype=float)
+
+    if x.size == 0:
+        v = spot_vix if spot_vix else 15.0
+        return (v / 100.0) ** 2
+    if x.size == 1:
+        v = float(y[0])
+        return (v / 100.0) ** 2
+
+    v = float(np.interp(float(dte), x, y, left=y[0], right=y[-1]))
+    return (v / 100.0) ** 2
+
+
 # ===================================================================
 #  Backtester
 # ===================================================================
@@ -132,20 +230,110 @@ class HistoricalBacktester:
     Backtests volatility models against REAL market options data.
     """
 
-    def __init__(self, r: float = None):
+    def __init__(self, r: float = None, fair_mode: bool = True, smile_grid_points: int = 41):
         cfg = load_config()
-        self.r = r if r is not None else cfg['pricing']['risk_free_rate']
+        self.r = r if r is not None else self._resolve_rate(cfg)
         self.cfg = cfg
         self.cache = OptionsDataCache()
         self.backtest_results = None
+        self.fair_mode = bool(fair_mode)
+        self.smile_grid = np.linspace(-0.15, 0.15, int(smile_grid_points))
 
         # VIX futures term structure for xi0
         self.vix_ts = load_vix_term_structure()
+        self.vix_futures_history = load_vix_futures_history() if self.fair_mode else pd.DataFrame()
         if self.vix_ts:
             print(f"   VIX futures term structure: "
                   + ", ".join(f"{d}d={v:.1f}" for d, v in sorted(self.vix_ts.items())))
         else:
             print("   WARNING: No VIX futures data -> using ATM vol for xi0")
+
+        if self.fair_mode:
+            if self.vix_futures_history.empty:
+                print("   Fair mode: ON (historical futures unavailable, fallback to ATM/static xi0)")
+            else:
+                print(f"   Fair mode: ON ({len(self.vix_futures_history):,} VIX futures rows loaded)")
+        else:
+            print("   Fair mode: OFF (uses latest term structure for all snapshots)")
+
+    @staticmethod
+    def _resolve_rate(cfg) -> float:
+        """Use real SOFR rate when available, fall back to config."""
+        if cfg['pricing'].get('use_sofr', True):
+            try:
+                from utils.sofr_loader import get_sofr
+                sofr = get_sofr()
+                if sofr.is_available:
+                    return sofr.get_rate()
+            except Exception:
+                pass
+        return cfg['pricing']['risk_free_rate']
+
+    def _compute_xi0(self, snapshot_time, dte: int, atm_vol: float) -> float:
+        """Compute xi0 with optional no-look-ahead logic."""
+        if self.fair_mode:
+            xi0 = xi0_from_history_at_date(
+                self.vix_futures_history,
+                snapshot_time,
+                dte,
+                spot_vix=float(atm_vol) * 100,
+            )
+            if np.isfinite(xi0) and xi0 > 0:
+                return float(xi0)
+
+        return float(xi0_from_term_structure(self.vix_ts, dte, spot_vix=atm_vol * 100))
+
+    def _smile_to_grid(self, moneyness_vals, iv_vals) -> np.ndarray:
+        """Interpolate one smile onto a fixed moneyness grid for robust plotting."""
+        x = np.asarray(moneyness_vals, dtype=float)
+        y = np.asarray(iv_vals, dtype=float)
+
+        mask = np.isfinite(x) & np.isfinite(y)
+        x = x[mask]
+        y = y[mask]
+        if x.size < 3:
+            return np.full(self.smile_grid.shape, np.nan)
+
+        order = np.argsort(x)
+        x = x[order]
+        y = y[order]
+
+        ux = np.unique(x)
+        if ux.size != x.size:
+            y2 = []
+            for u in ux:
+                y2.append(float(np.nanmedian(y[x == u])))
+            x = ux
+            y = np.asarray(y2, dtype=float)
+
+        if x.size < 3:
+            return np.full(self.smile_grid.shape, np.nan)
+
+        yi = np.interp(self.smile_grid, x, y)
+        yi[self.smile_grid < x.min()] = np.nan
+        yi[self.smile_grid > x.max()] = np.nan
+
+        # Light robust smoothing for readability (visual only)
+        ys = yi.copy()
+        for i in range(1, len(yi) - 1):
+            w = yi[i - 1:i + 2]
+            if np.isfinite(w).sum() >= 2:
+                ys[i] = np.nanmedian(w)
+        return ys
+
+    def _median_smile_by_dte(self, sub_df: pd.DataFrame, key: str) -> np.ndarray:
+        curves = []
+        for _, row in sub_df.iterrows():
+            vals = row.get(key, [])
+            if vals is None or len(vals) == 0:
+                continue
+            curves.append(self._smile_to_grid(row['moneyness'], vals))
+
+        if not curves:
+            return np.full(self.smile_grid.shape, np.nan)
+
+        arr = np.vstack(curves)
+        return np.nanmedian(arr, axis=0)
 
     # ---------------------------------------------------------------
     #  Smile extraction
@@ -385,9 +573,8 @@ class HistoricalBacktester:
                 atm_idx = np.argmin(np.abs(moneyness))
                 atm_vol = market_ivs[atm_idx]
 
-                # xi0 from VIX futures term structure
-                xi0 = xi0_from_term_structure(
-                    self.vix_ts, actual_dte, spot_vix=atm_vol * 100)
+                # xi0 from VIX futures term structure (fair mode avoids look-ahead)
+                xi0 = self._compute_xi0(snap_time, actual_dte, atm_vol)
 
                 # === 1. Black-Scholes: flat ATM vol ===
                 bs_ivs = np.full_like(market_ivs, atm_vol)
@@ -532,45 +719,49 @@ class HistoricalBacktester:
         C = {'market': '#FFFFFF', 'BS': '#888888',
              'Bergomi': '#00E676', 'Neural': '#00BCD4'}
 
-        # Row 1: smile overlays (first snapshot)
+        # Row 1: median smiles on fixed moneyness grid (all snapshots)
         for ci, dte in enumerate(unique_dtes):
-            sub = df[df['dte'] == dte].iloc[0]
-            m = np.array(sub['moneyness']) * 100
+            sub = df[df['dte'] == dte]
+            m = self.smile_grid * 100
+
+            market_curve = self._median_smile_by_dte(sub, 'market_iv')
+            bs_curve = self._median_smile_by_dte(sub, 'bs_iv')
+            berg_curve = self._median_smile_by_dte(sub, 'bergomi_iv')
+            neural_curve = self._median_smile_by_dte(sub, 'neural_iv')
 
             fig.add_trace(go.Scatter(
-                x=m, y=sub['market_iv'], mode='lines+markers',
+                x=m, y=market_curve, mode='lines',
                 name='Market', line=dict(color=C['market'], width=2.5),
-                marker=dict(size=5),
                 legendgroup='mkt', showlegend=(ci == 0)
             ), row=1, col=ci + 1)
 
             fig.add_trace(go.Scatter(
-                x=m, y=sub['bs_iv'], mode='lines',
+                x=m, y=bs_curve, mode='lines',
                 name='Black-Scholes',
                 line=dict(color=C['BS'], dash='dash', width=1.5),
                 legendgroup='bs', showlegend=(ci == 0)
             ), row=1, col=ci + 1)
 
             fig.add_trace(go.Scatter(
-                x=m, y=sub['bergomi_iv'], mode='lines',
+                x=m, y=berg_curve, mode='lines',
                 name='Rough Bergomi',
                 line=dict(color=C['Bergomi'], width=2),
                 legendgroup='berg', showlegend=(ci == 0)
             ), row=1, col=ci + 1)
 
-            if sub['neural_iv']:
+            if np.isfinite(neural_curve).any():
                 fig.add_trace(go.Scatter(
-                    x=m, y=sub['neural_iv'], mode='lines',
+                    x=m, y=neural_curve, mode='lines',
                     name='Neural SDE',
                     line=dict(color=C['Neural'], width=2),
                     legendgroup='neural', showlegend=(ci == 0)
                 ), row=1, col=ci + 1)
 
             # RMSE annotation
-            ann = (f"BS {sub['bs_rmse']:.1f}%<br>"
-                   f"Berg {sub['bergomi_rmse']:.1f}%")
-            if not np.isnan(sub['neural_sde_rmse']):
-                ann += f"<br>Neural {sub['neural_sde_rmse']:.1f}%"
+            ann = (f"BS {sub['bs_rmse'].mean():.1f}%<br>"
+                   f"Berg {sub['bergomi_rmse'].mean():.1f}%")
+            if sub['neural_sde_rmse'].notna().any():
+                ann += f"<br>Neural {sub['neural_sde_rmse'].mean():.1f}%"
             fig.add_annotation(
                 text=ann, showarrow=False,
                 xref=f'x{ci+1}', yref=f'y{ci+1}',
@@ -581,7 +772,7 @@ class HistoricalBacktester:
             )
 
             fig.update_xaxes(title_text='Moneyness (%)',
-                             row=1, col=ci + 1, tickfont=dict(size=10))
+                             row=1, col=ci + 1, tickfont=dict(size=10), range=[-15, 15])
             fig.update_yaxes(
                 title_text='IV (%)' if ci == 0 else '',
                 row=1, col=ci + 1, tickfont=dict(size=10))
@@ -652,6 +843,7 @@ class HistoricalBacktester:
         out = {
             'timestamp': datetime.now().isoformat(),
             'data_source': 'Real SPY options (Yahoo Finance cache)',
+            'fair_mode': self.fair_mode,
             'vix_term_structure': {str(k): v for k, v in self.vix_ts.items()},
             'n_scenarios': len(df),
             'summary': {
