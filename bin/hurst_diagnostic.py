@@ -180,8 +180,7 @@ def run_diagnostic():
     spx_files_cfg = cfg['data'].get('spx_files', {})
     
     # -- A. VIX (smoothed, integrated) --------------------------
-    print("\n" + "-" * 60)
-    print("A. VIX Index (30-day implied vol — SMOOTHED quantity)")
+    print("\n[1/4] A. VIX Index (30-day implied vol — SMOOTHED quantity)")
     print("-" * 60)
     
     for freq, fname in [
@@ -192,18 +191,14 @@ def run_diagnostic():
         if not Path(fname).exists():
             print(f"   [{freq}] File not found: {fname}")
             continue
-            
         df = pd.read_csv(fname)
         vix_close = pd.to_numeric(df['close'], errors='coerce').dropna().values
-        
-        # Work on log(VIX) — standard in the literature
         log_vix = np.log(vix_close)
-        
         h_var, r2_var = hurst_variogram(log_vix)
         h_sf1, r2_sf1 = hurst_structure_function(log_vix, order=1)
         h_sf2, r2_sf2 = hurst_structure_function(log_vix, order=2)
         
-        print(f"\n   [{freq}] VIX — {len(vix_close)} points")
+        print(f"   [{freq}] VIX — {len(vix_close)} points")
         print(f"   Variogram H     = {h_var:.4f}  (R² = {r2_var:.3f})")
         print(f"   Structure q=1 H = {h_sf1:.4f}  (R² = {r2_sf1:.3f})")
         print(f"   Structure q=2 H = {h_sf2:.4f}  (R² = {r2_sf2:.3f})")
@@ -212,10 +207,7 @@ def run_diagnostic():
         results[f"VIX_{freq}"] = {"H_variogram": h_var, "H_sf1": h_sf1, "H_sf2": h_sf2}
     
     # -- B. Realized Vol from SPX Returns (TRUE roughness) ------
-    print("\n" + "-" * 60)
-    print("B. REALIZED VOLATILITY from S&P 500 returns (TRUE roughness)")
-    print("   Method: Daily RV = Σ r²_intraday per trading day")
-    print("   Hurst estimated on log(RV) time series")
+    print("\n[2/4] B. REALIZED VOLATILITY from S&P 500 returns (TRUE roughness)")
     print("-" * 60)
     
     for freq, fname in [
@@ -225,11 +217,8 @@ def run_diagnostic():
         if not Path(fname).exists():
             print(f"   [{freq}] File not found: {fname}")
             continue
-            
+        print(f"   [{freq}] SPX: loading and computing daily RV...", flush=True)
         df = pd.read_csv(fname)
-        print(f"\n   [{freq}] SPX data: {len(df)} bars")
-        
-        # Compute DAILY RV (1 point per trading day)
         rv_series = compute_daily_rv(df)
         
         if len(rv_series) < 50:
@@ -261,10 +250,8 @@ def run_diagnostic():
         }
     
     # -- C. Robustness: Hurst on sub-sampled daily RV ---------
-    print("\n" + "-" * 60)
-    print("C. ROBUSTNESS: Different lag ranges for variogram")
+    print("\n[3/4] C. ROBUSTNESS: Different lag ranges for variogram")
     print("-" * 60)
-    print("   Testing H stability across different max lags")
     
     # Use 30-min SPX data (most points)
     fname_30m = spx_files_cfg.get(30, "data/market/spx/spx_30m.csv")
@@ -281,8 +268,7 @@ def run_diagnostic():
             print(f"   max_lag={max_lag:>3d}: H_var={h_var:.4f}, H_sf1={h_sf1:.4f}  (R²={r2:.3f})")
     
     # -- D. Comparison with Neural SDE output ------------------
-    print("\n" + "-" * 60)
-    print("D. NEURAL SDE OUTPUT — Hurst on generated paths")
+    print("\n[4/4] D. NEURAL SDE OUTPUT — Hurst on generated paths")
     print("-" * 60)
     
     try:
@@ -296,47 +282,47 @@ def run_diagnostic():
         with open("config/params.yaml", 'r', encoding='utf-8') as f:
             cfg = yaml.safe_load(f)
         
-        model_path = Path("models/neural_sde_best.eqx")
+        # Prefer P-measure model (trained on realized vol = rough); avoid Q (pricing = smoother)
+        models_dir = Path("models")
+        model_path = models_dir / "neural_sde_best_p.eqx"
+        if not model_path.exists():
+            model_path = models_dir / "neural_sde_best.eqx"
         if model_path.exists():
+            print(f"   Model: {model_path.name} (P = risk/roughness, not Q = pricing)", flush=True)
             sig_dim = SignatureFeatureExtractor(truncation_order=3).get_feature_dim(1)
             key = jax.random.PRNGKey(42)
-            model = NeuralRoughSimulator(sig_dim=sig_dim, key=key)
-            model = eqx.tree_deserialise_leaves(model_path, model)
+            config_path = "config/params.yaml"
+            model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=False)
+            try:
+                model = eqx.tree_deserialise_leaves(model_path, model)
+            except Exception:
+                from engine._legacy_loader import load_legacy_model
+                model = load_legacy_model(model_path, sig_dim, config_path)
             
             T = cfg['simulation']['T']
             n_steps = cfg['simulation']['n_steps']
             dt = T / n_steps
-            
-            # Generate many paths
             n_gen = 2000
+            print(f"   Generating {n_gen} paths ({n_steps} steps)...", flush=True)
             noise = jax.random.normal(key, (n_gen, n_steps)) * jnp.sqrt(dt)
-            v0 = jnp.full(n_gen, 0.035)  # ~18.7% vol
-            
-            gen_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
-                v0, noise, dt
-            )
+            v0 = jnp.full(n_gen, 0.035)
+            gen_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(v0, noise, dt)
             gen_np = np.array(gen_paths)
-            
-            # Hurst on log(V) of generated paths (averaged over paths)
             log_gen = np.log(np.maximum(gen_np, 1e-8))
-            
-            # Average variogram across paths
             max_lag = min(8, n_steps // 3)
             lags = np.arange(1, max_lag + 1)
             variogram = np.zeros(len(lags))
             for i, lag in enumerate(lags):
                 diffs = log_gen[:, lag:] - log_gen[:, :-lag]
                 variogram[i] = np.mean(diffs ** 2)
-            
             log_lags = np.log(lags)
             log_var = np.log(variogram + 1e-30)
             slope, _, r_value, _, _ = linregress(log_lags, log_var)
             H_neural = slope / 2
-            
             print(f"   Neural SDE H (variogram on log-V) = {H_neural:.4f}  (R² = {r_value**2:.3f})")
-            print(f"   Note: Only {n_steps} steps — limited resolution for Hurst estimation")
+            print(f"   Note: {n_steps} steps — limited resolution for Hurst")
         else:
-            print("   No trained model found — skipping")
+            print("   No trained model found (neural_sde_best_p.eqx or neural_sde_best.eqx) — skipping")
     except Exception as e:
         print(f"   Error: {e}")
     

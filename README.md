@@ -333,6 +333,8 @@ python bin/backtest.py
 
 **Output**: `outputs/backtest_results.json` + `outputs/plots/backtest_smiles.html` — model comparison across multiple maturities and snapshots.
 
+The backtest uses **CBOE VIX futures** when available: `data/cboe_vix_futures_full/` (e.g. `vix_futures_front_month.csv`, or `vix_futures_all.csv`) to calibrate the forward variance xi0 from the term structure (30/60/90 DTE). This improves Bergomi and Neural SDE pricing. The API exposes `GET /data/cboe/term-structure` and `GET /data/cboe/futures-history` for the dashboard.
+
 ### Step 6 — Options Surface Calibration (optional)
 
 Calibrate the Bergomi model to the real SPY smile, and run Neural SDE IV surface calibration:
@@ -370,15 +372,28 @@ python bin/dashboard.py
 
 **Output**: `outputs/dashboard.html` — open in any browser. Shows regime status, risk KPIs, IV surfaces, model comparison charts.
 
-### Step 9 — Launch the REST API
+### Step 9 — Launch the Interactive Dashboard & API
 
-Start the FastAPI server for programmatic access to all features:
+Start the FastAPI server with the built-in web UI:
 
 ```bash
 python bin/api_server.py
 ```
 
-Then open **http://localhost:8000/docs** in your browser to access the interactive Swagger UI.
+Open **http://localhost:8000** for the interactive dashboard with:
+
+- **Overview**: Market regime, SOFR rate, VIX history, report summary KPIs
+- **Monte Carlo Paths**: Animated path generation with terminal distribution histogram
+- **Vol Surface 3D**: Interactive 3D implied volatility surface from cached options
+- **Hedging Simulation**: Animated hedge P&L fan chart (mean, confidence bands, sample paths)
+- **Pricing**: Vanilla (BS + Greeks) and exotic (MC) option pricing forms
+- **Risk**: VaR/CVaR calculator and stress test with bar chart visualization
+- **P&L Attribution**: Greeks decomposition with waterfall chart
+- **Regime Detection**: Radar chart of market signals
+- **Script Runner**: Launch any pipeline script (train, backtest, etc.) from the UI with live console output
+- **Reports**: Browse all JSON output reports
+
+Swagger API docs are still available at **http://localhost:8000/docs**.
 
 #### API Examples (Swagger / curl)
 

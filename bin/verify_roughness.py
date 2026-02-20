@@ -74,54 +74,50 @@ def compute_signature_stats(paths, truncation_order=3):
     }
 
 
-def generate_neural_sde_paths(n_paths=1000, n_steps=100):
-    """Generate paths using the trained Neural SDE."""
+def generate_neural_sde_paths(n_paths=1000, n_steps=100, progress_interval=100):
+    """Generate paths using the trained Neural SDE. Uses P-measure model (roughness)."""
     from engine.neural_sde import NeuralRoughSimulator
     from engine.signature_engine import SignatureFeatureExtractor
     import equinox as eqx
-    
-    # Load real dt from config
+
     with open("config/params.yaml", 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
     T = cfg['simulation']['T']
-    
-    model_path = Path("models/neural_sde_best.eqx")
+    config_path = "config/params.yaml"
     sig_engine = SignatureFeatureExtractor(truncation_order=3)
     sig_dim = sig_engine.get_feature_dim(1)
-    
     key = jax.random.PRNGKey(42)
-    
+
+    # Prefer P-measure model (trained on realized vol); avoid Q (pricing)
+    model_path = Path("models/neural_sde_best_p.eqx")
+    if not model_path.exists():
+        model_path = Path("models/neural_sde_best.eqx")
     if model_path.exists():
-        # Load trained model
-        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key)
-        model = eqx.tree_deserialise_leaves(model_path, model)
-        print("   Loaded trained model")
+        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=False)
+        try:
+            model = eqx.tree_deserialise_leaves(model_path, model)
+        except Exception:
+            from engine._legacy_loader import load_legacy_model
+            model = load_legacy_model(model_path, sig_dim, config_path)
+        if progress_interval and n_paths > progress_interval:
+            print(f"   Loaded {model_path.name} (P = roughness). Generating {n_paths} paths...", flush=True)
     else:
-        # Use random model (for testing)
-        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key)
-        print("   WARNING: Using untrained model (no saved model found)")
-    
-    # Load real data for initial variance — use VARIANCE = (VIX/100)^2
+        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=False)
+        if progress_interval:
+            print("   WARNING: No saved model, using untrained. Generating paths...", flush=True)
+
     vix_path = Path(cfg['data'].get('source', 'data/market/vix/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
-    vix_var = (vix_df['close'].values / 100) ** 2  # Variance
-    
-    # Build pool of realistic initial variances from segment starts
+    vix_var = (vix_df['close'].values / 100) ** 2
     seg_stride = max(1, n_steps // 2)
     v0_pool = np.array([vix_var[i] for i in range(0, len(vix_var) - n_steps, seg_stride)])
-    
-    # Generate paths — model computes running signatures internally
     dt = T / n_steps
-    
     all_paths = []
-    
+
     for i in range(n_paths):
         key, subkey = jax.random.split(key)
-        dW = jax.random.normal(subkey, shape=(n_steps,)) * jnp.sqrt(dt)  # Proper Brownian increments
-        
-        # Use randomized initial condition from market data (like training)
+        dW = jax.random.normal(subkey, shape=(n_steps,)) * jnp.sqrt(dt)
         init_var = float(v0_pool[i % len(v0_pool)])
-        
         try:
             path = model.generate_variance_path(
                 init_var=init_var,
@@ -133,7 +129,9 @@ def generate_neural_sde_paths(n_paths=1000, n_steps=100):
             if i == 0:
                 print(f"   Generation error: {e}")
                 raise
-    
+        if progress_interval and (i + 1) % progress_interval == 0 and (i + 1) < n_paths:
+            print(f"      ... {i + 1}/{n_paths} paths", flush=True)
+
     return np.array(all_paths)
 
 
@@ -187,12 +185,10 @@ def generate_ou_paths(n_paths=1000, n_steps=100, kappa=2.72, theta=-3.5, sigma=0
 
 
 def run_ablation_study():
-    """Compare model performance with and without signatures."""
-    print("\n" + "="*60)
-    print("ABLATION STUDY: Signatures Impact")
-    print("="*60)
-    
+    """Compare model performance with and without signatures. Uses P model."""
     from engine.losses import signature_mmd_loss
+
+    print("   3a. Loading real paths and signatures...", flush=True)
     from engine.signature_engine import SignatureFeatureExtractor
     
     # Load config for real dt
@@ -228,10 +224,9 @@ def run_ablation_study():
     print(f"   Real mean variance: {real_paths.mean():.4f}")
     print(f"   Real signatures: {real_sigs.shape}")
     
-    # Generate Neural SDE paths (uses randomized v0 from market data)
-    print("\n   Generating Neural SDE paths...")
+    print("   3b. Generating Neural SDE paths (500)...", flush=True)
     try:
-        neural_paths = generate_neural_sde_paths(n_paths=500, n_steps=seg_len)
+        neural_paths = generate_neural_sde_paths(n_paths=500, n_steps=seg_len, progress_interval=100)
         neural_sigs = sig_engine.get_signature(jnp.array(neural_paths))
         
         # Normalized MMD between real and generated
@@ -242,8 +237,7 @@ def run_ablation_study():
         print(f"   Neural SDE failed: {e}")
         mmd_neural = None
     
-    # Generate simple OU paths (no signature conditioning, same init conditions)
-    print("\n   Generating OU paths (baseline, no signatures)...")
+    print("   3c. Generating OU baseline paths (500)...", flush=True)
     ou_paths = generate_ou_paths(
         n_paths=500, n_steps=seg_len, 
         kappa=2.72, theta=0.035, sigma=0.3,
@@ -254,7 +248,7 @@ def run_ablation_study():
     mmd_ou = float(signature_mmd_loss(ou_sigs, real_sigs, sig_std))
     print(f"   OU Process MMD (normalized): {mmd_ou:.6f}")
     
-    # Compare
+    improvement = None
     print("\n   Comparison (Signature MMD):")
     if mmd_neural is not None:
         improvement = (mmd_ou - mmd_neural) / mmd_ou * 100
@@ -361,32 +355,20 @@ def run_ablation_study():
 def verify_generated_roughness():
     """
     Verify roughness on the CORRECT data source.
-    
-    Key insight (Gatheral et al. 2018):
-    - VIX ≈ 30-day integrated implied vol → H_VIX ≈ 0.5 (SMOOTH, not rough)
-    - Realized Vol from 5-min SPX returns → H_RV ≈ 0.05-0.14 (ROUGH)
-    
-    We measure H on BOTH to demonstrate the distinction.
+    Uses P-measure model (neural_sde_best_p) for generated paths, not Q.
     """
-    print("\n" + "="*60)
-    print("1. ROUGHNESS VERIFICATION")
-    print("="*60)
-    
     with open("config/params.yaml", 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
-    
-    # ── A. VIX (expected: H ≈ 0.5, NOT rough) ──
+
+    print("   1a. VIX H (smoothed, expected ~0.5)...", flush=True)
     vix_path = Path(cfg['data'].get('source', 'data/market/vix/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
     vix_values = vix_df['close'].values
     
     H_vix = estimate_hurst_variogram(np.log(vix_values))
-    print(f"\nA. VIX (30-day integrated implied vol):")
-    print(f"H (variogram on log-VIX) = {H_vix:.3f}")
-    print(f"H ≈ 0.5 is EXPECTED (VIX is a smoothed integral)")
-    print(f"      This is NOT a roughness test — VIX integration kills roughness.")
-    
-    # ── B. Realized Vol from SPX (expected: H ≈ 0.05-0.14) ──
+    print(f"       H_VIX = {H_vix:.3f} (expected ~0.5, smoothed)")
+
+    print("   1b. Realized vol from SPX (true roughness)...", flush=True)
     rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
     rv_window = cfg['data'].get('rv_window', 78)
     
@@ -396,22 +378,17 @@ def verify_generated_roughness():
         rv_results = estimate_hurst_from_returns(rv_source, rv_window=rv_window)
         H_rv = rv_results['H_variogram']
         
-        print(f"\n   B. REALIZED VOLATILITY from S&P 500 returns:")
-        print(f"Source: {rv_source} ({rv_results['n_rv_points']} RV points)")
-        print(f"H (variogram)   = {rv_results['H_variogram']:.4f}  (R² = {rv_results['R2_variogram']:.3f})")
-        print(f"H (struct q=1)  = {rv_results['H_structure']:.4f}  (R² = {rv_results['R2_structure']:.3f})")
-        
+        print(f"       H_RV = {rv_results['H_variogram']:.4f}  (R² = {rv_results['R2_variogram']:.3f}) — {rv_results['n_rv_points']} points")
         if H_rv < 0.20:
-            print(f"TRUE ROUGHNESS CONFIRMED: H = {H_rv:.3f}")
+            print(f"       -> Rough (H < 0.2)")
         else:
-            print(f"H = {H_rv:.3f} — higher than expected (check data/window)")
+            print(f"       -> H = {H_rv:.3f} (check data/window)")
     else:
-        print(f"\n B. No SPX data found at {rv_source} — cannot verify true roughness")
-    
-    # ── C. Neural SDE generated paths ──
-    print("\n C. Neural SDE generated paths:")
+        print(f"       No SPX data at {rv_source}")
+
+    print("   1c. Neural SDE generated paths (P model)...", flush=True)
     try:
-        neural_paths = generate_neural_sde_paths(n_paths=100, n_steps=200)
+        neural_paths = generate_neural_sde_paths(n_paths=100, n_steps=200, progress_interval=50)
         
         H_generated = []
         for path in neural_paths:
@@ -420,25 +397,14 @@ def verify_generated_roughness():
         
         H_gen_mean = np.mean(H_generated)
         H_gen_std = np.std(H_generated)
-        
-        print(f"H (gen mean): {H_gen_mean:.3f} ± {H_gen_std:.3f}")
-        
-        # Compare with VIX (training data) H, since model is trained on VIX
-        print(f"\n Comparison:")
-        print(f"VIX H: {H_vix:.3f}  (training data — smoothed)")
-        print(f"Generated H: {H_gen_mean:.3f}  (model output)")
-        if H_rv is not None:
-            print(f"True RV H: {H_rv:.3f}  (5-min SPX returns)")
-        
+        print(f"       H_gen = {H_gen_mean:.3f} ± {H_gen_std:.3f}")
         gap_vix = abs(H_vix - H_gen_mean)
-        print(f"Gap vs VIX:{gap_vix:.3f}")
-        
+        if H_rv is not None:
+            print(f"       (VIX H={H_vix:.3f}, RV H={H_rv:.3f})")
         if gap_vix < 0.15:
-            print(f"-> Model faithfully reproduces VIX dynamics (H ≈ {H_gen_mean:.2f})")
-        
+            print(f"       -> Model close to VIX dynamics")
         if H_rv is not None and H_rv < 0.15:
-            print(f"\n Model trained on VIX cannot capture H_RV ≈ {H_rv:.2f}")
-            print(f"To get rough paths, train on REALIZED VOL (data_type: 'realized_vol')")
+            print(f"       -> For rough paths use P model trained on realized vol")
         
         return {
             'H_vix': float(H_vix),
@@ -455,13 +421,9 @@ def verify_generated_roughness():
 
 def compare_signature_distributions():
     """Compare signature distributions of real vs generated paths."""
-    print("\n" + "="*60)
-    print("2. SIGNATURE DISTRIBUTION COMPARISON")
-    print("="*60)
-    
     from engine.signature_engine import SignatureFeatureExtractor
-    
-    # Load config for real dt
+
+    print("   2a. Loading real path segments...", flush=True)
     with open("config/params.yaml", 'r', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
     T = cfg['simulation']['T']
@@ -495,9 +457,9 @@ def compare_signature_distributions():
     print(f"Norm (mean): {real_stats['norm']:.4f}")
     print(f"First 5 components mean: {real_stats['mean'][:5]}")
     
-    # Generated signatures
+    print("   2b. Generating Neural SDE paths (200)...", flush=True)
     try:
-        neural_paths = generate_neural_sde_paths(n_paths=200, n_steps=seg_len)
+        neural_paths = generate_neural_sde_paths(n_paths=200, n_steps=seg_len, progress_interval=100)
         gen_sigs = np.array(sig_engine.get_signature(jnp.array(neural_paths)))
         gen_stats = {
             'mean': np.mean(gen_sigs, axis=0),
@@ -542,16 +504,16 @@ def run_full_verification():
     print("   Closing the loop on the project narrative")
     print("="*70)
     print(f"   Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
+
     results = {}
-    
-    # 1. Verify roughness
+
+    print("\n[Step 1/3] Roughness verification (VIX vs RV vs Neural SDE)...", flush=True)
     results['roughness'] = verify_generated_roughness()
-    
-    # 2. Compare signatures
+
+    print("\n[Step 2/3] Signature distribution comparison...", flush=True)
     results['signatures'] = compare_signature_distributions()
-    
-    # 3. Ablation study
+
+    print("\n[Step 3/3] Ablation study (Neural SDE vs OU)...", flush=True)
     results['ablation'] = run_ablation_study()
     
     # Summary

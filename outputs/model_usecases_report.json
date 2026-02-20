@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-20T00:19:47.382142",
+  "timestamp": "2026-02-20T01:04:52.273580",
   "profiles": {
     "risk": {
       "model_path": "models/neural_sde_best_p.eqx",
