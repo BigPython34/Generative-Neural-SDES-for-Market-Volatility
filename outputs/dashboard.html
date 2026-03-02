@@ -134,7 +134,7 @@
         <div class="header">
             <h1>DeepRoughVol Dashboard</h1>
             <div class="subtitle">
-                Neural SDE + Rough Bergomi | Multi-Measure Pricing & Risk | 2026-02-20 19:10
+                Neural SDE + Rough Bergomi | Multi-Measure Pricing & Risk | 2026-03-02 21:27
             </div>
         </div>
 
@@ -172,17 +172,17 @@
             <div class="card">
                 <div class="card-title">Value-at-Risk</div>
                 <table class="risk-table">
-                    <tr><td>VaR 95%</td><td style="color:#ffd700">4.03%</td></tr>
-                    <tr><td>VaR 99%</td><td style="color:#ff9800">5.78%</td></tr>
-                    <tr><td>ES 95% (CVaR)</td><td style="color:#ff6bff">5.11%</td></tr>
-                    <tr><td>ES 99%</td><td style="color:#ff4444">6.52%</td></tr>
+                    <tr><td>VaR 95%</td><td style="color:#ffd700">4.05%</td></tr>
+                    <tr><td>VaR 99%</td><td style="color:#ff9800">5.80%</td></tr>
+                    <tr><td>ES 95% (CVaR)</td><td style="color:#ff6bff">5.13%</td></tr>
+                    <tr><td>ES 99%</td><td style="color:#ff4444">6.53%</td></tr>
                 </table>
             </div>
             <div class="card">
                 <div class="card-title">Volatility Profile</div>
                 <table class="risk-table">
-                    <tr><td>Terminal Vol (mean)</td><td>17.7%</td></tr>
-                    <tr><td>Terminal Vol (P95)</td><td>21.0%</td></tr>
+                    <tr><td>Terminal Vol (mean)</td><td>17.8%</td></tr>
+                    <tr><td>Terminal Vol (P95)</td><td>21.1%</td></tr>
                     <tr><td>Panic Prob (>40%)</td><td>0.0%</td></tr>
                     <tr><td>Horizon</td><td>4.6 days</td></tr>
                 </table>
@@ -231,7 +231,7 @@
                 <div id="comparison-plot" class="plot-container"></div>
             </div>
             <div class="card">
-                <div class="card-title">Backtest Win Rate (8 scenarios)</div>
+                <div class="card-title">Backtest Win Rate (12 scenarios)</div>
                 <div id="backtest-plot" class="plot-container"></div>
             </div>
         </div>
@@ -262,7 +262,7 @@
         },{responsive:true});
         
         Plotly.newPlot('backtest-plot',[{
-            type:'pie',labels:["Bergomi", "Neural"],values:[5, 3],
+            type:'pie',labels:["Bergomi", "Neural"],values:[9, 3],
             marker:{colors:["#888888", "#00ff88"]},textinfo:'label+percent',
             textfont:{color:'#fff'},hole:0.4
         }],{

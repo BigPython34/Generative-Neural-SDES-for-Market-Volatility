@@ -6,6 +6,93 @@ import os
 from utils.config import load_config
 
 
+class MultiScaleDataLoader:
+    """
+    Multi-scale data loader for training on multiple time horizons.
+
+    Instead of training only on 15min / 120-step paths (~4.6 days),
+    this loader provides paths at multiple frequencies simultaneously,
+    enabling the model to learn both short-term and longer-term dynamics.
+
+    Each scale provides a weighted contribution to the training loss.
+
+    Config (data.multi_scale):
+      enabled: true
+      scales:
+        - {freq_min: 15, segment_length: 120, weight: 1.0}   # ~4.6 days
+        - {freq_min: 30, segment_length: 240, weight: 0.5}   # ~18 days
+        - {freq_min: 60, segment_length: 120, weight: 0.3}   # ~9 days (if data available)
+    """
+
+    def __init__(self, config_path: str = "config/params.yaml"):
+        self.config = load_config(config_path)
+        self.config_path = config_path
+
+    def load_all_scales(self) -> list:
+        """
+        Load data at all configured scales.
+
+        Returns a list of dicts:
+          [{'paths': jnp.array, 'dt': float, 'weight': float, 'label': str}, ...]
+        """
+        ms_cfg = self.config['data'].get('multi_scale', {})
+        if not ms_cfg.get('enabled', False):
+            return []
+
+        scales = ms_cfg.get('scales', [])
+        results = []
+
+        vix_files = self.config['data'].get('vix_files', {})
+        trading_hours = self.config['data'].get('trading_hours_per_day', 6.5)
+
+        for scale in scales:
+            freq_min = scale['freq_min']
+            seg_len = scale['segment_length']
+            weight = scale.get('weight', 1.0)
+
+            # Find the corresponding VIX file
+            source = vix_files.get(freq_min)
+            if source is None:
+                # Try to find approximate match
+                available = sorted(vix_files.keys())
+                closest = min(available, key=lambda x: abs(x - freq_min), default=None)
+                if closest is not None:
+                    source = vix_files[closest]
+                    freq_min = closest  # Use actual frequency
+                else:
+                    print(f"   [MULTI-SCALE] No VIX data for {freq_min}min — skipping")
+                    continue
+
+            if not os.path.exists(source):
+                print(f"   [MULTI-SCALE] File not found: {source} — skipping")
+                continue
+
+            # Compute dt for this scale
+            bars_per_day = int(trading_hours * 60 / freq_min)
+            dt = 1.0 / (252 * bars_per_day)
+
+            # Load data using MarketDataLoader with custom file
+            loader = MarketDataLoader(file_path=source, config_path=self.config_path)
+            try:
+                paths = loader.get_realized_vol_paths(segment_length=seg_len)
+                horizon_days = seg_len * freq_min / (trading_hours * 60)
+                results.append({
+                    'paths': paths,
+                    'dt': dt,
+                    'weight': weight,
+                    'label': f"{freq_min}min/{seg_len}steps (~{horizon_days:.0f}d)",
+                    'freq_min': freq_min,
+                    'segment_length': seg_len,
+                })
+                print(f"   [MULTI-SCALE] {results[-1]['label']}: "
+                      f"{paths.shape[0]} paths, dt={dt:.6f}yr, weight={weight}")
+            except Exception as e:
+                print(f"   [MULTI-SCALE] Error loading {freq_min}min: {e}")
+                continue
+
+        return results
+
+
 class RealizedVolatilityLoader:
     """
     Computes Realized Volatility from S&P 500 intraday price data.

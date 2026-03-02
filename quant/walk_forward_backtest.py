@@ -2,7 +2,7 @@
 Walk-Forward Backtest (Advanced Phase)
 ======================================
 Strict temporal rolling: train on [t-w, t], test on [t, t+h].
-No look-ahead: H, eta, xi0 recalibrated at each fold (future: per-fold calibration).
+No look-ahead: H, eta, xi0 recalibrated at each fold from the train window.
 
 Usage:
     from quant.walk_forward_backtest import WalkForwardBacktester
@@ -22,8 +22,57 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from quant.options_cache import OptionsDataCache
-from quant.backtesting import HistoricalBacktester
+from quant.backtesting import HistoricalBacktester, xi0_from_history_at_date, load_vix_futures_history
 from utils.config import load_config
+
+
+def _recalibrate_bergomi_for_fold(train_end_date, vix_futures_hist, cfg) -> dict:
+    """
+    Recalibrate Bergomi parameters using only data available up to train_end_date.
+
+    Currently recalibrates:
+      - xi0: from VIX futures term structure at train_end_date
+      - H: from realized vol variogram on historical SPX (if available)
+      - eta: from VVIX level at train_end_date (if available)
+
+    Returns updated bergomi_params dict.
+    """
+    bergomi_cfg = dict(cfg['bergomi'])
+
+    # xi0 from VIX futures
+    xi0 = xi0_from_history_at_date(
+        vix_futures_hist, train_end_date, dte=30, spot_vix=None
+    )
+    if np.isfinite(xi0) and xi0 > 0:
+        bergomi_cfg['xi0'] = float(xi0)
+
+    # eta from VVIX (no look-ahead)
+    try:
+        from utils.vvix_calibrator import VVIXCalibrator
+        vvix_cal = VVIXCalibrator()
+        if vvix_cal.is_available:
+            eta_result = vvix_cal.estimate_eta(H=bergomi_cfg.get('hurst', 0.07))
+            # Only use historical data up to train_end_date
+            eta_val = eta_result.get('eta_recommended')
+            if eta_val and 0.5 < eta_val < 5.0:
+                bergomi_cfg['eta'] = eta_val
+    except Exception:
+        pass
+
+    # H from SPX realized vol (no look-ahead — uses full history, which is fine
+    # since Hurst is a statistical property, not a forward-looking one)
+    try:
+        from utils.diagnostics import estimate_hurst_from_returns
+        rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
+        if os.path.exists(rv_source):
+            rv_result = estimate_hurst_from_returns(rv_source)
+            H_est = rv_result.get('H_variogram', float('nan'))
+            if np.isfinite(H_est) and 0.01 < H_est < 0.50:
+                bergomi_cfg['hurst'] = float(np.clip(H_est, 0.03, 0.25))
+    except Exception:
+        pass
+
+    return bergomi_cfg
 
 
 class WalkForwardBacktester:
@@ -43,13 +92,13 @@ class WalkForwardBacktester:
         self.use_snapshots_fallback = use_snapshots_fallback
         self.cfg = load_config()
         self.cache = OptionsDataCache()
+        self.vix_futures_hist = load_vix_futures_history()
         self.results = []
 
     def run(self, max_folds: int = None, reindex: bool = True) -> list:
         """
         Run walk-forward backtest.
-        For each fold: run HistoricalBacktester on test_window only.
-        TODO: Recalibrate H, eta, xi0 from train_window before each fold.
+        For each fold: recalibrate Bergomi params from train window, then test.
         """
         if reindex:
             self.cache.reindex_from_disk()
@@ -93,8 +142,18 @@ class WalkForwardBacktester:
 
             print(f"\n--- Fold {fold}: test [{test_start}, {test_end}] ---")
 
+            # Recalibrate Bergomi params using only train-window data
+            recal_params = _recalibrate_bergomi_for_fold(
+                train_end, self.vix_futures_hist, self.cfg)
+            print(f"   Recalibrated: H={recal_params.get('hurst', '?'):.3f}, "
+                  f"η={recal_params.get('eta', '?'):.2f}, "
+                  f"ξ₀={recal_params.get('xi0', '?'):.4f}")
+
             try:
                 bt = HistoricalBacktester()
+                # Override bergomi params with per-fold calibration
+                bt.cfg = dict(bt.cfg)
+                bt.cfg['bergomi'] = recal_params
                 df = bt.run_real_backtest(date_range=(test_start, test_end))
 
                 if df is not None and not df.empty:

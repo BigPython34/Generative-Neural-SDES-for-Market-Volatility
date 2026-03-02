@@ -29,8 +29,16 @@ data:
   rv_bar_interval_min: 5                # Bar interval for RV source (5min SPX)
   # Temporal coherence
   max_gap_hours: 4                      # Max acceptable gap between consecutive points
+  max_overnight_jump: 0.5               # Max relative VIX variance jump at overnight gaps (filter)
   trading_hours_per_day: 6.5            # NYSE trading hours (9:30 - 16:00)
   options_cache_dir: "data/options_cache"
+  # Multi-scale segment lengths (for long-horizon pricing)
+  multi_scale:
+    enabled: false                      # Enable multi-scale training
+    scales:                             # Each scale: {freq_min, segment_length, weight}
+      - {freq_min: 15, segment_length: 120, weight: 1.0}    # Short-term (default)
+      - {freq_min: 30, segment_length: 240, weight: 0.5}    # Medium-term
+      - {freq_min: 60, segment_length: 120, weight: 0.3}    # Longer-term (if data available)
 
 # Model Training
 training:
@@ -45,22 +53,34 @@ training:
   validation_split: 0.15
   early_stopping_patience: 50
   mean_penalty_mode: "global"           # "global" or "marginal" (Bayer & Stemper 2018)
+  mean_penalty_space: "log_v"           # "variance" (legacy) or "log_v" (avoids Jensen bias)
+  # Training purpose determines which losses are active:
+  #   "pricing":      MMD + mean + martingale + smile_fit (if Q)
+  #   "stress_test":  MMD + mean (tail fidelity, no smile constraint)
+  #   "general":      MMD + mean + martingale (Q) — legacy default
+  training_mode: "general"
   # Q-measure specific
   q_measure:
     lambda_martingale: 5.0              # Weight for martingale violation loss
-    lambda_smile: 1.0                   # Weight for smile fitting loss
+    lambda_smile: 1.0                   # Weight for smile fitting loss (active in pricing mode)
     lambda_jump_reg: 0.1                # Weight for jump regularization
+    options_data_source: "data/options_cache"  # Path to options cache for smile_fit_loss
 
 # Neural SDE Architecture
 neural_sde:
+  # Backbone choice: "ou" (OU prior, default) or "fractional" (Volterra kernel prior)
+  # "fractional" allows the model to nest rBergomi as a special case.
+  # Use "fractional" for pricing/hedging where smile fit matters.
+  # Use "ou" for P-measure / stress testing / fast training.
+  backbone: "ou"
   sig_truncation_order: 3
   mlp_width: 64
   mlp_depth: 3
-  drift_scale: 0.5
-  diffusion_min: 0.1
-  diffusion_max: 1.6
+  drift_scale: 0.5                      # Max neural drift correction magnitude
+  diffusion_min: 0.1                    # Min diffusion (vol-of-vol floor)
+  diffusion_max: 1.6                    # Max diffusion (vol-of-vol cap)
   learn_ou_params: true
-  # OU prior
+  # OU prior (used when backbone=ou)
   kappa: 2.72
   theta: -3.5
   # Log-variance clipping
@@ -71,6 +91,13 @@ neural_sde:
     lambda_init: 2.0                    # Initial jump intensity (jumps/year)
     mu_j_init: 0.5                      # Mean jump size in log-variance
     sigma_j_init: 0.3                   # Jump size volatility
+    prior_target: 3.0                   # Target annual jump rate for regularization
+  # Fractional backbone parameters (used when backbone=fractional)
+  fractional:
+    hurst_init: 0.10                    # Initial Hurst exponent
+    eta_init: 1.9                       # Initial vol-of-vol
+    learn_hurst: true                   # Allow H to be learned
+    learn_eta: true                     # Allow eta to be learned
 
 # Simulation Configuration
 simulation:
@@ -79,11 +106,18 @@ simulation:
   n_paths: 5000
   bars_per_day: 26
   bar_interval_min: 15
+  # Temporal coherence test: verify generated moments at multiple horizons
+  coherence_test:
+    enabled: true
+    horizons_days: [5, 10, 20, 30]       # Test horizons (in trading days)
+    tolerance_mean: 0.15                 # Max relative error on mean variance
+    tolerance_std: 0.30                  # Max relative error on std deviation
 
 # Rough Bergomi Benchmark
 bergomi:
   hurst: 0.07
-  eta: 1.9
+  eta: 1.9                              # Override; set eta_source=vvix to auto-calibrate from VVIX
+  eta_source: "config"                   # "config" (use above value) or "vvix" (auto-calibrate)
   rho: -0.7
   xi0: 0.0225
   fBm_method: "volterra"

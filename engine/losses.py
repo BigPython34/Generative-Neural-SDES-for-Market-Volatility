@@ -99,10 +99,33 @@ def signature_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarra
 @jit
 def mean_penalty_loss(fake_paths: jnp.ndarray, real_mean: float) -> jnp.ndarray:
     """
-    Penalizes E[V_gen] ≠ E[V_real].
-    Corrects Jensen bias from exp(log_v) overshoot.
+    Penalizes E[V_gen] ≠ E[V_real] in variance space.
+
+    WARNING: When paths are in variance (exp of log-V), this loss
+    suffers from Jensen bias: E[exp(X)] ≥ exp(E[X]).
+    Prefer mean_penalty_loss_logv for log-variance paths.
     """
     return jnp.square(jnp.mean(fake_paths) - real_mean)
+
+
+@jit
+def mean_penalty_loss_logv(fake_paths: jnp.ndarray,
+                           real_log_mean: float) -> jnp.ndarray:
+    """
+    Mean penalty in log-variance space (avoids Jensen bias).
+
+    Matches E[log V_gen] = E[log V_real], which is the correct
+    objective when the SDE generates log-variance.
+
+    This avoids the systematic upward bias that occurs when matching
+    E[V] in variance space due to Jensen's inequality.
+
+    Args:
+        fake_paths: Generated variance paths (NOT log-variance)
+        real_log_mean: Pre-computed mean(log(real_variance))
+    """
+    fake_log = jnp.log(jnp.maximum(fake_paths, 1e-10))
+    return jnp.square(jnp.mean(fake_log) - real_log_mean)
 
 
 @jit
@@ -173,7 +196,14 @@ def term_structure_loss(model_atm_vols: jnp.ndarray,
 @jit
 def feller_condition_loss(kappa: float, theta: float,
                           vol_of_vol: float) -> jnp.ndarray:
-    """Penalizes Feller condition violation: 2κθ > σ²."""
+    """
+    DEPRECATED — not used in current training pipeline.
+
+    Penalizes Feller condition violation: 2κθ > σ².
+    Only relevant for CIR/Heston-type models in variance space.
+    The current OU and fractional backbones operate in log-variance
+    space where Feller is automatically satisfied.
+    """
     return jnp.maximum(0.0, vol_of_vol ** 2 - 2 * kappa * theta) ** 2
 
 
@@ -192,8 +222,12 @@ def jump_regularization_loss(log_lambda: jnp.ndarray,
 @jit
 def path_regularity_loss(paths: jnp.ndarray) -> jnp.ndarray:
     """
-    Penalizes non-physical spikes in generated variance paths.
-    Encourages smooth, continuous paths (appropriate for diffusion models).
+    DEPRECATED — contradicts rough volatility modeling.
+
+    Penalizes path increments, which encourages smooth paths.
+    This is HARMFUL for rough volatility models where paths are
+    intrinsically irregular (Hölder exponent ≈ H ≈ 0.1).
+    Do NOT use for Neural SDE training.
     """
     increments = jnp.diff(paths, axis=1)
     return jnp.mean(jnp.square(increments))

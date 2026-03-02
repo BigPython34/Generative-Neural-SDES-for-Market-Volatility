@@ -11,10 +11,18 @@ class SignatureFeatureExtractor:
 
     Time augmentation uses the REAL time scale (in years) to ensure
     temporal consistency between the signature and the SDE dynamics.
+
+    The JAX engine implements the EXACT Chen's identity for signature updates
+    up to order 4, ensuring mathematical correctness.
+
+    Config: neural_sde.sig_truncation_order (default 3, supports 2, 3, 4)
     """
     def __init__(self, truncation_order: int = 3, dt: float = None):
         self.order = truncation_order
         self.dt = dt  # Real time step in years (e.g. 0.000153 for 15-min bars)
+        if self.order > 4:
+            raise ValueError(f"Truncation order {self.order} not supported (max 4). "
+                             f"Use esig for higher orders.")
 
     def get_signature(self, paths):
         """
@@ -42,9 +50,9 @@ class SignatureFeatureExtractor:
 
     def _get_signature_jax(self, paths):
         """
-        Pure JAX implementation of Path Signatures (Order 1, 2, 3).
+        Pure JAX implementation of Path Signatures with exact Chen's identity.
         Differentiable & GPU compatible.
-        Assumes paths are 1D (Variance process).
+        Supports orders 2, 3, and 4.
         """
         batch_size, n_steps = paths.shape
         if self.dt is not None:
@@ -57,36 +65,109 @@ class SignatureFeatureExtractor:
 
         dX = path_augmented[:, 1:] - path_augmented[:, :-1]
 
-        def scan_step(carry, dx):
-            s0, s1, s2, s3 = carry
-
-            new_s1 = s1 + dx
-            term2_a = jnp.outer(s1, dx).flatten()
-            term2_b = 0.5 * jnp.outer(dx, dx).flatten()
-            new_s2 = s2 + term2_a + term2_b
-            term3_a = jnp.kron(s2, dx)
-            term3_b = jnp.kron(s1, 0.5 * jnp.outer(dx, dx).flatten())
-            term3_c = (1/6.0) * jnp.kron(dx, jnp.kron(dx, dx))
-            new_s3 = s3 + term3_a + term3_b + term3_c
-
-            return (s0, new_s1, new_s2, new_s3), None
+        if self.order == 2:
+            scan_step = self._make_scan_step_order2()
+        elif self.order == 3:
+            scan_step = self._make_scan_step_order3()
+        else:  # order 4
+            scan_step = self._make_scan_step_order4()
 
         def compute_single_path_sig(dx_seq):
             d = 2
-            s0 = jnp.array([1.0])
-            s1 = jnp.zeros(d)
-            s2 = jnp.zeros(d**2)
-            s3 = jnp.zeros(d**3)
-
-            final_carry, _ = jax.lax.scan(scan_step, (s0, s1, s2, s3), dx_seq)
-
-            if self.order == 2:
-                return jnp.concatenate([final_carry[1], final_carry[2]])
-            else:
-                return jnp.concatenate([final_carry[1], final_carry[2], final_carry[3]])
+            init_state = self._make_init_state(d)
+            final_carry, _ = jax.lax.scan(scan_step, init_state, dx_seq)
+            return self._extract_signature(final_carry)
 
         sigs = jax.vmap(compute_single_path_sig)(dX)
         return sigs
+
+    def _make_init_state(self, d: int):
+        """Create initial signature state (all zeros except s0=1)."""
+        s0 = jnp.array([1.0])
+        s1 = jnp.zeros(d)
+        s2 = jnp.zeros(d ** 2)
+        if self.order >= 3:
+            s3 = jnp.zeros(d ** 3)
+        else:
+            s3 = jnp.zeros(0)
+        if self.order >= 4:
+            s4 = jnp.zeros(d ** 4)
+        else:
+            s4 = jnp.zeros(0)
+        return (s0, s1, s2, s3, s4)
+
+    def _extract_signature(self, carry):
+        """Extract signature vector from carry state."""
+        _, s1, s2, s3, s4 = carry
+        if self.order == 2:
+            return jnp.concatenate([s1, s2])
+        elif self.order == 3:
+            return jnp.concatenate([s1, s2, s3])
+        else:  # order 4
+            return jnp.concatenate([s1, s2, s3, s4])
+
+    @staticmethod
+    def _make_scan_step_order2():
+        """Chen's identity, exact, order 2."""
+        def scan_step(carry, dx):
+            s0, s1, s2, s3, s4 = carry
+            # Level 1: S^1 += dx
+            new_s1 = s1 + dx
+            # Level 2: S^2 += S^1 ⊗ dx + ½ dx ⊗ dx  (exact Chen)
+            new_s2 = s2 + jnp.outer(s1, dx).flatten() + 0.5 * jnp.outer(dx, dx).flatten()
+            return (s0, new_s1, new_s2, s3, s4), None
+        return scan_step
+
+    @staticmethod
+    def _make_scan_step_order3():
+        """
+        Chen's identity, exact, order 3.
+
+        For a path X_t with increment dx = X_{t+1} - X_t:
+          S^1 += dx
+          S^2 += S^1 ⊗ dx + ½ dx ⊗ dx
+          S^3 += S^2 ⊗ dx + S^1 ⊗ (½ dx⊗dx) + (1/6) dx⊗dx⊗dx
+
+        This is mathematically exact (Chen 1957).
+        """
+        def scan_step(carry, dx):
+            s0, s1, s2, s3, s4 = carry
+            dx_outer = jnp.outer(dx, dx).flatten()
+
+            new_s1 = s1 + dx
+            new_s2 = s2 + jnp.outer(s1, dx).flatten() + 0.5 * dx_outer
+            new_s3 = (s3
+                      + jnp.kron(s2, dx)
+                      + jnp.kron(s1, 0.5 * dx_outer)
+                      + (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+            return (s0, new_s1, new_s2, new_s3, s4), None
+        return scan_step
+
+    @staticmethod
+    def _make_scan_step_order4():
+        """
+        Chen's identity, exact, order 4.
+
+        S^4 += S^3 ⊗ dx + S^2 ⊗ (½dx⊗dx) + S^1 ⊗ (1/6 dx⊗dx⊗dx) + (1/24) dx⊗⁴
+        """
+        def scan_step(carry, dx):
+            s0, s1, s2, s3, s4 = carry
+            dx_outer = jnp.outer(dx, dx).flatten()
+            dx3 = jnp.kron(dx, jnp.kron(dx, dx))
+
+            new_s1 = s1 + dx
+            new_s2 = s2 + jnp.outer(s1, dx).flatten() + 0.5 * dx_outer
+            new_s3 = (s3
+                      + jnp.kron(s2, dx)
+                      + jnp.kron(s1, 0.5 * dx_outer)
+                      + (1.0 / 6.0) * dx3)
+            new_s4 = (s4
+                      + jnp.kron(s3, dx)
+                      + jnp.kron(s2, 0.5 * dx_outer)
+                      + jnp.kron(s1, (1.0 / 6.0) * dx3)
+                      + (1.0 / 24.0) * jnp.kron(dx, dx3))
+            return (s0, new_s1, new_s2, new_s3, new_s4), None
+        return scan_step
 
     def get_feature_dim(self, input_dim: int) -> int:
         d = input_dim + 1

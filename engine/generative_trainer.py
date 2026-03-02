@@ -21,12 +21,13 @@ Usage:
 import jax
 import jax.numpy as jnp
 import numpy as np
+import os
 import optax
 import equinox as eqx
 from engine.neural_sde import NeuralRoughSimulator
 from engine.losses import (
     kernel_mmd_loss, mean_penalty_loss, marginal_mean_penalty_loss,
-    martingale_violation_loss, jump_regularization_loss,
+    martingale_violation_loss, jump_regularization_loss, smile_fit_loss,
 )
 from engine.signature_engine import SignatureFeatureExtractor
 from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
@@ -114,11 +115,26 @@ class GenerativeTrainer:
         self.lambda_mean = train_cfg.get('lambda_mean', 10.0)
         self.patience = train_cfg.get('early_stopping_patience', 50)
         self.mean_penalty_mode = train_cfg.get('mean_penalty_mode', 'global')
+        self.mean_penalty_space = train_cfg.get('mean_penalty_space', 'log_v')
+
+        # Training mode: "general", "pricing", "stress_test"
+        self.training_mode = train_cfg.get('training_mode', 'general')
 
         # Q-measure specific parameters
         q_cfg = train_cfg.get('q_measure', {})
         self.lambda_martingale = q_cfg.get('lambda_martingale', 5.0)
+        self.lambda_smile = q_cfg.get('lambda_smile', 1.0)
         self.lambda_jump_reg = q_cfg.get('lambda_jump_reg', 0.1)
+
+        # Load smile target for pricing mode (Q-measure only)
+        self._smile_target = None
+        if self.measure == 'Q' and self.training_mode == 'pricing':
+            self._smile_target = self._load_smile_target(q_cfg)
+
+        # η auto-calibration from VVIX (when configured)
+        bergomi_cfg = self.yaml_config.get('bergomi', {})
+        if bergomi_cfg.get('eta_source', 'config') == 'vvix':
+            self._auto_calibrate_eta(bergomi_cfg)
 
         # SOFR integration for Q-measure
         self._risk_free_rate = self.yaml_config['pricing']['risk_free_rate']
@@ -173,6 +189,11 @@ class GenerativeTrainer:
             if self.mean_penalty_mode == 'marginal':
                 real_batch = self.market_paths[random_indices]
                 mean_pen = marginal_mean_penalty_loss(fake_vars, real_batch)
+            elif self.mean_penalty_space == 'log_v':
+                # Mean penalty in log-V space (avoids Jensen bias from exp transform)
+                fake_log = jnp.log(jnp.maximum(fake_vars, 1e-10))
+                real_log_mean = jnp.mean(jnp.log(jnp.maximum(self.market_paths, 1e-10)))
+                mean_pen = jnp.square(jnp.mean(fake_log) - real_log_mean)
             else:
                 mean_pen = mean_penalty_loss(fake_vars, self.real_mean)
 
@@ -198,6 +219,36 @@ class GenerativeTrainer:
                     spot_normalized, dt, self._risk_free_rate
                 )
                 total = total + self.lambda_martingale * mart_loss
+
+                # Smile fitting loss (active in pricing training mode)
+                if self.training_mode == 'pricing' and self._smile_target is not None:
+                    from quant.mc_pricer import MonteCarloOptionPricer
+                    from utils.black_scholes import BlackScholes
+                    target = self._smile_target
+                    # Build normalized spot paths from generated variance
+                    spot_normalized_final = spot_normalized[:, -1]
+                    s0 = self.yaml_config['pricing']['spot']
+                    S_T = s0 * spot_normalized_final
+                    # Compute model IVs at target strikes
+                    T_smile = target['T']
+                    r_smile = self._risk_free_rate
+                    model_ivs = []
+                    for ki, K in enumerate(target['strikes']):
+                        is_call = K >= s0
+                        if is_call:
+                            payoff = jnp.maximum(S_T - K, 0)
+                        else:
+                            payoff = jnp.maximum(K - S_T, 0)
+                        mc_price = jnp.exp(-r_smile * T_smile) * jnp.mean(payoff)
+                        # Invert BS to get model IV (use JAX-safe Newton)
+                        model_ivs.append(mc_price)
+                    # Use price-space smile loss (avoids non-differentiable IV inversion)
+                    model_prices = jnp.array(model_ivs)
+                    market_prices = target.get('prices', model_prices)
+                    if 'prices' in target:
+                        smile_loss = smile_fit_loss(model_prices, market_prices,
+                                                     target.get('vega_weights'))
+                        total = total + self.lambda_smile * smile_loss
 
             # Jump regularization
             if m.enable_jumps:
@@ -233,6 +284,24 @@ class GenerativeTrainer:
         if not enable_jumps:
             filter_spec = eqx.tree_at(lambda m: m.jump_params, filter_spec,
                                       jax.tree_util.tree_map(lambda _: False, model.jump_params))
+
+        # Fractional backbone: freeze/unfreeze H and eta based on config
+        backbone = self.yaml_config.get('neural_sde', {}).get('backbone', 'ou')
+        frac_cfg = self.yaml_config.get('neural_sde', {}).get('fractional', {})
+        if backbone != 'fractional':
+            # Freeze fractional params entirely when using OU backbone
+            filter_spec = eqx.tree_at(lambda m: m.fractional_params, filter_spec,
+                                      jax.tree_util.tree_map(lambda _: False, model.fractional_params))
+        else:
+            # Fractional backbone: control individual param learning
+            if not frac_cfg.get('learn_hurst', True):
+                filter_spec = eqx.tree_at(lambda m: m.fractional_params.log_H, filter_spec, False)
+            if not frac_cfg.get('learn_eta', True):
+                filter_spec = eqx.tree_at(lambda m: m.fractional_params.log_eta, filter_spec, False)
+            # Freeze OU params when using fractional backbone
+            filter_spec = eqx.tree_at(lambda m: m.kappa, filter_spec, False)
+            filter_spec = eqx.tree_at(lambda m: m.theta, filter_spec, False)
+
         self._filter_spec = filter_spec
         self._learn_ou = learn_ou
 
@@ -253,13 +322,17 @@ class GenerativeTrainer:
 
         measure_str = f"[{self.measure}-measure]"
         jump_str = " + JUMPS" if enable_jumps else ""
-        print(f"\nStarting {measure_str} Training{jump_str}...")
+        backbone_str = f" ({model.backbone} backbone)"
+        print(f"\nStarting {measure_str} Training{jump_str}{backbone_str}...")
         print(f"   LR warmup: {self.yaml_config.get('training',{}).get('warmup_steps',50)} steps")
         print(f"   Early stopping patience: {self.patience} epochs")
         if self.measure == 'Q':
             print(f"   Martingale penalty: λ={self.lambda_martingale}")
             print(f"   Risk-free rate: {self._risk_free_rate:.4f}")
-        if learn_ou:
+        if model.backbone == 'fractional':
+            fp = model.fractional_params
+            print(f"   Fractional backbone: H₀={float(fp.H):.4f}, η₀={float(fp.eta):.3f}")
+        elif learn_ou:
             print(f"   Learnable OU: κ₀={float(model.kappa):.3f}, θ₀={float(model.theta):.3f}")
         if enable_jumps:
             jp = model.jump_params
@@ -280,9 +353,14 @@ class GenerativeTrainer:
             if epoch % 10 == 0:
                 val_loss = self._compute_val_loss(model, dt)
 
-                kappa_str = f" | κ={float(model.kappa):.3f}" if learn_ou else ""
-                theta_str = f" θ={float(model.theta):.2f}" if learn_ou else ""
-                print(f"Epoch {epoch:04d} | Train: {loss:.6f} | Val: {val_loss:.6f}{kappa_str}{theta_str}")
+                if model.backbone == 'fractional':
+                    fp = model.fractional_params
+                    extra_str = f" | H={float(fp.H):.4f} η={float(fp.eta):.3f}"
+                elif learn_ou:
+                    extra_str = f" | κ={float(model.kappa):.3f} θ={float(model.theta):.2f}"
+                else:
+                    extra_str = ""
+                print(f"Epoch {epoch:04d} | Train: {loss:.6f} | Val: {val_loss:.6f}{extra_str}")
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -301,7 +379,10 @@ class GenerativeTrainer:
                 best_train_loss = loss
 
         print(f"Training complete. Best train: {best_train_loss:.6f}, Best val: {best_val_loss:.6f}")
-        if learn_ou:
+        if best_model.backbone == 'fractional':
+            fp = best_model.fractional_params
+            print(f"   Final fractional: H={float(fp.H):.4f}, η={float(fp.eta):.3f}")
+        elif learn_ou:
             print(f"   Final OU: κ={float(best_model.kappa):.3f}, θ={float(best_model.theta):.2f}")
         if enable_jumps:
             jp = best_model.jump_params
@@ -322,10 +403,129 @@ class GenerativeTrainer:
         if self.mean_penalty_mode == 'marginal':
             real_batch = self.val_paths[self._val_indices_fixed]
             mean_pen = marginal_mean_penalty_loss(fake_vars, real_batch)
+        elif self.mean_penalty_space == 'log_v':
+            # Mean penalty in log-V space to avoid Jensen bias
+            fake_log = jnp.log(jnp.maximum(fake_vars, 1e-10))
+            val_log_mean = float(jnp.mean(jnp.log(jnp.maximum(self.val_paths, 1e-10))))
+            mean_pen = jnp.square(jnp.mean(fake_log) - val_log_mean)
         else:
             mean_pen = mean_penalty_loss(fake_vars, self.val_mean)
 
         return float(mmd + self.lambda_mean * mean_pen)
+
+    def _auto_calibrate_eta(self, bergomi_cfg: dict):
+        """
+        Auto-calibrate η from VVIX when bergomi.eta_source == 'vvix'.
+
+        Overwrites:
+          - bergomi.eta in yaml_config (for downstream use)
+          - neural_sde.fractional.eta_init (to initialize fractional backbone)
+        """
+        try:
+            from utils.vvix_calibrator import VVIXCalibrator
+            cal = VVIXCalibrator()
+            if not cal.is_available:
+                print("   [η AUTO] VVIX data not available — keeping config η")
+                return
+            H = bergomi_cfg.get('hurst', 0.07)
+            result = cal.estimate_eta(H=H)
+            eta_new = result['eta_recommended']
+            eta_old = bergomi_cfg.get('eta', 1.9)
+            print(f"   [η AUTO] VVIX calibration: η = {eta_new:.3f} "
+                  f"(was {eta_old:.3f}, VVIX = {result.get('vvix_current', '?')})")
+            self.yaml_config['bergomi']['eta'] = eta_new
+            # Also update fractional backbone init (if used)
+            frac_cfg = self.yaml_config.get('neural_sde', {}).get('fractional', {})
+            if frac_cfg:
+                frac_cfg['eta_init'] = eta_new
+        except Exception as e:
+            print(f"   [η AUTO] Failed: {e}")
+
+    def _load_smile_target(self, q_cfg: dict):
+        """
+        Load a market smile target for smile_fit_loss in pricing training mode.
+        Uses the most recent cached options surface.
+        """
+        import pandas as pd
+        cache_dir = q_cfg.get('options_data_source', 'data/options_cache')
+
+        if not os.path.exists(cache_dir):
+            print(f"   [SMILE] No options cache at {cache_dir} — smile_fit disabled")
+            return None
+
+        # Find most recent surface CSV
+        csvs = sorted([f for f in os.listdir(cache_dir) if f.endswith('.csv') and 'SPY_surface' in f])
+        if not csvs:
+            print("   [SMILE] No surface files found — smile_fit disabled")
+            return None
+
+        latest = os.path.join(cache_dir, csvs[-1])
+        try:
+            df = pd.read_csv(latest)
+        except Exception as e:
+            print(f"   [SMILE] Error loading {latest}: {e}")
+            return None
+
+        # Extract 30-day ATM smile (moneyness -15% to +15%)
+        target_dte = 30
+        available_dtes = df['dte'].unique() if 'dte' in df.columns else []
+        if len(available_dtes) == 0:
+            return None
+
+        closest_dte = min(available_dtes, key=lambda x: abs(x - target_dte))
+        smile = df[df['dte'] == closest_dte].copy()
+
+        # OTM filter
+        otm_mask = (
+            ((smile['type'] == 'call') & (smile['moneyness'] >= 0)) |
+            ((smile['type'] == 'put') & (smile['moneyness'] <= 0))
+        )
+        smile = smile[otm_mask]
+        smile = smile[
+            (smile['impliedVolatility'] > 0.05) &
+            (smile['impliedVolatility'] < 1.5) &
+            (smile['moneyness'] >= -0.15) &
+            (smile['moneyness'] <= 0.15)
+        ]
+
+        if len(smile) < 5:
+            print(f"   [SMILE] Only {len(smile)} OTM options for DTE={closest_dte} — disabled")
+            return None
+
+        strikes = jax.device_put(jnp.array(smile['moneyness'].values))
+        market_ivs = jax.device_put(jnp.array(smile['impliedVolatility'].values))
+
+        # Vega weights: approximate with BS vega (higher near ATM)
+        vega_w = jnp.exp(-0.5 * (strikes / 0.10) ** 2)  # Gaussian weighting
+        vega_w = jax.device_put(vega_w)
+
+        print(f"   [SMILE] Loaded {len(smile)} OTM options, DTE={closest_dte}d")
+
+        # Compute market prices from IVs for differentiable loss comparison
+        spot = (float(df.get('spot', pd.Series([100.0])).iloc[0]) if 'spot' in df.columns
+                else 100.0)
+        T_smile = float(closest_dte / 365.0)
+        r_smile = self._risk_free_rate if hasattr(self, '_risk_free_rate') else 0.05
+        abs_strikes = spot * (1.0 + smile['moneyness'].values)
+
+        from utils.black_scholes import BlackScholes
+        market_prices = []
+        for i, (K, iv, m) in enumerate(zip(abs_strikes, smile['impliedVolatility'].values,
+                                             smile['moneyness'].values)):
+            opt_type = 'call' if m >= 0 else 'put'
+            p = BlackScholes.price(spot, K, T_smile, r_smile, iv, opt_type)
+            market_prices.append(p)
+        market_prices_arr = jax.device_put(jnp.array(market_prices))
+
+        return {
+            'moneyness': strikes,
+            'strikes': jax.device_put(jnp.array(abs_strikes)),
+            'market_ivs': market_ivs,
+            'prices': market_prices_arr,
+            'vega_weights': vega_w,
+            'T': T_smile,
+            'spot': spot,
+        }
 
     def _save_model(self, model):
         from pathlib import Path

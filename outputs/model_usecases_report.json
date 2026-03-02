@@ -1,26 +1,26 @@
 {
-  "timestamp": "2026-02-20T01:04:52.273580",
+  "timestamp": "2026-03-02T21:24:00.494303",
   "profiles": {
     "risk": {
       "model_path": "models/neural_sde_best_p.eqx",
       "config_path": "config/params.yaml",
       "risk_scenarios": {
         "horizon_days_equiv": 4.61664,
-        "VaR_95": 0.040308449417352676,
-        "ES_95": 0.05112046003341675,
-        "VaR_99": 0.05778384581208229,
-        "ES_99": 0.0651748776435852,
-        "terminal_vol_mean": 0.17720215022563934,
-        "terminal_vol_p95": 0.21028266847133636,
+        "VaR_95": 0.04048681631684303,
+        "ES_95": 0.051261287182569504,
+        "VaR_99": 0.057984448969364166,
+        "ES_99": 0.06533750146627426,
+        "terminal_vol_mean": 0.1780572235584259,
+        "terminal_vol_p95": 0.21062271296977997,
         "panic_prob_vol_gt_40pct": 0.0
       },
       "pricing_prior_local_recalibration": {
-        "snapshot_time": "2026-02-20T00:12:55.386700",
+        "snapshot_time": "2026-02-20T18:32:25.556284",
         "target_dte": 27,
-        "market_atm_iv": 0.1620567193603515,
-        "prior_atm_iv": 0.1770256608724594,
-        "local_scale_factor": 0.9154419679139483,
-        "recalibrated_atm_iv": 0.1620567193603515
+        "market_atm_iv": 0.1404352314758301,
+        "prior_atm_iv": 0.177540585398674,
+        "local_scale_factor": 0.7910035396158999,
+        "recalibrated_atm_iv": 0.1404352314758301
       }
     },
     "pricing": {
@@ -28,21 +28,21 @@
       "config_path": "config/params.yaml",
       "risk_scenarios": {
         "horizon_days_equiv": 4.61664,
-        "VaR_95": 0.03944256156682968,
-        "ES_95": 0.04955710843205452,
-        "VaR_99": 0.055325306951999664,
-        "ES_99": 0.06279949098825455,
-        "terminal_vol_mean": 0.1719241589307785,
-        "terminal_vol_p95": 0.1872418075799942,
+        "VaR_95": 0.03938666731119156,
+        "ES_95": 0.04975445196032524,
+        "VaR_99": 0.056433551013469696,
+        "ES_99": 0.06330166757106781,
+        "terminal_vol_mean": 0.17227983474731445,
+        "terminal_vol_p95": 0.2006392478942871,
         "panic_prob_vol_gt_40pct": 0.0
       },
       "pricing_prior_local_recalibration": {
-        "snapshot_time": "2026-02-20T00:12:55.386700",
+        "snapshot_time": "2026-02-20T18:32:25.556284",
         "target_dte": 27,
-        "market_atm_iv": 0.1620567193603515,
-        "prior_atm_iv": 0.17215771973133087,
-        "local_scale_factor": 0.9413270552912585,
-        "recalibrated_atm_iv": 0.1620567193603515
+        "market_atm_iv": 0.1404352314758301,
+        "prior_atm_iv": 0.1724545955657959,
+        "local_scale_factor": 0.8143316274935127,
+        "recalibrated_atm_iv": 0.1404352314758301
       }
     },
     "scenarios": {
@@ -50,21 +50,21 @@
       "config_path": "config/params.yaml",
       "risk_scenarios": {
         "horizon_days_equiv": 4.61664,
-        "VaR_95": 0.03944256156682968,
-        "ES_95": 0.04955710843205452,
-        "VaR_99": 0.055325306951999664,
-        "ES_99": 0.06279949098825455,
-        "terminal_vol_mean": 0.1719241589307785,
-        "terminal_vol_p95": 0.1872418075799942,
+        "VaR_95": 0.03938666731119156,
+        "ES_95": 0.04975445196032524,
+        "VaR_99": 0.056433551013469696,
+        "ES_99": 0.06330166757106781,
+        "terminal_vol_mean": 0.17227983474731445,
+        "terminal_vol_p95": 0.2006392478942871,
         "panic_prob_vol_gt_40pct": 0.0
       },
       "pricing_prior_local_recalibration": {
-        "snapshot_time": "2026-02-20T00:12:55.386700",
+        "snapshot_time": "2026-02-20T18:32:25.556284",
         "target_dte": 27,
-        "market_atm_iv": 0.1620567193603515,
-        "prior_atm_iv": 0.17215771973133087,
-        "local_scale_factor": 0.9413270552912585,
-        "recalibrated_atm_iv": 0.1620567193603515
+        "market_atm_iv": 0.1404352314758301,
+        "prior_atm_iv": 0.1724545955657959,
+        "local_scale_factor": 0.8143316274935127,
+        "recalibrated_atm_iv": 0.1404352314758301
       }
     }
   },
