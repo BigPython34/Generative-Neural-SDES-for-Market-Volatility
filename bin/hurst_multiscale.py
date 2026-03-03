@@ -327,6 +327,7 @@ def plot_bootstrap_distributions(result: MultiScaleResult, save_dir: Path) -> No
 def plot_logrv_timeseries(result: MultiScaleResult, save_dir: Path) -> None:
     """
     Plot log(RV) time series at each frequency (visual check for stationarity).
+    Color-coded by frequency, with mean/std and bars-per-day info.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -337,19 +338,35 @@ def plot_logrv_timeseries(result: MultiScaleResult, save_dir: Path) -> None:
     if n == 0:
         return
 
-    fig, axes = plt.subplots(n, 1, figsize=(12, 3 * n), sharex=False)
+    freq_colors = {
+        "5s": "#e41a1c", "5m": "#377eb8", "15m": "#4daf4a",
+        "30m": "#984ea3", "1h": "#ff7f00", "daily": "#a65628",
+    }
+
+    fig, axes = plt.subplots(n, 1, figsize=(14, 2.8 * n), sharex=False)
     if n == 1:
         axes = [axes]
 
     for i, freq in enumerate(freq_labels):
         ax = axes[i]
         log_rv = result.rv_series[freq]
-        ax.plot(log_rv, linewidth=0.5, color='steelblue')
-        ax.set_ylabel(f"log(RV)", fontsize=10)
-        ax.set_title(f"{freq} — {len(log_rv)} daily values, "
-                     f"mean={np.mean(log_rv):.2f}, std={np.std(log_rv):.2f}",
-                     fontsize=10)
+        color = freq_colors.get(freq, 'steelblue')
+        ax.plot(log_rv, linewidth=0.4, color=color, alpha=0.8)
+        # Add rolling mean to distinguish visually
+        if len(log_rv) > 60:
+            roll = pd.Series(log_rv).rolling(30, min_periods=1).mean().values
+            ax.plot(roll, linewidth=1.5, color='black', alpha=0.5, label='30-day MA')
+        ax.set_ylabel("log(RV)", fontsize=10)
+        rv_annualized = np.sqrt(np.exp(np.mean(log_rv)) * 252) * 100
+        ax.set_title(
+            f"{freq} — {len(log_rv)} days, "
+            f"mean={np.mean(log_rv):.2f}, std={np.std(log_rv):.2f}, "
+            f"annualized σ ≈ {rv_annualized:.1f}%",
+            fontsize=10, color=color, fontweight='bold',
+        )
         ax.grid(True, alpha=0.3)
+        if len(log_rv) > 60:
+            ax.legend(fontsize=8, loc='upper right')
 
     axes[-1].set_xlabel("Trading day index", fontsize=10)
     fig.suptitle(f"Daily log(RV) Time Series — {result.asset}", fontsize=13, y=1.01)
