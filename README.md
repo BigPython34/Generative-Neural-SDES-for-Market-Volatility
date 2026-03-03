@@ -155,7 +155,7 @@ python main.py
 
 ### 2. Separate P-Measure and Q-Measure Models
 
-**The problem**: In most projects, a single model is trained on historical data and used for pricing. This is mathematically wrong: the probability measure under which volatility moves in the real world ($\mathbb{P}$) is **not** the measure under which derivatives are priced ($\mathbb{Q}$).
+**The problem**: In most projects, a single model is trained on historical data and used for pricing. This is mathematically wrong: the probability measure under which volatility moves in the real world (**P**) is **not** the measure under which derivatives are priced (**Q**).
 
 **What DeepRoughVol does**: Train separate models with different loss functions:
 
@@ -445,7 +445,11 @@ This section details the rigorous multi-scale estimation implemented in `quant/h
 
 A **fractional Brownian motion** $B^H = (B^H_t)_{t \geq 0}$ with Hurst parameter $H \in (0,1)$ is the unique centered Gaussian process with covariance:
 
-$$\operatorname{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}\bigl(|t|^{2H} + |s|^{2H} - |t-s|^{2H}\bigr)$$
+```latex
+\operatorname{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}\bigl(|t|^{2H} + |s|^{2H} - |t-s|^{2H}\bigr)
+```
+
+Cov(B^H_t, B^H_s) = (1/2)(|t|^(2H) + |s|^(2H) - |t-s|^(2H))
 
 **Fundamental properties:**
 
@@ -453,8 +457,8 @@ $$\operatorname{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}\bigl(|t|^{2H} + |s|^{2H} - |t-
 |:--|:--|:--|
 | Self-similarity | $(B^H_{ct})_t \overset{d}{=} c^H(B^H_t)_t$ for all $c > 0$ | Scale invariance of increments |
 | Stationary increments | $B^H_{t+\tau} - B^H_t \overset{d}{=} B^H_\tau$ for all $t$ | Time-shift invariance |
-| Variance scaling | $\operatorname{Var}(B^H_t) = t^{2H}$ | Power-law variance growth |
-| Increment correlation | $\operatorname{Corr}(\Delta_1 B^H, \Delta_2 B^H) < 0$ when $H < 1/2$ | Anti-persistence (roughness) |
+| Variance scaling | Var(B^H_t) = t^(2H) | Power-law variance growth |
+| Increment correlation | Corr(dB^H[1], dB^H[2]) < 0 when H < 1/2 | Anti-persistence (roughness) |
 
 For $H = 1/2$, fBM reduces to standard Brownian motion. For $H < 1/2$, increments are **negatively correlated** — a positive move is more likely followed by a negative one, creating the jagged, erratic paths characteristic of rough processes.
 
@@ -466,11 +470,11 @@ For $H = 1/2$, fBM reduces to standard Brownian motion. For $H < 1/2$, increment
 
 $$E\bigl[|X_t - X_s|^p\bigr] \leq C\,|t-s|^{1+\beta}$$
 
-for some $p \geq 1$ and $\beta > 0$, then $X$ admits a modification with Hölder-continuous paths of order $\gamma$ for any $\gamma < \beta/p$. For fBM, since $B^H_t - B^H_s \sim \mathcal{N}(0, |t-s|^{2H})$, the $p$-th absolute moment of a Gaussian gives:
+for some $p \geq 1$ and $\beta > 0$, then $X$ admits a modification with Hölder-continuous paths of order $\gamma$ for any $\gamma < \beta/p$. For fBM, since $B^H_t - B^H_s \sim N(0, |t-s|^{2H})$, the $p$-th absolute moment of a Gaussian gives:
 
 $$E\bigl[|B^H_t - B^H_s|^p\bigr] = c_p\,|t-s|^{pH}$$
 
-where $c_p = E[|\mathcal{N}(0,1)|^p] = 2^{p/2}\Gamma\!\bigl(\frac{p+1}{2}\bigr)/\sqrt{\pi}$. Setting $\beta = pH - 1$, we get Hölder regularity $\gamma < (pH-1)/p = H - 1/p$. Since $p$ can be taken arbitrarily large, $\gamma$ can be made arbitrarily close to $H$. The matching lower bound (paths are *not* $\alpha$-Hölder for $\alpha > H$) follows from the law of the iterated logarithm for fBM (Arcones 1995). $\square$
+where $c_p = E[|N(0,1)|^p] = 2^{p/2} \Gamma((p+1)/2) / \sqrt{\pi}$. Setting $\beta = pH - 1$, we get Hölder regularity $\gamma < (pH-1)/p = H - 1/p$. Since $p$ can be taken arbitrarily large, $\gamma$ can be made arbitrarily close to $H$. The matching lower bound (paths are *not* $\alpha$-Hölder for $\alpha > H$) follows from the law of the iterated logarithm for fBM (Arcones 1995). $\square$
 
 **Practical meaning:** For $H = 0.11$, paths are *vastly* rougher than Brownian motion ($H = 0.5$). They have infinite $p$-variation for any $p < 1/H \approx 9$, and are nowhere differentiable — with a quantifiably different degree of irregularity from standard BM.
 
@@ -482,7 +486,7 @@ $$X_t = \log \sigma_t \approx X_0 + \eta\, B^H_t$$
 
 This is formalized in the **rough Bergomi** (rBergomi) model (Bayer, Friz & Gatheral 2016):
 
-$$\log V_t = \log \xi_0 + \eta\,\hat{W}^H_t - \tfrac{1}{2}\eta^2\,t^{2H}$$
+$$\log V_t = \log \xi_0 + \eta\,\hat{W}^H_t - \frac{1}{2}\eta^2\,t^{2H}$$
 
 where $\hat{W}^H_t = \sqrt{2H}\displaystyle\int_0^t (t-s)^{H-1/2}\,dW_s$ is the **Riemann–Liouville fBM** (Volterra kernel representation). The correction term $-\frac{1}{2}\eta^2 t^{2H}$ ensures $E[V_t] = \xi_0$ (the forward variance curve is preserved under the risk-neutral measure).
 
@@ -526,11 +530,11 @@ $$m(q, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}|X_{t+\tau} - X_t|^q$$
 
 *converges to $c_q \cdot \tau^{\zeta(q)}$ where $\zeta(q)$ is the scaling exponent. For a monofractal process (single Hurst exponent), $\zeta(q) = qH$ for all $q > 0$.*
 
-**Proof.** By self-similarity of fBM increments, $X_{t+\tau} - X_t \overset{d}{=} \tau^H Z$ where $Z \sim \mathcal{N}(0, C)$. Therefore:
+**Proof.** By self-similarity of fBM increments, $X_{t+\tau} - X_t \overset{d}{=} \tau^H Z$ where $Z \sim N(0, C)$. Therefore:
 
 $$E\bigl[|X_{t+\tau} - X_t|^q\bigr] = \tau^{qH}\,E[|Z|^q] = c_q\,\tau^{qH}$$
 
-with explicit constant $c_q = C^{q/2} \cdot \dfrac{2^{q/2}\,\Gamma\!\bigl(\frac{q+1}{2}\bigr)}{\sqrt{\pi}}$.
+with explicit constant $c_q = C^{q/2} \cdot 2^{q/2} \Gamma((q+1)/2) / \sqrt{\pi}$.
 
 Defining $\zeta(q) = qH$, the scaling is **linear** in $q$ → monofractal.
 
@@ -602,7 +606,11 @@ For $K \ll n$, the factor $(1 - K/n) \approx 1$ and the noise bias is eliminated
 
 This explains a crucial subtlety. The VIX index measures the risk-neutral expected integrated variance over 30 days:
 
-$$\text{VIX}^2_t \propto E^{\mathbb{Q}}\!\left[\frac{1}{\Delta}\int_t^{t+\Delta} \sigma^2_s\,ds\;\Bigg|\;\mathcal{F}_t\right], \quad \Delta = 30\text{ days}$$
+```latex
+\text{VIX}^2_t \propto E^{\mathbb{Q}}\!\left[\frac{1}{\Delta}\int_t^{t+\Delta} \sigma^2_s\,ds\;\Bigg|\;\mathcal{F}_t\right], \quad \Delta = 30\text{ days}
+```
+
+VIX²_t ∝ E^Q[ (1/Δ) * integral[t to t+Δ] σ²_s ds | F_t ],  Δ = 30 days
 
 Even though $\log\sigma_t$ is rough ($H \approx 0.1$), VIX appears smooth ($H \approx 0.5$). Here is why.
 
@@ -623,7 +631,7 @@ $$\bar{X}_{t+\tau}^{(\Delta)} - \bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\left(\in
 
 **Case $\tau \ll \Delta$:** The two windows almost completely overlap. The difference arises from the non-overlapping boundaries: $\bar{X}_{t+\tau} - \bar{X}_t \approx \frac{\tau}{\Delta}(X_{t+\Delta} - X_t)$, which scales as $\tau$ (deterministic linear factor) — making the process appear Lipschitz ($H_{\text{eff}} \to 1$). $\square$
 
-**Consequence for VIX.** Observations at daily/weekly frequency give lags $\tau \in [1, 60]$ days, comparable to $\Delta = 30$ days. At these lags, smoothing is active and the estimated Hurst exponent is biased upward. Our measurements confirm: **VIX 15-min → $H \approx 0.47$, VIX 30-min → $H \approx 0.45$**. This is the **P ≠ Q trap**: roughness must be estimated from **realized volatility** (SPX intraday returns under $\mathbb{P}$), not from VIX (a $\mathbb{Q}$-measure integral).
+**Consequence for VIX.** Observations at daily/weekly frequency give lags $\tau \in [1, 60]$ days, comparable to $\Delta = 30$ days. At these lags, smoothing is active and the estimated Hurst exponent is biased upward. Our measurements confirm: **VIX 15-min → $H \approx 0.47$, VIX 30-min → $H \approx 0.45$**. This is the **P ≠ Q trap**: roughness must be estimated from **realized volatility** (SPX intraday returns under **P**), not from VIX (a **Q**-measure integral).
 
 ##### Proposition 6 — Inverse-Variance Weighting Is BLUE
 
@@ -633,15 +641,23 @@ $$\hat{H}_w = \frac{\sum_{k=1}^K w_k\,\hat{H}_k}{\sum_{k=1}^K w_k}, \quad w_k = 
 
 *is the **Best Linear Unbiased Estimator** (BLUE) — it has the smallest variance among all linear unbiased combinations.*
 
-**Proof.** We minimize $\operatorname{Var}(\hat{H}_w) = \sum_k \alpha_k^2 \sigma_k^2$ subject to $\sum_k \alpha_k = 1$ (unbiasedness), where $\alpha_k = w_k / \sum_j w_j$. By Lagrange multipliers:
+**Proof.** We minimize Var(H_w) = Σ_k α_k² σ_k² subject to Σ_k α_k = 1 (unbiasedness), where α_k = w_k / Σ_j w_j. By Lagrange multipliers:
 
-$$\mathcal{L} = \sum_k \alpha_k^2\sigma_k^2 - \lambda\!\left(\sum_k\alpha_k - 1\right)$$
+```latex
+\mathcal{L} = \sum_k \alpha_k^2\sigma_k^2 - \lambda\!\left(\sum_k\alpha_k - 1\right)
+```
 
-$$\frac{\partial\mathcal{L}}{\partial\alpha_k} = 2\alpha_k\sigma_k^2 - \lambda = 0 \implies \alpha_k = \frac{\lambda}{2\sigma_k^2} \propto \frac{1}{\sigma_k^2}$$
+L = sum_k(α_k² σ_k²) - λ(sum_k(α_k) - 1)
 
-The constraint $\sum_k \alpha_k = 1$ gives $\alpha_k = \dfrac{1/\sigma_k^2}{\sum_j 1/\sigma_j^2}$, i.e., inverse-variance weighting. The resulting minimum variance is:
+```latex
+\frac{\partial\mathcal{L}}{\partial\alpha_k} = 2\alpha_k\sigma_k^2 - \lambda = 0 \implies \alpha_k = \frac{\lambda}{2\sigma_k^2} \propto \frac{1}{\sigma_k^2}
+```
 
-$$\operatorname{Var}(\hat{H}_w) = \frac{1}{\sum_{k=1}^K 1/\sigma_k^2}$$
+dL/dα_k = 2α_k σ_k² - λ = 0  =>  α_k = λ/(2σ_k²) ∝ 1/σ_k²
+
+The constraint $\sum_k \alpha_k = 1$ gives $\alpha_k = (1/\sigma_k^2) / \sum_j (1/\sigma_j^2)$, i.e., inverse-variance weighting. The resulting minimum variance is:
+
+Var(H_w) = 1 / Σ_{k=1}^K (1/σ_k²)
 
 No other linear unbiased combination achieves smaller variance. $\square$
 
@@ -916,7 +932,11 @@ Monte Carlo pricing for path-dependent exotics:
 
 Second-order Taylor decomposition:
 
-$$\Delta C \approx \underbrace{\Delta \cdot \delta S}_{\text{Delta}} + \underbrace{\tfrac{1}{2}\Gamma \cdot (\delta S)^2}_{\text{Gamma}} + \underbrace{\nu \cdot \delta\sigma}_{\text{Vega}} + \underbrace{\Theta \cdot \delta t}_{\text{Theta}} + \underbrace{\text{Vanna} \cdot \delta S \cdot \delta\sigma}_{\text{Cross}} + \underbrace{\tfrac{1}{2}\text{Volga} \cdot (\delta\sigma)^2}_{\text{Convexity}} + \underbrace{\rho \cdot \delta r}_{\text{Rho}}$$
+```latex
+\Delta C \approx \underbrace{\Delta \cdot \delta S}_{\text{Delta}} + \underbrace{\tfrac{1}{2}\Gamma \cdot (\delta S)^2}_{\text{Gamma}} + \underbrace{\nu \cdot \delta\sigma}_{\text{Vega}} + \underbrace{\Theta \cdot \delta t}_{\text{Theta}} + \underbrace{\text{Vanna} \cdot \delta S \cdot \delta\sigma}_{\text{Cross}} + \underbrace{\tfrac{1}{2}\text{Volga} \cdot (\delta\sigma)^2}_{\text{Convexity}} + \underbrace{\rho \cdot \delta r}_{\text{Rho}}
+```
+
+ΔC ≈ Δ·δS + (1/2)Γ·(δS)² + ν·δσ + Θ·δt + Vanna·δS·δσ + (1/2)Volga·(δσ)² + ρ·δr
 
 Also includes `NeuralSDEGreeks`: model-implied $\Delta$, $\Gamma$, Vega via **JAX autodiff through the full MC pricing pipeline** (pathwise differentiation). These capture stochastic vol effects that BS Greeks miss.
 
@@ -944,18 +964,26 @@ The model supports two backbone architectures, selectable via `neural_sde.backbo
 
 **OU backbone** (default — fast, good for P-measure / stress testing):
 
-$$dX_t = \underbrace{\kappa(\theta - X_t)}_{\text{OU Prior}} dt + \underbrace{f_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Drift}} dt + \underbrace{g_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Diffusion}} dW_t + \underbrace{J \cdot dN_t}_{\text{Jumps (optional)}}$$
+```latex
+dX_t = \underbrace{\kappa(\theta - X_t)}_{\text{OU Prior}} dt + \underbrace{f_\theta(\text{Sig}_{0,t}, X_t)}_{\text{Neural Drift}} dt + \underbrace{g_\theta(\text{Sig}_{0,t}, X_t)}_{\text{Neural Diffusion}} dW_t + \underbrace{J \cdot dN_t}_{\text{Jumps (optional)}}
+```
+
+dX_t = κ(θ - X_t) dt + f_θ(Sig(0,t), X_t) dt + g_θ(Sig(0,t), X_t) dW_t + J·dN_t
 
 **Fractional backbone** (nests rBergomi exactly — for Q-measure / pricing):
 
-$$X_t = \eta \cdot \hat{W}^H_t - \tfrac{1}{2}\eta^2 \text{Var}[\hat{W}^H_t] + \int_0^t f_\theta(\mathbb{S}_{0,s}, X_s) ds + \int_0^t g_\theta(\mathbb{S}_{0,s}, X_s) dW_s$$
+```latex
+X_t = \eta \cdot \hat{W}^H_t - \tfrac{1}{2}\eta^2 \text{Var}[\hat{W}^H_t] + \int_0^t f_\theta(\text{Sig}_{0,s}, X_s) ds + \int_0^t g_\theta(\text{Sig}_{0,s}, X_s) dW_s
+```
+
+X_t = η·Ŵ^H_t - (1/2)η² Var[Ŵ^H_t] + integral[0 to t] f_θ(Sig(0,s), X_s) ds + integral[0 to t] g_θ(Sig(0,s), X_s) dW_s
 
 where $\hat{W}^H_t = \sqrt{2H} \int_0^t (t-s)^{H-1/2} dW_s$ is the Riemann-Liouville fBM with **learnable** $(H, \eta)$. When $f_\theta = g_\theta = 0$, this exactly recovers rBergomi.
 
 In both cases:
 - $X_t = \log(V_t)$ is log-variance
-- $\mathbb{S}_{0,t} \in T^{(M)}(\mathbb{R}^2)$ is the running path signature of $(t, X)$ up to order $M \in \{2,3,4\}$ (configurable), computed via **exact Chen's identity**
-- At order 3: $\dim(\mathbb{S}) = 14$ features; at order 4: $\dim(\mathbb{S}) = 30$ features
+- `Sig(0,t)` ∈ T^(M)(R²) is the running path signature of (t, X) up to order M ∈ {2,3,4} (configurable), computed via **exact Chen's identity**
+- At order 3: dim(Sig) = 14 features; at order 4: dim(Sig) = 30 features
 - The signature makes the SDE genuinely **non-Markovian** (path-dependent) — essential for rough volatility
 
 ### Training
@@ -1002,7 +1030,7 @@ Volterra kernel implementation (Bayer, Friz & Gatheral 2016) with exact spot-vol
 
 ```bash
 git clone <repo-url>
-cd "Projet IA & quant"
+cd Generative-Neural-SDES-for-Market-Volatility
 pip install -r requirements.txt
 ```
 
