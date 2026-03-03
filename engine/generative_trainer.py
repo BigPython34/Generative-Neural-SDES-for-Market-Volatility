@@ -5,13 +5,24 @@ Trains Neural SDE models under different probability measures:
 
   P-measure (physical / real-world):
     - Data: Realized volatility from SPX high-frequency returns
-    - Loss: MMD on signatures + mean penalty
+    - Loss: MMD on signatures + mean penalty (PRIMARY: distribution matching)
     - Use for: VaR, CVaR, stress testing, vol forecasting
 
   Q-measure (risk-neutral):
-    - Data: VIX (implied vol, already risk-neutral)
-    - Loss: MMD on signatures + mean penalty + martingale constraint
+    - Data: Market option prices (IV surface from cached SPY options)
+    - Loss: smile_fit + martingale + MMD regularizer
+      → PRIMARY: match observed option prices (Bayer & Stemper 2018)
+      → CONSTRAINT: E[e^{-rT}S_T] = S_0 (no-arbitrage)
+      → REGULARIZER: MMD on signatures (path realism, small weight)
+    - Fallback (no options data): P-loss + martingale (legacy, weaker)
     - Use for: Option pricing, delta hedging, calibration
+
+  Theoretical justification (v3.0):
+    Under Q, prices are expectations: C(K,T) = E^Q[e^{-rT}(S_T-K)^+].
+    The vol dynamics under Q ≠ under P (Buehler et al. 2021).
+    Matching historical path distributions (MMD on P-data) does NOT learn
+    Q-dynamics — it learns P with a first-moment correction. The correct
+    Q-loss is driven by market option prices (Gierjatowicz et al. 2022).
 
 Usage:
     trainer = GenerativeTrainer(config, measure='Q')
@@ -126,10 +137,17 @@ class GenerativeTrainer:
         self.lambda_smile = q_cfg.get('lambda_smile', 1.0)
         self.lambda_jump_reg = q_cfg.get('lambda_jump_reg', 0.1)
 
-        # Load smile target for pricing mode (Q-measure only)
+        # Load smile target for Q-measure (PRIMARY loss under Q)
+        # Under Q, option prices are the ground truth — not historical paths.
         self._smile_target = None
-        if self.measure == 'Q' and self.training_mode == 'pricing':
+        if self.measure == 'Q':
             self._smile_target = self._load_smile_target(q_cfg)
+            if self._smile_target is None:
+                print(f"   ⚠ [Q-measure] No options data → falling back to legacy "
+                      f"P+martingale loss. This is theoretically weaker.")
+                print(f"     Run `python bin/fetch_options.py` to cache SPY options.")
+            else:
+                print(f"   ✓ [Q-measure] IV surface loaded → smile_fit is PRIMARY loss")
 
         # η auto-calibration from VVIX (when configured)
         bergomi_cfg = self.yaml_config.get('bergomi', {})
@@ -182,7 +200,9 @@ class GenerativeTrainer:
             )
             fake_sigs = self.sig_extractor.get_signature(fake_vars)
 
-            # MMD loss
+            # --- P-MEASURE LOSS (primary for P, regularizer for Q) ---
+            # MMD on signatures: matches distribution of generated paths
+            # to historical data. This is a P-measure objective.
             mmd = kernel_mmd_loss(fake_sigs, self.target_sigs, self.sig_std)
 
             # Mean penalty
@@ -190,20 +210,33 @@ class GenerativeTrainer:
                 real_batch = self.market_paths[random_indices]
                 mean_pen = marginal_mean_penalty_loss(fake_vars, real_batch)
             elif self.mean_penalty_space == 'log_v':
-                # Mean penalty in log-V space (avoids Jensen bias from exp transform)
                 fake_log = jnp.log(jnp.maximum(fake_vars, 1e-10))
                 real_log_mean = jnp.mean(jnp.log(jnp.maximum(self.market_paths, 1e-10)))
                 mean_pen = jnp.square(jnp.mean(fake_log) - real_log_mean)
             else:
                 mean_pen = mean_penalty_loss(fake_vars, self.real_mean)
 
-            total = mmd + self.lambda_mean * mean_pen
+            if self.measure == 'P':
+                # ────────────────────────────────────────────────────
+                # P-MEASURE: MMD is the primary objective
+                # ────────────────────────────────────────────────────
+                total = mmd + self.lambda_mean * mean_pen
 
-            # Q-measure: add martingale constraint
-            if self.measure == 'Q':
+            else:
+                # ────────────────────────────────────────────────────
+                # Q-MEASURE: IV surface matching is the primary objective
+                # MMD becomes a regularizer (prevents degenerate Q-dynamics)
+                #
+                # Architecture (Bayer & Stemper 2018, Buehler et al. 2021):
+                #   L_Q = λ_smile · L_smile    [PRIMARY: market prices]
+                #       + λ_mart  · L_mart     [CONSTRAINT: no-arbitrage]
+                #       + λ_mmd   · L_MMD      [REGULARIZER: path realism]
+                #       + λ_mean  · L_mean     [REGULARIZER: level]
+                # ────────────────────────────────────────────────────
                 rho = self.yaml_config['bergomi']['rho']
                 n_mc, n_steps_gen = fake_vars.shape
 
+                # Build correlated spot paths (leverage effect)
                 k_spot = jax.random.fold_in(key, 999)
                 z_indep = jax.random.normal(k_spot, (n_mc, n_steps_gen))
 
@@ -215,24 +248,23 @@ class GenerativeTrainer:
                 log_ret = (self._risk_free_rate - 0.5 * var_prev) * dt + vol_prev * dw_spot
                 spot_normalized = jnp.exp(jnp.cumsum(log_ret, axis=1))
 
+                # Martingale constraint: E[e^{-rT}S_T] = S_0
                 mart_loss = martingale_violation_loss(
                     spot_normalized, dt, self._risk_free_rate
                 )
-                total = total + self.lambda_martingale * mart_loss
 
-                # Smile fitting loss (active in pricing training mode)
-                if self.training_mode == 'pricing' and self._smile_target is not None:
-                    from quant.mc_pricer import MonteCarloOptionPricer
-                    from utils.black_scholes import BlackScholes
+                # Smile fitting loss: match market option prices
+                smile_loss = jnp.float32(0.0)
+                if self._smile_target is not None:
                     target = self._smile_target
-                    # Build normalized spot paths from generated variance
                     spot_normalized_final = spot_normalized[:, -1]
                     s0 = self.yaml_config['pricing']['spot']
                     S_T = s0 * spot_normalized_final
-                    # Compute model IVs at target strikes
                     T_smile = target['T']
                     r_smile = self._risk_free_rate
-                    model_ivs = []
+
+                    # Vectorized MC pricing at all target strikes
+                    model_prices_list = []
                     for ki, K in enumerate(target['strikes']):
                         is_call = K >= s0
                         if is_call:
@@ -240,17 +272,36 @@ class GenerativeTrainer:
                         else:
                             payoff = jnp.maximum(K - S_T, 0)
                         mc_price = jnp.exp(-r_smile * T_smile) * jnp.mean(payoff)
-                        # Invert BS to get model IV (use JAX-safe Newton)
-                        model_ivs.append(mc_price)
-                    # Use price-space smile loss (avoids non-differentiable IV inversion)
-                    model_prices = jnp.array(model_ivs)
+                        model_prices_list.append(mc_price)
+
+                    model_prices = jnp.array(model_prices_list)
                     market_prices = target.get('prices', model_prices)
                     if 'prices' in target:
-                        smile_loss = smile_fit_loss(model_prices, market_prices,
-                                                     target.get('vega_weights'))
-                        total = total + self.lambda_smile * smile_loss
+                        smile_loss = smile_fit_loss(
+                            model_prices, market_prices, target.get('vega_weights')
+                        )
 
-            # Jump regularization
+                # When we have smile data: smile is primary, MMD is regularizer
+                # When no smile data (fallback): use legacy P+martingale approach
+                if self._smile_target is not None:
+                    lambda_mmd_reg = self.yaml_config.get('training', {}).get(
+                        'q_measure', {}
+                    ).get('lambda_mmd_regularizer', 0.1)
+                    total = (
+                        self.lambda_smile * smile_loss
+                        + self.lambda_martingale * mart_loss
+                        + lambda_mmd_reg * mmd
+                        + 0.1 * mean_pen  # light mean regularizer
+                    )
+                else:
+                    # Fallback: no smile data → legacy P+martingale
+                    # (with warning logged at init time)
+                    total = (
+                        mmd + self.lambda_mean * mean_pen
+                        + self.lambda_martingale * mart_loss
+                    )
+
+            # Jump regularization (both measures)
             if m.enable_jumps:
                 j_reg = jump_regularization_loss(m.jump_params.log_lambda)
                 total = total + self.lambda_jump_reg * j_reg

@@ -8,7 +8,7 @@ Avoids repeated API calls to Yahoo Finance.
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import json
 

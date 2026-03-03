@@ -4,6 +4,14 @@ Walk-Forward Backtest (Advanced Phase)
 Strict temporal rolling: train on [t-w, t], test on [t, t+h].
 No look-ahead: H, eta, xi0 recalibrated at each fold from the train window.
 
+IMPORTANT LIMITATION:
+  Currently only the Bergomi analytical parameters are recalibrated per fold.
+  The Neural SDE model is loaded once (trained on the full dataset) and NOT
+  retrained per fold. This means Neural SDE results in walk-forward may
+  contain look-ahead bias. To get valid walk-forward results for the Neural
+  SDE, set retrain_neural=True (slow: full training per fold) or interpret
+  Neural SDE walk-forward numbers as an UPPER BOUND on achievable performance.
+
 Usage:
     from quant.walk_forward_backtest import WalkForwardBacktester
     wf = WalkForwardBacktester(train_window_days=60, test_window_days=5)
@@ -85,11 +93,13 @@ class WalkForwardBacktester:
     """
 
     def __init__(self, train_window_days: int = 60, test_window_days: int = 5,
-                 step_days: int = None, use_snapshots_fallback: bool = True):
+                 step_days: int = None, use_snapshots_fallback: bool = True,
+                 retrain_neural: bool = False):
         self.train_window_days = train_window_days
         self.test_window_days = test_window_days
         self.step_days = step_days or test_window_days
         self.use_snapshots_fallback = use_snapshots_fallback
+        self.retrain_neural = retrain_neural
         self.cfg = load_config()
         self.cache = OptionsDataCache()
         self.vix_futures_hist = load_vix_futures_history()
@@ -99,7 +109,13 @@ class WalkForwardBacktester:
         """
         Run walk-forward backtest.
         For each fold: recalibrate Bergomi params from train window, then test.
+
+        NOTE: Neural SDE is NOT retrained per fold by default.
+        Set retrain_neural=True in the constructor to enable (slow).
         """
+        if not self.retrain_neural:
+            print("[WARN] Neural SDE is NOT retrained per fold — look-ahead bias possible.")
+            print("       Set retrain_neural=True for valid walk-forward (slow).")
         if reindex:
             self.cache.reindex_from_disk()
         snapshots_df = self.cache.list_snapshots("SPY")

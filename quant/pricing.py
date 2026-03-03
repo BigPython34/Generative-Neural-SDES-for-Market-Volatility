@@ -4,6 +4,19 @@ import numpy as np
 from engine.generative_trainer import GenerativeTrainer
 from utils.config import load_config
 
+# Global auto-incrementing seed for reproducibility across calls
+_GLOBAL_SEED_COUNTER = 0
+
+
+def _next_key(seed=None):
+    """Return a fresh PRNG key.  If *seed* is None, auto-increment."""
+    global _GLOBAL_SEED_COUNTER
+    if seed is not None:
+        return jax.random.PRNGKey(seed)
+    _GLOBAL_SEED_COUNTER += 1
+    return jax.random.PRNGKey(_GLOBAL_SEED_COUNTER)
+
+
 class DeepPricingEngine:
     """
     Monte Carlo Pricing Engine.
@@ -28,10 +41,14 @@ class DeepPricingEngine:
                 pass
         return self._pricing_cfg['risk_free_rate']
 
-    def generate_market_paths(self, n_paths, s0=None, mu=None, rho=None):
+    def generate_market_paths(self, n_paths, s0=None, mu=None, rho=None, seed=None):
         """
         Generates Spot-Vol paths using the trained Neural SDE.
         Implements leverage effect (rho) between the generated vol and spot noise.
+
+        Args:
+            seed: PRNG seed.  If None, uses an auto-incrementing global seed
+                  so that successive calls produce independent samples.
         """
         if s0 is None:
             s0 = self._pricing_cfg['spot']
@@ -39,7 +56,7 @@ class DeepPricingEngine:
             mu = self._r
         if rho is None:
             rho = load_config()['bergomi']['rho']
-        key = jax.random.PRNGKey(42)
+        key = _next_key(seed)
         key_vol, key_spot = jax.random.split(key)
         
         # 1. Generate Neural Volatility
@@ -77,12 +94,16 @@ class DeepPricingEngine:
         s0_col = jnp.full((n_paths, 1), s0)
         return np.hstack([s0_col, s_paths]), np.array(var_paths)
 
-    def generate_bs_paths(self, n_paths, s0, vol, mu=None):
-        """Generates standard Geometric Brownian Motion paths (Black-Scholes)."""
+    def generate_bs_paths(self, n_paths, s0, vol, mu=None, seed=None):
+        """Generates standard Geometric Brownian Motion paths (Black-Scholes).
+
+        Args:
+            seed: PRNG seed.  If None, auto-increments for independent draws.
+        """
         if mu is None:
             mu = self._r
         dt = self.config['T'] / self.config['n_steps']
-        key = jax.random.PRNGKey(123)
+        key = _next_key(seed)
         z = jax.random.normal(key, (n_paths, self.config['n_steps']))
         z = np.array(z)
         

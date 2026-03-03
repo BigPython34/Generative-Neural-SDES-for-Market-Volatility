@@ -27,8 +27,34 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 # Import our new modules
 from quant.options_cache import OptionsDataCache, EnhancedOptionsLoader
 from quant.calibration.bergomi_optimizer import BergomiOptimizer, calibrate_bergomi_to_smile
-from quant.mc_pricer import MonteCarloOptionPricer
 from utils.black_scholes import BlackScholes
+
+
+class MonteCarloOptionPricer:
+    """Inline MC pricer for options calibration (formerly in quant/mc_pricer.py)."""
+
+    def __init__(self, spot: float, r: float = None):
+        self.spot = spot
+        if r is None:
+            from utils.config import load_config
+            r = load_config()['pricing']['risk_free_rate']
+        self.r = r
+
+    def price_european(self, spot_paths, strike, T, option_type='call'):
+        S_T = spot_paths[:, -1]
+        if option_type == 'call':
+            payoff = np.maximum(S_T - strike, 0)
+        else:
+            payoff = np.maximum(strike - S_T, 0)
+        return np.exp(-self.r * T) * np.mean(payoff)
+
+    def compute_model_smile(self, spot_paths, strikes, T, option_types):
+        ivs = []
+        for K, opt_type in zip(strikes, option_types):
+            price = self.price_european(spot_paths, K, T, opt_type)
+            iv = BlackScholes.implied_vol(price, self.spot, K, T, self.r, opt_type)
+            ivs.append(iv)
+        return np.array(ivs)
 
 
 class VolatilitySurfaceVisualizer:

@@ -25,7 +25,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 import numpy as np
 
@@ -34,8 +34,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 app = FastAPI(
     title="DeepRoughVol API",
     description="Neural SDE volatility modeling, pricing, risk & interactive dashboard",
-    version="3.0.0",
+    version="3.1.0",
 )
+
+
+# =====================================================================
+#  Input validation mixin
+# =====================================================================
+
+def _validate_positive(v, name):
+    if v is not None and v <= 0:
+        raise ValueError(f"{name} must be positive, got {v}")
+    return v
+
+
+def _validate_nonneg(v, name):
+    if v is not None and v < 0:
+        raise ValueError(f"{name} must be non-negative, got {v}")
+    return v
 
 
 # =====================================================================
@@ -50,6 +66,18 @@ class VanillaPriceRequest(BaseModel):
     sigma: float = 0.20
     opt_type: str = "call"
 
+    @field_validator("spot", "strike", "T", "sigma")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        return _validate_positive(v, info.field_name)
+
+    @field_validator("opt_type")
+    @classmethod
+    def valid_opt_type(cls, v):
+        if v not in ("call", "put"):
+            raise ValueError(f"opt_type must be 'call' or 'put', got '{v}'")
+        return v
+
 class ExoticPriceRequest(BaseModel):
     product: str = "asian_call"
     spot: float = 100.0
@@ -60,6 +88,25 @@ class ExoticPriceRequest(BaseModel):
     model: str = "neural_sde"
     extra_params: Dict = Field(default_factory=dict)
 
+    @field_validator("spot", "strike", "T")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        return _validate_positive(v, info.field_name)
+
+    @field_validator("n_mc_paths")
+    @classmethod
+    def reasonable_paths(cls, v):
+        if v < 100 or v > 500_000:
+            raise ValueError(f"n_mc_paths must be in [100, 500000], got {v}")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def valid_model(cls, v):
+        if v not in ("neural_sde", "bergomi", "bs"):
+            raise ValueError(f"model must be 'neural_sde', 'bergomi' or 'bs', got '{v}'")
+        return v
+
 class VaRRequest(BaseModel):
     spot: float = 100.0
     positions: List[Dict] = Field(default_factory=list)
@@ -67,10 +114,57 @@ class VaRRequest(BaseModel):
     horizon_days: int = 1
     model: str = "neural_sde"
 
+    @field_validator("spot")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        return _validate_positive(v, info.field_name)
+
+    @field_validator("horizon_days")
+    @classmethod
+    def valid_horizon(cls, v):
+        if v < 1 or v > 252:
+            raise ValueError(f"horizon_days must be in [1, 252], got {v}")
+        return v
+
 class StressRequest(BaseModel):
     spot: float = 100.0
     positions: List[Dict] = Field(default_factory=list)
     scenarios: Optional[Dict] = None
+    model: str = "bs"
+
+    @field_validator("spot")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        return _validate_positive(v, info.field_name)
+
+    @field_validator("model")
+    @classmethod
+    def valid_model(cls, v):
+        if v not in ("neural_sde", "bergomi", "bs"):
+            raise ValueError(f"model must be 'neural_sde', 'bergomi' or 'bs', got '{v}'")
+        return v
+
+
+class NeuralStressRequest(BaseModel):
+    """Request for Neural SDE-driven stress testing (model-driven, not deterministic)."""
+    spot: float = 100.0
+    positions: List[Dict] = Field(default_factory=list)
+    n_mc_paths: int = 5000
+    stress_regimes: Optional[Dict] = None
+    seed: int = 42
+
+    @field_validator("spot")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        return _validate_positive(v, info.field_name)
+
+    @field_validator("n_mc_paths")
+    @classmethod
+    def reasonable_paths(cls, v):
+        if v < 100 or v > 500_000:
+            raise ValueError(f"n_mc_paths must be in [100, 500000], got {v}")
+        return v
+
 
 class HedgeRequest(BaseModel):
     spot: float = 100.0
@@ -81,6 +175,18 @@ class HedgeRequest(BaseModel):
     n_mc_paths: int = 5000
     hedge_freq: str = "daily"
     model: str = "neural_sde"
+
+    @field_validator("spot", "strike", "T", "sigma")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        return _validate_positive(v, info.field_name)
+
+    @field_validator("opt_type")
+    @classmethod
+    def valid_opt_type(cls, v):
+        if v not in ("call", "put"):
+            raise ValueError(f"opt_type must be 'call' or 'put', got '{v}'")
+        return v
 
 class PnLRequest(BaseModel):
     spot: float = 100.0
@@ -104,6 +210,14 @@ class MCAnimRequest(BaseModel):
     T: float = 0.25
     n_paths: int = 200
     n_frames: int = 60
+    model: str = "bs"
+
+    @field_validator("model")
+    @classmethod
+    def valid_model(cls, v):
+        if v not in ("neural_sde", "bergomi", "bs"):
+            raise ValueError(f"model must be 'neural_sde', 'bergomi' or 'bs', got '{v}'")
+        return v
 
 class ScriptRequest(BaseModel):
     script: str = "bin/backtest.py"
@@ -151,12 +265,108 @@ def _get_r(r_override=None):
 
 
 # =====================================================================
+#  Shared path generator — respects the model parameter
+# =====================================================================
+
+_pricing_engine = None
+_bergomi_model = None
+
+
+def _get_pricing_engine():
+    """Lazy-load the Neural SDE pricing engine (heavy, done once)."""
+    global _pricing_engine
+    if _pricing_engine is not None:
+        return _pricing_engine
+    try:
+        from engine.generative_trainer import GenerativeTrainer
+        from utils.config import load_config
+        cfg = load_config()
+        # GenerativeTrainer expects {'n_steps': ..., 'T': ...}, NOT the full YAML
+        trainer_config = {
+            'n_steps': cfg['simulation']['n_steps'],
+            'T': cfg['simulation']['T'],
+        }
+        trainer = GenerativeTrainer(trainer_config)
+        # Load best Q-measure model, fall back to generic best
+        for model_path in ["models/neural_sde_pricing.eqx",
+                           "models/neural_sde_best_q.eqx",
+                           "models/neural_sde_best.eqx"]:
+            if os.path.exists(model_path):
+                model = trainer.load_model(model_path)
+                if model is not None:
+                    from quant.pricing import DeepPricingEngine
+                    _pricing_engine = DeepPricingEngine(trainer, model)
+                    print(f"[OK] Neural SDE loaded from {model_path}")
+                    return _pricing_engine
+    except Exception as e:
+        print(f"[WARN] Cannot load Neural SDE: {e}")
+    return None
+
+
+def _get_bergomi():
+    """Lazy-load the Rough Bergomi model."""
+    global _bergomi_model
+    if _bergomi_model is not None:
+        return _bergomi_model
+    try:
+        from core.bergomi import RoughBergomiModel
+        from utils.config import load_config
+        cfg = load_config()
+        bergomi_cfg = dict(cfg['bergomi'])
+        bergomi_cfg.update({'n_steps': 252, 'T': 0.25})
+        _bergomi_model = RoughBergomiModel(bergomi_cfg)
+        return _bergomi_model
+    except Exception as e:
+        print(f"[WARN] Cannot load Bergomi: {e}")
+    return None
+
+
+def _generate_paths(model: str, n_paths: int, spot: float, T: float,
+                    sigma: float = 0.20, r: float = 0.045):
+    """
+    Generate spot paths (and optionally var paths) using the requested model.
+
+    Returns: (spot_paths, var_paths_or_None)
+    """
+    n_steps = max(60, int(T * 252))
+
+    # ---- Neural SDE ----
+    if model == "neural_sde":
+        engine = _get_pricing_engine()
+        if engine is not None:
+            try:
+                s_paths, v_paths = engine.generate_market_paths(
+                    n_paths, s0=spot, mu=r)
+                return np.array(s_paths), np.array(v_paths)
+            except Exception as e:
+                print(f"[WARN] Neural SDE path gen failed ({e}), falling back to BS")
+
+    # ---- Rough Bergomi ----
+    if model == "bergomi":
+        bergomi = _get_bergomi()
+        if bergomi is not None:
+            try:
+                st, vt = bergomi.simulate_spot_vol_paths(n_paths, s0=spot)
+                return np.array(st), np.array(vt)
+            except Exception as e:
+                print(f"[WARN] Bergomi path gen failed ({e}), falling back to BS")
+
+    # ---- Black-Scholes (fallback) ----
+    dt_sim = T / n_steps
+    z = np.random.randn(n_paths, n_steps)
+    log_ret = (r - 0.5 * sigma**2) * dt_sim + sigma * np.sqrt(dt_sim) * z
+    s_paths = spot * np.exp(np.cumsum(log_ret, axis=1))
+    s_paths = np.column_stack([np.full(n_paths, spot), s_paths])
+    return s_paths, None
+
+
+# =====================================================================
 #  Core API endpoints
 # =====================================================================
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "DeepRoughVol", "version": "3.0.0"}
+    return {"status": "ok", "model": "DeepRoughVol", "version": "3.2.0"}
 
 
 @app.get("/regime")
@@ -199,15 +409,12 @@ def price_exotic(req: ExoticPriceRequest):
     from quant.exotic_pricer import ExoticPricer
     r = _get_r(req.r)
     pricer = ExoticPricer(spot=req.spot, r=r, T=req.T)
-    n = req.n_mc_paths
-    n_steps = 252
-    dt_sim = req.T / n_steps
-    z = np.random.randn(n, n_steps)
     sigma = req.extra_params.get("sigma", 0.20)
-    log_ret = (r - 0.5 * sigma**2) * dt_sim + sigma * np.sqrt(dt_sim) * z
-    s_paths = req.spot * np.exp(np.cumsum(log_ret, axis=1))
-    s_paths = np.column_stack([np.full(n, req.spot), s_paths])
-    product = req.product
+
+    # Use the requested model for path generation
+    s_paths, _var = _generate_paths(
+        req.model, req.n_mc_paths, req.spot, req.T, sigma, r)
+
     strike = req.strike
     # Only pass allowed kwargs to each pricer (autocallable/cliquet don't take sigma)
     autocall_kw = {k: req.extra_params[k] for k in ("coupon_rate", "autocall_barrier", "ki_barrier", "observation_freq") if k in req.extra_params}
@@ -222,9 +429,12 @@ def price_exotic(req: ExoticPriceRequest):
         "variance_swap": lambda: pricer.variance_swap(s_paths, sigma**2),
         "volatility_swap": lambda: pricer.volatility_swap(s_paths, sigma),
     }
+    product = req.product
     if product not in method_map:
         raise HTTPException(400, f"Unknown product: {product}. Available: {list(method_map.keys())}")
-    return method_map[product]()
+    result = method_map[product]()
+    result["model_used"] = req.model
+    return result
 
 
 @app.post("/risk/var")
@@ -239,15 +449,11 @@ def compute_var(req: VaRRequest):
         engine.add_position(**p)
     if not engine.positions:
         engine.add_position('call', strike=req.spot, T=0.25, quantity=1)
-    n = req.n_mc_paths
-    n_steps = max(10, req.horizon_days * 26)
+
     T_sim = req.horizon_days / 252.0
-    dt_sim = T_sim / n_steps
-    z = np.random.randn(n, n_steps)
-    sigma = 0.20
-    log_ret = (r - 0.5 * sigma**2) * dt_sim + sigma * np.sqrt(dt_sim) * z
-    s_paths = req.spot * np.exp(np.cumsum(log_ret, axis=1))
-    s_paths = np.column_stack([np.full(n, req.spot), s_paths])
+    s_paths, _var = _generate_paths(
+        req.model, req.n_mc_paths, req.spot, T_sim, 0.20, r)
+
     report = engine.compute_var(s_paths)
     return {
         "var_95": report.var_95, "var_99": report.var_99,
@@ -256,11 +462,13 @@ def compute_var(req: VaRRequest):
         "expected_pnl": report.expected_pnl, "pnl_std": report.pnl_std,
         "skew": report.pnl_skew, "kurtosis": report.pnl_kurtosis,
         "n_scenarios": report.n_scenarios,
+        "model_used": req.model,
     }
 
 
 @app.post("/risk/stress")
 def run_stress(req: StressRequest):
+    """Deterministic stress scenarios (fast, no MC). Use /risk/stress/neural for model-driven MC stress."""
     from quant.risk_engine import RiskEngine
     r = _get_r()
     engine = RiskEngine(spot=req.spot, r=r)
@@ -271,7 +479,59 @@ def run_stress(req: StressRequest):
         engine.add_position(**p)
     if not engine.positions:
         engine.add_position('call', strike=req.spot, T=0.25, quantity=1)
-    return engine.stress_test(req.scenarios)
+    result = engine.stress_test(req.scenarios)
+    result["_info"] = {
+        "type": "deterministic",
+        "note": "These are sensitivity shocks, not model-driven. Use POST /risk/stress/neural for Neural SDE MC stress testing.",
+    }
+    return result
+
+
+@app.post("/risk/stress/neural")
+def run_neural_stress(req: NeuralStressRequest):
+    """
+    Neural SDE-driven stress testing.
+
+    Generates MC paths from the Neural SDE conditioned on crisis initial states
+    (high vol, VIX~45%, VIX~30%, etc.). Returns full P&L distributions, VaR/CVaR,
+    and tail statistics per scenario.
+
+    Unlike /risk/stress (deterministic), this captures:
+      - Path-dependent effects (barrier breaching, Asian averaging)
+      - Joint spot-vol dynamics with leverage effect (ρ)
+      - Full distributional output (not point estimates)
+    """
+    from quant.risk_engine import RiskEngine
+    from utils.config import load_config
+    r = _get_r()
+    engine = RiskEngine(spot=req.spot, r=r)
+    for pos in req.positions:
+        p = dict(pos)
+        if 'opt_type' in p:
+            p['instrument'] = p.pop('opt_type')
+        engine.add_position(**p)
+    if not engine.positions:
+        engine.add_position('call', strike=req.spot, T=0.25, quantity=1)
+
+    # We need the Neural SDE model directly (not the pricing engine wrapper)
+    pe = _get_pricing_engine()
+    if pe is None:
+        raise HTTPException(503, detail="Neural SDE model not available. Train first: python bin/train_multi.py")
+
+    cfg = load_config()
+    sim_config = {
+        'n_steps': cfg['simulation']['n_steps'],
+        'T': cfg['simulation']['T'],
+    }
+
+    result = engine.neural_stress_test(
+        model=pe.model,
+        config=sim_config,
+        n_paths=req.n_mc_paths,
+        stress_regimes=req.stress_regimes,
+        seed=req.seed,
+    )
+    return result
 
 
 @app.post("/pnl/attribute")
@@ -296,15 +556,12 @@ def simulate_hedge(req: HedgeRequest):
         spot=req.spot, strike=req.strike, T=req.T,
         r=r, iv=req.sigma, opt_type=req.opt_type,
     )
-    n = req.n_mc_paths
-    n_steps = 252
-    dt_sim = req.T / n_steps
-    z = np.random.randn(n, n_steps)
-    sigma = req.sigma
-    log_ret = (r - 0.5 * sigma**2) * dt_sim + sigma * np.sqrt(dt_sim) * z
-    s_paths = req.spot * np.exp(np.cumsum(log_ret, axis=1))
-    s_paths = np.column_stack([np.full(n, req.spot), s_paths])
-    results = sim.run(s_paths, hedge_freq=req.hedge_freq)
+
+    # Use the requested model for path generation
+    s_paths, v_paths = _generate_paths(
+        req.model, req.n_mc_paths, req.spot, req.T, req.sigma, r)
+
+    results = sim.run(s_paths, var_paths=v_paths, hedge_freq=req.hedge_freq)
     out = {}
     for name, hr in results.items():
         out[name] = {
@@ -322,28 +579,69 @@ def calibrate_eta(req: EtaCalibRequest):
     return cal.estimate_eta(H=req.H, window_days=req.window_days)
 
 
+@app.get("/models/info")
+def models_info():
+    """Show which models are loaded and their status."""
+    import glob as _glob
+    available_files = sorted(_glob.glob("models/neural_sde_*.eqx"))
+
+    neural_ok = _get_pricing_engine() is not None
+    bergomi_ok = _get_bergomi() is not None
+
+    info = {
+        "neural_sde": {
+            "loaded": neural_ok,
+            "status": "ready" if neural_ok else "not loaded (train first: python bin/train_multi.py)",
+        },
+        "bergomi": {
+            "loaded": bergomi_ok,
+            "status": "ready" if bergomi_ok else "not loaded",
+        },
+        "bs": {
+            "loaded": True,
+            "status": "always available (analytical fallback)",
+        },
+        "model_files": available_files,
+    }
+
+    # Add config info if available
+    try:
+        from utils.config import load_config
+        cfg = load_config()
+        info["config"] = {
+            "H": cfg['bergomi']['hurst'],
+            "eta": cfg['bergomi']['eta'],
+            "rho": cfg['bergomi']['rho'],
+            "n_steps": cfg['simulation']['n_steps'],
+            "T": cfg['simulation']['T'],
+        }
+    except Exception:
+        pass
+
+    return info
+
+
 # =====================================================================
 #  Animation data endpoints
 # =====================================================================
 
 @app.post("/animate/mc-paths")
 def animate_mc_paths(req: MCAnimRequest):
-    """Generate MC path data for animated visualization."""
+    """Generate MC path data for animated visualization. Supports neural_sde/bergomi/bs."""
     r = _get_r()
-    n = req.n_paths
-    n_steps = req.n_frames
-    dt = req.T / n_steps
-    z = np.random.randn(n, n_steps)
-    log_ret = (r - 0.5 * req.sigma**2) * dt + req.sigma * np.sqrt(dt) * z
-    paths = req.spot * np.exp(np.cumsum(log_ret, axis=1))
-    paths = np.column_stack([np.full(n, req.spot), paths])
-    t_grid = np.linspace(0, req.T * 252, n_steps + 1).tolist()
+    n = min(req.n_paths, 500)  # cap for animation performance
+
+    s_paths, _ = _generate_paths(req.model, n, req.spot, req.T, req.sigma, r)
+    n_steps_actual = s_paths.shape[1] - 1  # exclude s0 column
+    t_grid = np.linspace(0, req.T * 252, n_steps_actual + 1).tolist()
+
     return {
         "t": t_grid,
-        "paths": paths.tolist(),
+        "paths": s_paths.tolist(),
         "spot": req.spot,
         "sigma": req.sigma,
         "T": req.T,
+        "model_used": req.model,
     }
 
 
@@ -654,7 +952,7 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
 
 <div class="topbar">
   <h1>DeepRoughVol</h1>
-  <span class="ver">v3.0 &mdash; Neural SDE Volatility Engine</span>
+  <span class="ver">v3.2 &mdash; Neural SDE Volatility Engine</span>
 </div>
 
 <nav>
@@ -668,6 +966,7 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
   <a href="#" data-sec="pnl">P&L Attribution</a>
   <a href="#" data-sec="regime">Regime Detection</a>
   <div class="sep"></div>
+  <a href="#" data-sec="models">Models Status</a>
   <a href="#" data-sec="scripts">Script Runner</a>
   <a href="#" data-sec="reports">Reports</a>
 </nav>
@@ -676,10 +975,11 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
 
 <!-- ====================== OVERVIEW ====================== -->
 <div class="section active" id="sec-overview">
-  <div class="grid g3" id="overview-kpis" style="margin-bottom:20px">
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:20px" id="overview-kpis">
     <div class="card kpi blue"><div class="val" id="kpi-regime">--</div><div class="label">Market Regime</div></div>
     <div class="card kpi green"><div class="val" id="kpi-sofr">--</div><div class="label">SOFR Rate</div></div>
-    <div class="card kpi purple"><div class="val" id="kpi-health">--</div><div class="label">API Status</div></div>
+    <div class="card kpi yellow"><div class="val" id="kpi-models">--</div><div class="label">Neural SDE</div></div>
+    <div class="card kpi purple"><div class="val" id="kpi-health">--</div><div class="label">API v3.2</div></div>
   </div>
   <div class="grid g2">
     <div class="card"><h3>VIX History</h3><div id="vix-chart" class="plot-box"></div></div>
@@ -700,8 +1000,10 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
         <div><label>Maturity (years)</label><input id="mc-T" type="number" value="0.25" step="0.05"></div>
         <div><label>Paths</label><input id="mc-n" type="number" value="200" step="50"></div>
       </div>
-      <label>Animation frames</label>
-      <input id="mc-frames" type="range" min="20" max="120" value="60" style="margin-bottom:12px">
+      <div class="form-row">
+        <div><label>Model</label><select id="mc-model"><option value="neural_sde">Neural SDE</option><option value="bergomi">Bergomi</option><option value="bs" selected>Black-Scholes</option></select></div>
+        <div><label>Animation frames</label><input id="mc-frames" type="range" min="20" max="120" value="60"></div>
+      </div>
       <button onclick="runMC()">Generate & Animate</button>
     </div>
     <div class="card"><h3>Distribution at maturity</h3><div id="mc-hist" class="plot-box"></div></div>
@@ -730,9 +1032,10 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
         <div><label>Volatility</label><input id="hg-sigma" type="number" value="0.20" step="0.01"></div>
         <div><label>Maturity</label><input id="hg-T" type="number" value="0.25" step="0.05"></div>
       </div>
-      <div class="form-row">
+      <div class="form-row three">
         <div><label>Type</label><select id="hg-type"><option value="call">Call</option><option value="put">Put</option></select></div>
         <div><label>MC Paths</label><input id="hg-n" type="number" value="500" step="100"></div>
+        <div><label>Model</label><select id="hg-model"><option value="neural_sde" selected>Neural SDE</option><option value="bergomi">Bergomi</option><option value="bs">Black-Scholes</option></select></div>
       </div>
       <button onclick="runHedgeAnim()">Simulate & Animate</button>
       <div id="hedge-stats" class="result-box" style="display:none"></div>
@@ -773,6 +1076,10 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
         <div><label>Maturity</label><input id="ex-T" type="number" value="0.5" step="0.05"></div>
         <div><label>MC Paths</label><input id="ex-n" type="number" value="50000" step="10000"></div>
       </div>
+      <div class="form-row">
+        <div><label>Model</label><select id="ex-model"><option value="neural_sde" selected>Neural SDE</option><option value="bergomi">Bergomi</option><option value="bs">Black-Scholes</option></select></div>
+        <div></div>
+      </div>
       <button onclick="runExotic()">Price</button>
       <div id="exotic-result" class="result-box" style="display:none"></div>
     </div>
@@ -796,11 +1103,15 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
         <div><label>Quantity</label><input id="var-qty" type="number" value="10" step="1"></div>
         <div><label>MC Paths</label><input id="var-n" type="number" value="50000" step="10000"></div>
       </div>
+      <div class="form-row">
+        <div><label>Model</label><select id="var-model"><option value="neural_sde" selected>Neural SDE</option><option value="bergomi">Bergomi</option><option value="bs">Black-Scholes</option></select></div>
+        <div></div>
+      </div>
       <button onclick="runVaR()">Compute</button>
       <div id="var-result" class="result-box" style="display:none"></div>
     </div>
     <div class="card">
-      <h3>Stress Test</h3>
+      <h3>Deterministic Stress Test</h3>
       <div class="form-row">
         <div><label>Spot</label><input id="st-spot" type="number" value="684.17" step="1"></div>
         <div><label>Position (instrument)</label><select id="st-inst"><option value="call">Call</option><option value="put">Put</option></select></div>
@@ -813,6 +1124,31 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
       <div id="stress-result" class="result-box" style="display:none"></div>
       <div id="stress-chart" class="plot-box" style="margin-top:12px"></div>
     </div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <h3>Neural SDE Stress Test <span class="tag stressed">Model-Driven</span></h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Generates MC paths from the Neural SDE conditioned on crisis initial states. Produces full P&amp;L distributions with joint spot-vol dynamics.</p>
+    <div class="grid g2">
+      <div>
+        <div class="form-row">
+          <div><label>Spot</label><input id="nst-spot" type="number" value="684.17" step="1"></div>
+          <div><label>MC Paths</label><input id="nst-n" type="number" value="5000" step="1000"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Position (instrument)</label><select id="nst-inst"><option value="call">Call</option><option value="put">Put</option></select></div>
+          <div><label>Strike</label><input id="nst-strike" type="number" value="680" step="1"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Quantity</label><input id="nst-qty" type="number" value="10" step="1"></div>
+          <div></div>
+        </div>
+        <button onclick="runNeuralStress()">Run Neural Stress Test</button>
+      </div>
+      <div>
+        <div id="nst-result" class="result-box" style="max-height:350px">Results will appear here...</div>
+      </div>
+    </div>
+    <div id="nst-chart" class="plot-box" style="margin-top:12px"></div>
   </div>
 </div>
 
@@ -851,6 +1187,21 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
       <div id="regime-result" class="result-box" style="display:none;margin-top:16px"></div>
     </div>
     <div class="card"><h3>Regime Signals</h3><div id="regime-chart" class="plot-box"></div></div>
+  </div>
+</div>
+
+<!-- ====================== MODELS ====================== -->
+<div class="section" id="sec-models">
+  <div class="grid g2">
+    <div class="card">
+      <h3>Loaded Models</h3>
+      <button onclick="loadModelsInfo()" style="margin-bottom:16px">Refresh Status</button>
+      <div id="models-status" class="result-box">Click Refresh to check model status...</div>
+    </div>
+    <div class="card">
+      <h3>Model Configuration</h3>
+      <div id="models-config" class="result-box">Parameters from config/params.yaml will appear here...</div>
+    </div>
   </div>
 </div>
 
@@ -935,6 +1286,11 @@ async function loadOverview() {
     const s = await api('/rates/sofr'); $('kpi-sofr').textContent = (s.rate * 100).toFixed(2) + '%';
   } catch { $('kpi-sofr').textContent = 'N/A'; }
   try {
+    const mi = await api('/models/info');
+    $('kpi-models').textContent = mi.neural_sde.loaded ? 'Loaded' : 'Not loaded';
+    $('kpi-models').parentElement.className = 'card kpi ' + (mi.neural_sde.loaded ? 'green' : 'red');
+  } catch { $('kpi-models').textContent = '?'; }
+  try {
     const reg = await api('/regime');
     const regime = reg.regime || reg.label || 'unknown';
     $('kpi-regime').textContent = regime.charAt(0).toUpperCase() + regime.slice(1);
@@ -975,7 +1331,8 @@ async function loadOverview() {
 async function runMC() {
   const data = await api('/animate/mc-paths', {
     spot: val('mc-spot'), sigma: val('mc-sigma'), T: val('mc-T'),
-    n_paths: parseInt($('mc-n').value), n_frames: parseInt($('mc-frames').value)
+    n_paths: parseInt($('mc-n').value), n_frames: parseInt($('mc-frames').value),
+    model: sval('mc-model')
   });
   const t = data.t;
   const paths = data.paths;
@@ -1026,7 +1383,8 @@ async function loadVolSurface() {
 async function runHedgeAnim() {
   const d = await api('/animate/hedging', {
     spot:val('hg-spot'), strike:val('hg-strike'), sigma:val('hg-sigma'),
-    T:val('hg-T'), opt_type:sval('hg-type'), n_mc_paths:parseInt($('hg-n').value)
+    T:val('hg-T'), opt_type:sval('hg-type'), n_mc_paths:parseInt($('hg-n').value),
+    model:sval('hg-model')
   });
   const t = d.t_days;
   const traces = [
@@ -1058,14 +1416,14 @@ async function runVanilla() {
 async function runExotic() {
   const d = await api('/price/exotic', {product:sval('ex-product'),spot:val('ex-spot'),
     strike:val('ex-strike'),T:val('ex-T'),n_mc_paths:parseInt($('ex-n').value),
-    extra_params:{sigma:0.20}});
+    model:sval('ex-model'), extra_params:{sigma:0.20}});
   showResult('exotic-result', d);
 }
 
 // VaR
 async function runVaR() {
   const d = await api('/risk/var', {spot:val('var-spot'),horizon_days:parseInt($('var-horizon').value),
-    n_mc_paths:parseInt($('var-n').value),
+    n_mc_paths:parseInt($('var-n').value), model:sval('var-model'),
     positions:[{instrument:sval('var-inst'),strike:val('var-strike'),T:0.08,quantity:parseInt($('var-qty').value)}]});
   showResult('var-result', d);
 }
@@ -1075,7 +1433,7 @@ async function runStress() {
   const d = await api('/risk/stress', {spot:val('st-spot'),
     positions:[{instrument:sval('st-inst'),strike:val('st-strike'),T:0.08,quantity:parseInt($('st-qty').value)}]});
   showResult('stress-result', d);
-  const names = Object.keys(d);
+  const names = Object.keys(d).filter(n => n !== '_info');
   const vals = names.map(n => {
     if (typeof d[n] === 'object' && d[n].pnl !== undefined) return d[n].pnl;
     if (typeof d[n] === 'number') return d[n];
@@ -1084,6 +1442,50 @@ async function runStress() {
   const colors = vals.map(v => v < 0 ? '#ef4444' : '#10b981');
   Plotly.newPlot('stress-chart',[{x:names,y:vals,type:'bar',marker:{color:colors}}],
     {...DARK,xaxis:{...DARK.xaxis},yaxis:{...DARK.yaxis,title:'P&L'}},{responsive:true});
+}
+
+// Neural Stress Test
+async function runNeuralStress() {
+  const el = $('nst-result');
+  el.textContent = 'Running Neural SDE stress test... (may take a few seconds)';
+  try {
+    const d = await api('/risk/stress/neural', {spot:val('nst-spot'), n_mc_paths:parseInt($('nst-n').value),
+      positions:[{instrument:sval('nst-inst'),strike:val('nst-strike'),T:0.25,quantity:parseInt($('nst-qty').value)}]});
+    el.textContent = JSON.stringify(d, null, 2);
+    // Build grouped bar chart: VaR95, CVaR95 per scenario
+    const scenarios = Object.keys(d);
+    const var95 = scenarios.map(s => d[s].VaR_95 || 0);
+    const cvar95 = scenarios.map(s => d[s].CVaR_95 || 0);
+    const meanPnl = scenarios.map(s => d[s].expected_pnl || 0);
+    Plotly.newPlot('nst-chart',[
+      {x:scenarios, y:var95, name:'VaR 95%', type:'bar', marker:{color:'#ef4444'}},
+      {x:scenarios, y:cvar95, name:'CVaR 95%', type:'bar', marker:{color:'#f59e0b'}},
+      {x:scenarios, y:meanPnl, name:'E[P&L]', type:'bar', marker:{color:'#3b82f6'}}
+    ],{...DARK,barmode:'group',xaxis:{...DARK.xaxis},yaxis:{...DARK.yaxis,title:'$ P&L'},
+      showlegend:true,legend:{bgcolor:'transparent',font:{size:11}}},{responsive:true});
+  } catch(e) {
+    el.textContent = 'Error: ' + e.message + '\n\nMake sure Neural SDE model is trained: python bin/train_multi.py';
+  }
+}
+
+// Models Info
+async function loadModelsInfo() {
+  try {
+    const d = await api('/models/info');
+    let txt = '';
+    ['neural_sde','bergomi','bs'].forEach(m => {
+      const icon = d[m].loaded ? '\u2705' : '\u274c';
+      txt += icon + ' ' + m + ': ' + d[m].status + '\n';
+    });
+    txt += '\nModel files:\n';
+    (d.model_files || []).forEach(f => { txt += '  ' + f + '\n'; });
+    $('models-status').textContent = txt;
+    if (d.config) {
+      $('models-config').textContent = JSON.stringify(d.config, null, 2);
+    }
+  } catch(e) {
+    $('models-status').textContent = 'Error: ' + e.message;
+  }
 }
 
 // P&L

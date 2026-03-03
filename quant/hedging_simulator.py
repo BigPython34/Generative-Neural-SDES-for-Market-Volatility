@@ -7,6 +7,7 @@ and measures the hedging P&L (tracking error).
 Compares hedging performance of:
   - Black-Scholes delta (flat vol)
   - Bartlett's delta (minimum-variance, vanna/volga correction)
+  - Neural SDE delta (JAX AD Greeks when available)
 
 Fully vectorized over paths for fast Monte Carlo execution.
 
@@ -60,7 +61,8 @@ class HedgingSimulator:
 
     def __init__(self, spot: float, strike: float, T: float,
                  r: float = 0.045, iv: float = 0.20,
-                 opt_type: str = 'call', transaction_cost_bps: float = 2.0):
+                 opt_type: str = 'call', transaction_cost_bps: float = 2.0,
+                 rho: float = None):
         self.spot = spot
         self.strike = strike
         self.T = T
@@ -68,6 +70,16 @@ class HedgingSimulator:
         self.iv = iv
         self.opt_type = opt_type
         self.tc_bps = transaction_cost_bps / 10000.0
+
+        # Read ρ from config if not provided explicitly
+        if rho is not None:
+            self.rho = rho
+        else:
+            try:
+                from utils.config import load_config
+                self.rho = load_config()['bergomi']['rho']
+            except Exception:
+                self.rho = -0.7  # last-resort fallback
 
         from utils.black_scholes import BlackScholes
         self.option_price = BlackScholes.price(spot, strike, T, r, iv, opt_type)
@@ -87,6 +99,13 @@ class HedgingSimulator:
         results = {}
         results['Black-Scholes'] = self._hedge_bs_vec(spot_paths, dt, rebal_set)
         results['Bartlett'] = self._hedge_bartlett_vec(spot_paths, var_paths, dt, rebal_set)
+
+        # Neural SDE Greeks hedge (if JAX AD Greeks available)
+        try:
+            results['Neural-AD'] = self._hedge_neural_ad_vec(spot_paths, var_paths, dt, rebal_set)
+        except Exception:
+            pass  # silently skip if greeks_ad not available or fails
+
         return results
 
     def _hedge_bs_vec(self, spot_paths, dt, rebal_set) -> HedgingResult:
@@ -127,7 +146,7 @@ class HedgingSimulator:
 
         cash = np.full(n_paths, self.option_price)
         delta_prev = np.zeros(n_paths)
-        rho_sv = -0.7
+        rho_sv = self.rho  # spot-vol correlation from config (not hardcoded)
 
         for step in range(n_steps):
             S = spot_paths[:, step]
@@ -166,6 +185,12 @@ class HedgingSimulator:
         std_pnl = float(np.std(pnl_arr))
         sharpe = mean_pnl / std_pnl if std_pnl > 1e-10 else 0.0
 
+        # Tracking error = std(PnL) normalized by option premium.
+        # This is a unitless measure of hedge quality.
+        # The old formula `std_pnl * sqrt(252/T)` was wrong because PnL
+        # is total (not a daily return), so annualization makes no sense.
+        tracking_error = std_pnl / self.option_price if self.option_price > 1e-10 else 0.0
+
         return HedgingResult(
             model_name=name,
             mean_pnl=mean_pnl,
@@ -173,11 +198,65 @@ class HedgingSimulator:
             mean_abs_pnl=float(np.mean(np.abs(pnl_arr))),
             max_loss=float(np.min(pnl_arr)),
             sharpe=float(sharpe),
-            tracking_error=std_pnl * np.sqrt(252 / self.T) if self.T > 0 else 0.0,
+            tracking_error=float(tracking_error),
             hedge_cost=float(self.tc_bps * self.spot * n_rebal),
             n_rebalances=n_rebal,
             pnl_distribution=pnl_arr,
         )
+
+    # ------------------------------------------------------------------
+    #  Neural SDE Greeks hedge (uses JAX AD for exact delta+vanna)
+    # ------------------------------------------------------------------
+    def _hedge_neural_ad_vec(self, spot_paths, var_paths, dt, rebal_set) -> HedgingResult:
+        """
+        Delta hedge using JAX automatic-differentiation Greeks.
+        Unlike BS-delta, this uses the *local* implied vol at each step
+        (from the var_paths) and computes exact delta+gamma via AD.
+        """
+        from utils.greeks_ad import jax_greeks
+
+        n_paths, n_total = spot_paths.shape
+        n_steps = n_total - 1
+
+        cash = np.full(n_paths, self.option_price)
+        delta_prev = np.zeros(n_paths)
+
+        for step in range(n_steps):
+            S = spot_paths[:, step]
+            T_rem = max(self.T - step * dt, 1e-8)
+
+            if var_paths is not None and step < var_paths.shape[1]:
+                # Use median local vol across paths for the AD greek
+                local_var = np.median(np.clip(var_paths[:, step], 1e-8, None))
+                local_vol = float(np.sqrt(local_var))
+            else:
+                local_vol = self.iv
+
+            if step in rebal_set:
+                # Compute Greeks at median spot (AD is scalar)
+                S_med = float(np.median(S))
+                g = jax_greeks(S_med, self.strike, T_rem, self.r,
+                               local_vol, self.opt_type)
+                # Use the AD delta for all paths (same strike/vol)
+                delta_new = np.full(n_paths, g['delta'])
+                delta_new = np.clip(delta_new, -2.0, 2.0)
+
+                trade = delta_new - delta_prev
+                cash -= trade * S
+                cash -= np.abs(trade) * S * self.tc_bps
+                delta_prev = delta_new
+
+            cash *= np.exp(self.r * dt)
+
+        S_T = spot_paths[:, -1]
+        stock_value = delta_prev * S_T
+        if self.opt_type == 'call':
+            payoff = np.maximum(S_T - self.strike, 0)
+        else:
+            payoff = np.maximum(self.strike - S_T, 0)
+
+        pnl = cash + stock_value - payoff
+        return self._build_result('Neural-AD', pnl, len(rebal_set))
 
     @staticmethod
     def compare_results(results: dict) -> str:

@@ -14,12 +14,22 @@ Supports:
   - Stressed VaR (conditional on regime)
   - Component VaR (contribution per position)
   - Tail risk metrics (Hill estimator, peak-over-threshold)
+  - Neural SDE stress testing (model-driven, not deterministic BS shocks)
+  - Deterministic stress scenarios (quick sensitivity analysis)
 
 Usage:
     from quant.risk_engine import RiskEngine
     engine = RiskEngine(spot=100, r=0.045)
     engine.add_position('call', strike=100, T=0.25, quantity=10, iv=0.20)
+
+    # MC VaR from Neural SDE paths
     result = engine.compute_var(spot_paths, var_paths, confidence=0.99)
+
+    # Neural SDE stress testing (model-driven scenarios)
+    stress = engine.neural_stress_test(model, config, n_paths=5000)
+
+    # Quick deterministic sensitivities
+    det_stress = engine.stress_test()
 """
 
 import numpy as np
@@ -239,7 +249,11 @@ class RiskEngine:
     # ------------------------------------------------------------------
     def stress_test(self, scenarios: dict = None) -> dict:
         """
-        Run predefined stress scenarios.
+        Run predefined deterministic stress scenarios (fast, no model needed).
+
+        These are simple sensitivity shocks — useful for quick P&L estimates
+        but NOT model-driven. For Neural SDE-based stress scenarios,
+        use neural_stress_test() instead.
 
         Default scenarios based on historical events:
           - Black Monday 1987: spot -22%, vol +150%
@@ -280,6 +294,146 @@ class RiskEngine:
                 "pnl": float(portfolio_pnl),
                 "spot_shocked": float(s_new),
                 **shocks,
+            }
+
+        return results
+
+    def neural_stress_test(self, model, config: dict,
+                           n_paths: int = 5000,
+                           stress_regimes: dict = None,
+                           seed: int = 42) -> dict:
+        """
+        Neural SDE-driven stress testing.
+
+        Instead of applying deterministic shocks, this generates Monte Carlo
+        paths from the Neural SDE with crisis-conditioned initial states:
+        high initial vol, negative spot drift, elevated vol-of-vol.
+
+        The key advantage over deterministic stress tests:
+          1. Path-dependent: captures barrier breaching, Asian averaging
+          2. Joint spot-vol dynamics: leverage effect (ρ) is modeled
+          3. Distributional: produces full P&L distributions, not point estimates
+          4. Model-consistent: uses the same dynamics that were calibrated to data
+
+        Args:
+            model: Trained NeuralRoughSimulator (P-measure recommended)
+            config: dict with 'n_steps', 'T' keys
+            n_paths: Number of MC paths per scenario
+            stress_regimes: Dict of scenario name → {v0_mult, rho_override, ...}
+            seed: Random seed
+
+        Returns:
+            Dict of scenario name → {pnl_stats, var_95, cvar_95, paths_summary}
+        """
+        import jax
+        import jax.numpy as jnp
+
+        n_steps = config['n_steps']
+        T = config['T']
+        dt = T / n_steps
+
+        # Default regime from model
+        theta = float(getattr(model, 'theta', -3.5))
+        v0_base = float(np.clip(np.exp(theta), 1e-4, 0.2))
+
+        # Load ρ from config
+        try:
+            from utils.config import load_config
+            yaml_cfg = load_config()
+            rho = yaml_cfg['bergomi']['rho']
+            r = yaml_cfg['pricing']['risk_free_rate']
+        except Exception:
+            rho = -0.7
+            r = self.r
+
+        if stress_regimes is None:
+            stress_regimes = {
+                # Panic: VIX at 45% → variance = 0.2025
+                "Panic (VIX~45%)": {
+                    "v0": 0.2025,
+                    "description": "Start from VIX~45% (March 2020 levels)",
+                },
+                # Elevated: VIX at 30% → variance = 0.09
+                "Elevated (VIX~30%)": {
+                    "v0": 0.09,
+                    "description": "Start from VIX~30% (persistent stress)",
+                },
+                # Volmageddon: VIX spike from low → use v0_base but higher noise
+                "Low-vol regime shift": {
+                    "v0": 0.01,  # VIX~10%, complacency
+                    "description": "Starts low, tests if model generates vol spikes",
+                },
+                # Current regime: use the model's learned θ
+                "Current regime": {
+                    "v0": v0_base,
+                    "description": "Current calibrated initial variance",
+                },
+            }
+
+        results = {}
+        key = jax.random.PRNGKey(seed)
+
+        for name, regime in stress_regimes.items():
+            key, k_vol, k_spot = jax.random.split(key, 3)
+
+            v0_stress = regime.get("v0", v0_base)
+            rho_use = regime.get("rho", rho)
+
+            # 1. Generate variance paths from Neural SDE
+            v0_arr = jnp.full((n_paths,), v0_stress)
+            dW_vol = jax.random.normal(k_vol, (n_paths, n_steps)) * jnp.sqrt(dt)
+
+            var_paths = jax.vmap(
+                model.generate_variance_path, in_axes=(0, 0, None)
+            )(v0_arr, dW_vol, dt)
+            var_paths = jnp.clip(var_paths, 1e-6, 5.0)
+
+            # 2. Generate correlated spot paths (with leverage effect ρ!)
+            z_indep = jax.random.normal(k_spot, (n_paths, n_steps))
+            dW_spot = rho_use * dW_vol + jnp.sqrt(1 - rho_use**2) * z_indep * jnp.sqrt(dt)
+
+            # Previsible variance (V_{k-1} at step k)
+            v0_col = jnp.full((n_paths, 1), v0_stress)
+            var_prev = jnp.concatenate([v0_col, var_paths[:, :-1]], axis=1)
+            vol_prev = jnp.sqrt(var_prev)
+
+            log_ret = (r - 0.5 * var_prev) * dt + vol_prev * dW_spot
+            spot_paths = self.spot * jnp.exp(jnp.cumsum(log_ret, axis=1))
+
+            # Prepend s0
+            s0_col = jnp.full((n_paths, 1), self.spot)
+            spot_full = np.array(jnp.concatenate([s0_col, spot_paths], axis=1))
+            var_np = np.array(var_paths)
+            vol_terminal = np.sqrt(np.clip(var_np[:, -1], 1e-8, None))
+
+            # 3. Value portfolio under these paths
+            s_terminal = spot_full[:, -1]
+            pnl = self._value_portfolio(s_terminal, vol_terminal)
+
+            # 4. Compute risk metrics
+            var_95 = float(-np.percentile(pnl, 5))
+            var_99 = float(-np.percentile(pnl, 1))
+            cvar_95 = float(-np.mean(pnl[pnl <= -var_95])) if np.any(pnl <= -var_95) else var_95
+            cvar_99 = float(-np.mean(pnl[pnl <= -var_99])) if np.any(pnl <= -var_99) else var_99
+
+            results[name] = {
+                "description": regime.get("description", ""),
+                "v0": float(v0_stress),
+                "v0_as_vix": float(np.sqrt(v0_stress) * 100),
+                "n_paths": n_paths,
+                "expected_pnl": float(np.mean(pnl)),
+                "pnl_std": float(np.std(pnl)),
+                "VaR_95": var_95,
+                "VaR_99": var_99,
+                "CVaR_95": cvar_95,
+                "CVaR_99": cvar_99,
+                "max_loss": float(-np.min(pnl)),
+                "terminal_spot_mean": float(np.mean(s_terminal)),
+                "terminal_spot_p5": float(np.percentile(s_terminal, 5)),
+                "terminal_vol_mean": float(np.mean(vol_terminal)),
+                "terminal_vol_p95": float(np.percentile(vol_terminal, 95)),
+                "prob_spot_drop_gt_10pct": float(np.mean(s_terminal < self.spot * 0.9)),
+                "prob_vol_gt_40pct": float(np.mean(vol_terminal > 0.40)),
             }
 
         return results

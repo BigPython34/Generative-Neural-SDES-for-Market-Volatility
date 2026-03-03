@@ -65,8 +65,22 @@ class DataRegenerator:
         ]:
             d.mkdir(parents=True, exist_ok=True)
 
+        # TradingView organized directory (by category)
+        self.tv_dir = self.data_dir / "trading_view"
+        # Legacy flat directories (backward compat)
         self.tv_input_dir = self.data_dir / "tradingview"
-        self.tv_input_dir_alt = self.data_dir / "trading_view"
+        self.tv_input_dir_alt = self.tv_dir
+
+        # Category subdirectories within trading_view/
+        self.tv_volatility = self.tv_dir / "volatility"
+        self.tv_equity_indices = self.tv_dir / "equity_indices"
+        self.tv_equity_etfs = self.tv_dir / "equity_etfs"
+        self.tv_vol_etfs = self.tv_dir / "vol_etfs"
+        self.tv_vix_futures = self.tv_dir / "vix_futures"
+        self.tv_sp_futures = self.tv_dir / "sp_futures"
+        self.tv_rates = self.tv_dir / "rates"
+        self.tv_fx = self.tv_dir / "fx"
+        self.tv_sentiment = self.tv_dir / "sentiment"
 
         self.generated: Dict[str, str] = {}
         self.skipped: Dict[str, str] = {}
@@ -84,6 +98,29 @@ class DataRegenerator:
             "spx_30m": self.spx_dir / "spx_30m.csv",
             "spx_daily": self.spx_dir / "spx_daily_2010_latest.csv",
             "vvix_daily": self.vvix_dir / "vvix_daily.csv",
+        }
+
+        # TradingView source paths (organized structure)
+        self.tv_sources = {
+            "vix_5m": self.tv_volatility / "vix_5m.csv",
+            "vix_15m": self.tv_volatility / "vix_15m.csv",
+            "vix_30m": self.tv_volatility / "vix_30m.csv",
+            "vix_1h": self.tv_volatility / "vix_1h.csv",
+            "vix_daily": self.tv_volatility / "vix_daily.csv",
+            "vvix_5m": self.tv_volatility / "vvix_5m.csv",
+            "vvix_15m": self.tv_volatility / "vvix_15m.csv",
+            "vvix_30m": self.tv_volatility / "vvix_30m.csv",
+            "vvix_1h": self.tv_volatility / "vvix_1h.csv",
+            "vvix_daily": self.tv_volatility / "vvix_daily.csv",
+            "spx_5m": self.tv_equity_indices / "spx_5m.csv",
+            "spx_15m": self.tv_equity_indices / "spx_15m.csv",
+            "spx_30m": self.tv_equity_indices / "spx_30m.csv",
+            "spx_1h": self.tv_equity_indices / "spx_1h.csv",
+            "spx_daily": self.tv_equity_indices / "spx_daily.csv",
+            "spx_5s": self.tv_equity_indices / "spx_5s.csv",
+            "spy_5m": self.tv_equity_etfs / "spy_5m.csv",
+            "spy_15m": self.tv_equity_etfs / "spy_15m.csv",
+            "spy_daily": self.tv_equity_etfs / "spy_daily.csv",
         }
 
         self.legacy_aliases = {
@@ -377,11 +414,25 @@ class DataRegenerator:
         self._register("data_ranges", out)
 
     def _find_tv_file(self, base_dir: Path, *candidates: str) -> Optional[Path]:
-        """Find the first existing TradingView file among naming variants."""
+        """Find the first existing TradingView file among naming variants.
+        
+        Searches in:
+        1. The given base_dir directly
+        2. All subdirectories of trading_view/ (organized by category)
+        """
+        # Direct match in base_dir
         for name in candidates:
             p = base_dir / name
             if p.exists():
                 return p
+        # Search in organized subdirectories
+        if self.tv_dir.exists():
+            for subdir in self.tv_dir.iterdir():
+                if subdir.is_dir():
+                    for name in candidates:
+                        p = subdir / name
+                        if p.exists():
+                            return p
         return None
 
     def _ingest_tv_file(self, input_name: str, output_path: Path, label: str,
@@ -400,46 +451,53 @@ class DataRegenerator:
         """
         Build canonical files from user-provided TradingView exports.
         
-        Supports two naming conventions:
-          - Legacy:  "TVC_VIX, 5.csv"   (space before number, no 'min')
-          - Current: "TVC_VIX,5min.csv"  (no space, 'min' suffix)
+        Supports organized structure (primary):
+          data/trading_view/volatility/vix_5m.csv
+          data/trading_view/equity_indices/spx_5m.csv
+        And legacy flat naming:
+          "TVC_VIX, 5.csv", "TVC_VIX,5min.csv"
         
-        Searches in data/tradingview/ and data/trading_view/.
+        Searches in data/trading_view/<category>/ first, then flat.
         """
+        # VIX intraday
         self._ingest_tv_file(
-            "TVC_VIX, 5.csv", self.market_targets["vix_5m"], "vix_5m_tv",
+            "vix_5m.csv", self.market_targets["vix_5m"], "vix_5m_tv",
             alias_key="vix_5m",
-            alt_names=["TVC_VIX,5min.csv", "TVC_VIX,5.csv", "TVC_VIX, 5min.csv"],
+            alt_names=["TVC_VIX, 5.csv", "TVC_VIX,5min.csv", "CBOE_DLY_VIX, 5.csv"],
         )
         self._ingest_tv_file(
-            "TVC_VIX, 10.csv", self.market_targets["vix_10m"], "vix_10m_tv_direct",
+            "vix_10m.csv", self.market_targets["vix_10m"], "vix_10m_tv_direct",
             alias_key="vix_10m",
-            alt_names=["TVC_VIX,10min.csv", "TVC_VIX,10.csv", "TVC_VIX, 10min.csv"],
+            alt_names=["TVC_VIX, 10.csv", "TVC_VIX,10min.csv", "CBOE_DLY_VIX, 10.csv"],
         )
         self._ingest_tv_file(
-            "TVC_VIX, 15.csv", self.market_targets["vix_15m"], "vix_15m_tv",
+            "vix_15m.csv", self.market_targets["vix_15m"], "vix_15m_tv",
             alias_key="vix_15m",
-            alt_names=["TVC_VIX,15min.csv", "TVC_VIX,15.csv", "TVC_VIX, 15min.csv"],
+            alt_names=["TVC_VIX, 15.csv", "TVC_VIX,15min.csv", "CBOE_DLY_VIX, 15.csv"],
         )
         self._ingest_tv_file(
-            "TVC_VIX, 30.csv", self.market_targets["vix_30m"], "vix_30m_tv",
+            "vix_30m.csv", self.market_targets["vix_30m"], "vix_30m_tv",
             alias_key="vix_30m",
-            alt_names=["TVC_VIX,30min.csv", "TVC_VIX,30.csv", "TVC_VIX, 30min.csv"],
+            alt_names=["TVC_VIX, 30.csv", "TVC_VIX,30min.csv", "CBOE_DLY_VIX, 30.csv"],
         )
+        # SPX intraday
         self._ingest_tv_file(
-            "SP_SPX, 5.csv", self.market_targets["spx_5m"], "spx_5m_tv",
+            "spx_5m.csv", self.market_targets["spx_5m"], "spx_5m_tv",
             alias_key="spx_5m",
-            alt_names=["SP_SPX,5min.csv", "SP_SPX,5.csv", "SP_SPX, 5min.csv"],
+            alt_names=["SP_SPX, 5.csv", "SP_SPX,5min.csv", "TVC_SPX, 5.csv"],
         )
         self._ingest_tv_file(
-            "SP_SPX, 30.csv", self.market_targets["spx_30m"], "spx_30m_tv",
+            "spx_30m.csv", self.market_targets["spx_30m"], "spx_30m_tv",
             alias_key="spx_30m",
-            alt_names=["SP_SPX,30min.csv", "SP_SPX,30.csv", "SP_SPX, 30min.csv"],
+            alt_names=["SP_SPX, 30.csv", "SP_SPX,30min.csv", "TVC_SPX, 30.csv"],
         )
 
         # VVIX (daily or intraday exports accepted)
-        base_dir = self.tv_input_dir if self.tv_input_dir.exists() else self.tv_input_dir_alt
-        vvix_path = self._find_tv_file(base_dir, "vvix_daily.csv", "CBOE_DLY_VVIX, 5.csv", "VVIX_daily.csv")
+        vvix_path = self._find_tv_file(
+            self.tv_volatility if self.tv_volatility.exists() else self.tv_dir,
+            "vvix_daily.csv", "vvix_5m.csv",
+            "CBOE_DLY_VVIX, 5.csv", "VVIX_daily.csv",
+        )
         if vvix_path is not None:
             df = pd.read_csv(vvix_path)
             out = self.market_targets["vvix_daily"]

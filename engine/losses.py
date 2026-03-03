@@ -3,18 +3,40 @@ Loss Functions for Neural SDE Training
 =======================================
 Multi-measure loss library:
   - P-measure (physical): MMD + mean penalty                    → VaR, stress testing
-  - Q-measure (risk-neutral): MMD + mean penalty + martingale   → pricing, hedging
+  - Q-measure (risk-neutral): IV surface + martingale + MMD reg → pricing, hedging
+
+Architecture (v3.0):
+  Under P: The primary objective is distribution matching via kernel MMD on
+           path signatures. This is correct — we want generated vol paths
+           to have the same statistical properties as historical data.
+
+  Under Q: The primary objective is IV SURFACE MATCHING against market
+           option prices (Bayer & Stemper 2018, Gierjatowicz et al. 2022).
+           MMD on P-data becomes a REGULARIZER (small weight) to keep
+           paths realistic. The martingale constraint enforces no-arbitrage.
 
 Components:
   - kernel_mmd_loss:             Distribution matching (MMD² with multi-scale RBF)
-  - signature_mmd_loss:          Legacy mean-signature L2 (backward compat)
+  - signature_mmd_loss:          Mean-signature L2 (used by verify_roughness, compare_frequencies)
   - mean_penalty_loss:           Global E[V] matching
   - marginal_mean_penalty_loss:  Per-step E[V_t] matching (Bayer & Stemper 2018)
   - martingale_violation_loss:   E[e^{-rT} S_T] = S_0 constraint (Q-measure)
-  - smile_fit_loss:              IV smile matching on target strikes
+  - smile_fit_loss:              IV/price smile matching on target strikes
   - term_structure_loss:         Vol term structure matching
   - jump_regularization_loss:    Penalize excessive jump frequency
-  - feller_condition_loss:       2κθ > σ² stability condition
+  - p_measure_loss:              Composite P-loss (MMD + mean penalty)
+  - q_measure_loss:              Composite Q-loss (smile + martingale + MMD reg)
+
+Removed (see obsolete/deprecated_losses.py):
+  - feller_condition_loss:       Only for CIR/Heston variance-space (we use log-V)
+  - path_regularity_loss:        Contradicts rough volatility (penalizes roughness)
+  - mean_penalty_loss_logv:      Correct idea but inlined in trainer, never called
+
+References:
+  - Kidger et al. (2021). Neural SDEs as Infinite-Dimensional GANs. ICML.
+  - Bayer & Stemper (2018). Deep calibration of rough stochastic vol models.
+  - Buehler et al. (2021). Deep Hedging: Learning Risk-Neutral IV Dynamics.
+  - Gierjatowicz et al. (2022). Robust pricing and hedging via neural SDEs.
 """
 
 import jax
@@ -101,31 +123,11 @@ def mean_penalty_loss(fake_paths: jnp.ndarray, real_mean: float) -> jnp.ndarray:
     """
     Penalizes E[V_gen] ≠ E[V_real] in variance space.
 
-    WARNING: When paths are in variance (exp of log-V), this loss
+    Note: When paths are in variance (exp of log-V), this loss
     suffers from Jensen bias: E[exp(X)] ≥ exp(E[X]).
-    Prefer mean_penalty_loss_logv for log-variance paths.
+    The trainer handles this by matching in log-V space inline.
     """
     return jnp.square(jnp.mean(fake_paths) - real_mean)
-
-
-@jit
-def mean_penalty_loss_logv(fake_paths: jnp.ndarray,
-                           real_log_mean: float) -> jnp.ndarray:
-    """
-    Mean penalty in log-variance space (avoids Jensen bias).
-
-    Matches E[log V_gen] = E[log V_real], which is the correct
-    objective when the SDE generates log-variance.
-
-    This avoids the systematic upward bias that occurs when matching
-    E[V] in variance space due to Jensen's inequality.
-
-    Args:
-        fake_paths: Generated variance paths (NOT log-variance)
-        real_log_mean: Pre-computed mean(log(real_variance))
-    """
-    fake_log = jnp.log(jnp.maximum(fake_paths, 1e-10))
-    return jnp.square(jnp.mean(fake_log) - real_log_mean)
 
 
 @jit
@@ -194,20 +196,6 @@ def term_structure_loss(model_atm_vols: jnp.ndarray,
 # =====================================================================
 
 @jit
-def feller_condition_loss(kappa: float, theta: float,
-                          vol_of_vol: float) -> jnp.ndarray:
-    """
-    DEPRECATED — not used in current training pipeline.
-
-    Penalizes Feller condition violation: 2κθ > σ².
-    Only relevant for CIR/Heston-type models in variance space.
-    The current OU and fractional backbones operate in log-variance
-    space where Feller is automatically satisfied.
-    """
-    return jnp.maximum(0.0, vol_of_vol ** 2 - 2 * kappa * theta) ** 2
-
-
-@jit
 def jump_regularization_loss(log_lambda: jnp.ndarray,
                              target_annual_rate: float = 3.0) -> jnp.ndarray:
     """
@@ -217,20 +205,6 @@ def jump_regularization_loss(log_lambda: jnp.ndarray,
     """
     lam = jnp.exp(log_lambda)
     return jnp.square(lam - target_annual_rate)
-
-
-@jit
-def path_regularity_loss(paths: jnp.ndarray) -> jnp.ndarray:
-    """
-    DEPRECATED — contradicts rough volatility modeling.
-
-    Penalizes path increments, which encourages smooth paths.
-    This is HARMFUL for rough volatility models where paths are
-    intrinsically irregular (Hölder exponent ≈ H ≈ 0.1).
-    Do NOT use for Neural SDE training.
-    """
-    increments = jnp.diff(paths, axis=1)
-    return jnp.mean(jnp.square(increments))
 
 
 # =====================================================================
@@ -243,6 +217,12 @@ def p_measure_loss(fake_sigs, real_sigs, sig_std, fake_paths, real_mean,
     """
     P-measure composite loss for physical dynamics modeling.
     Use for: VaR, stress testing, realized vol forecasting.
+
+    L = MMD²(sigs_gen, sigs_real) + λ_mean · L_mean
+
+    This is the correct loss for learning P-measure dynamics:
+    the MMD matches the *distribution of path signatures*
+    to historical data (VIX or realized vol).
     """
     mmd = kernel_mmd_loss(fake_sigs, real_sigs, sig_std)
     if mean_mode == "marginal" and real_paths is not None:
@@ -252,16 +232,84 @@ def p_measure_loss(fake_sigs, real_sigs, sig_std, fake_paths, real_mean,
     return mmd + lambda_mean * m_pen
 
 
-def q_measure_loss(fake_sigs, real_sigs, sig_std, fake_paths, real_mean,
-                   spot_paths, dt, r=0.0,
-                   real_paths=None, lambda_mean=10.0, lambda_martingale=5.0,
-                   mean_mode="global") -> jnp.ndarray:
+def q_measure_loss(spot_paths, dt, r,
+                   model_prices=None, market_prices=None, vega_weights=None,
+                   fake_sigs=None, real_sigs=None, sig_std=None,
+                   lambda_martingale=5.0, lambda_smile=1.0,
+                   lambda_mmd_reg=0.1) -> jnp.ndarray:
     """
-    Q-measure composite loss for risk-neutral pricing.
-    Use for: option pricing, hedging, calibration.
+    Q-measure composite loss for risk-neutral pricing & hedging.
 
-    Adds martingale constraint on top of P-measure loss:
-      L = L_MMD + λ_mean · L_mean + λ_mart · L_martingale
+    ARCHITECTURE (per Buehler et al. 2021, Bayer & Stemper 2018):
+    ──────────────────────────────────────────────────────────────
+    Under Q, option prices are expectations: C(K,T) = E^Q[e^{-rT}(S_T-K)^+].
+    The volatility dynamics under Q ≠ under P, so matching historical
+    path distributions (MMD on P-measure data) is NOT a valid Q-loss.
+
+    The correct Q-measure loss is driven by **market option prices**:
+
+    L_Q = λ_smile · L_smile(model_prices, market_prices)    [PRIMARY]
+        + λ_mart  · L_martingale(spot_paths)                  [CONSTRAINT]
+        + λ_mmd   · L_MMD(sigs_gen, sigs_real)                [REGULARIZER]
+
+    Where:
+      - L_smile: Vega-weighted IV/price error vs market options  (PRIMARY)
+      - L_martingale: E[e^{-rT}S_T] = S_0                      (NO-ARBITRAGE)
+      - L_MMD: signature distribution matching                   (REGULARIZER,
+              keeps paths realistic, prevents degenerate solutions)
+
+    The MMD serves as a regularizer (small weight) to prevent the model
+    from finding degenerate Q-dynamics that fit option prices but produce
+    unrealistic paths. This is analogous to the KL-divergence regularization
+    in Gierjatowicz et al. (2022).
+
+    Args:
+        spot_paths: (n_paths, n_steps) normalized spot (S_t/S_0)
+        dt: time step in years
+        r: risk-free rate (SOFR)
+        model_prices: (n_strikes,) MC option prices from generated paths
+        market_prices: (n_strikes,) observed market option prices
+        vega_weights: (n_strikes,) optional vega weighting
+        fake_sigs: generated path signatures (for MMD regularizer)
+        real_sigs: real data signatures (for MMD regularizer)
+        sig_std: signature normalization weights
+        lambda_martingale: weight for martingale constraint
+        lambda_smile: weight for IV/price surface matching
+        lambda_mmd_reg: weight for MMD regularizer (small!)
+    """
+    total = jnp.float32(0.0)
+
+    # PRIMARY: Option price / IV surface matching
+    if model_prices is not None and market_prices is not None:
+        smile = smile_fit_loss(model_prices, market_prices, vega_weights)
+        total = total + lambda_smile * smile
+
+    # CONSTRAINT: Martingale (no-arbitrage under Q)
+    mart = martingale_violation_loss(spot_paths, dt, r)
+    total = total + lambda_martingale * mart
+
+    # REGULARIZER: MMD on signatures (keeps paths realistic)
+    if fake_sigs is not None and real_sigs is not None:
+        mmd = kernel_mmd_loss(fake_sigs, real_sigs, sig_std)
+        total = total + lambda_mmd_reg * mmd
+
+    return total
+
+
+def q_measure_loss_legacy(fake_sigs, real_sigs, sig_std, fake_paths, real_mean,
+                          spot_paths, dt, r=0.0,
+                          real_paths=None, lambda_mean=10.0,
+                          lambda_martingale=5.0,
+                          mean_mode="global") -> jnp.ndarray:
+    """
+    LEGACY Q-measure loss (v2.0 — kept for backward compatibility).
+
+    WARNING: This loss is theoretically incorrect for Q-measure pricing.
+    It uses MMD on P-measure historical paths as the primary objective
+    and only adds a martingale constraint on top. This learns P-dynamics
+    with a first-moment correction, NOT true Q-dynamics.
+
+    Use q_measure_loss() instead, which is IV-surface-driven.
     """
     base = p_measure_loss(fake_sigs, real_sigs, sig_std, fake_paths,
                           real_mean, real_paths, lambda_mean, mean_mode)

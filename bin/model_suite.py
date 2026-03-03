@@ -222,8 +222,21 @@ def _simulate_risk_metrics(model, cfg: dict, n_paths: int = 5000, seed: int = 12
     var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(v0_arr, dW_var, dt)
     var_paths = jnp.clip(var_paths, 1e-6, 5.0)
 
-    z = jax.random.normal(k2, (n_paths, n_steps))
-    log_ret = -0.5 * var_paths * dt + jnp.sqrt(var_paths) * jnp.sqrt(dt) * z
+    # Build correlated spot paths with leverage effect (ρ)
+    # This is critical — without ρ, spot-vol correlation is absent
+    # and risk metrics (especially tail risk) are severely underestimated.
+    rho = cfg.get("bergomi", {}).get("rho", -0.7)
+    r = cfg.get("pricing", {}).get("risk_free_rate", 0.045)
+
+    z_indep = jax.random.normal(k2, (n_paths, n_steps))
+    dW_spot = rho * dW_var + jnp.sqrt(1 - rho**2) * z_indep * jnp.sqrt(dt)
+
+    # Previsible variance: V_{k-1} at step k (avoids adaptedness bias)
+    v0_col = jnp.full((n_paths, 1), v0)
+    var_prev = jnp.concatenate([v0_col, var_paths[:, :-1]], axis=1)
+    vol_prev = jnp.sqrt(var_prev)
+
+    log_ret = (r - 0.5 * var_prev) * dt + vol_prev * dW_spot
     horizon_ret = np.array(jnp.sum(log_ret, axis=1))
 
     q05 = float(np.quantile(horizon_ret, 0.05))
@@ -243,7 +256,69 @@ def _simulate_risk_metrics(model, cfg: dict, n_paths: int = 5000, seed: int = 12
         "terminal_vol_mean": float(term_vol.mean()),
         "terminal_vol_p95": float(np.quantile(term_vol, 0.95)),
         "panic_prob_vol_gt_40pct": panic_prob,
+        "rho_used": rho,
     }
+
+
+def _neural_stress_scenarios(model, cfg: dict, n_paths: int = 5000, seed: int = 124) -> dict:
+    """
+    Generate stress scenarios using the Neural SDE itself.
+
+    Instead of applying deterministic BS shocks (which ignores the model),
+    we start the Neural SDE from crisis-level initial variances and let the
+    learned dynamics produce the stress distribution — including path-dependent
+    effects, leverage (ρ), and volatility clustering.
+    """
+    n_steps = int(cfg["simulation"]["n_steps"])
+    T = float(cfg["simulation"]["T"])
+    dt = T / n_steps
+    rho = cfg.get("bergomi", {}).get("rho", -0.7)
+    r = cfg.get("pricing", {}).get("risk_free_rate", 0.045)
+    theta = float(getattr(model, "theta", -3.5))
+    v0_base = float(np.clip(np.exp(theta), 1e-4, 0.2))
+
+    stress_configs = {
+        "Panic (VIX~45%)": {"v0": 0.2025},      # March 2020 levels
+        "Elevated (VIX~30%)": {"v0": 0.09},       # Persistent stress
+        "Low-vol spike": {"v0": 0.01},             # Complacency → tests tail generation
+        "Current": {"v0": v0_base},                # Baseline
+    }
+
+    results = {}
+    key = jax.random.PRNGKey(seed)
+
+    for name, sc in stress_configs.items():
+        key, k1, k2 = jax.random.split(key, 3)
+        v0 = sc["v0"]
+        v0_arr = jnp.full((n_paths,), v0)
+
+        dW = jax.random.normal(k1, (n_paths, n_steps)) * jnp.sqrt(dt)
+        var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(v0_arr, dW, dt)
+        var_paths = jnp.clip(var_paths, 1e-6, 5.0)
+
+        # Correlated spot (with ρ)
+        z = jax.random.normal(k2, (n_paths, n_steps))
+        dW_spot = rho * dW + jnp.sqrt(1 - rho**2) * z * jnp.sqrt(dt)
+        v0_col = jnp.full((n_paths, 1), v0)
+        var_prev = jnp.concatenate([v0_col, var_paths[:, :-1]], axis=1)
+        log_ret = (r - 0.5 * var_prev) * dt + jnp.sqrt(var_prev) * dW_spot
+        total_ret = np.array(jnp.sum(log_ret, axis=1))
+
+        q05 = float(np.quantile(total_ret, 0.05))
+        q01 = float(np.quantile(total_ret, 0.01))
+        term_vol = np.sqrt(np.array(var_paths[:, -1]))
+
+        results[name] = {
+            "v0_as_vix": float(np.sqrt(v0) * 100),
+            "return_mean": float(total_ret.mean()),
+            "return_std": float(total_ret.std()),
+            "VaR_95": float(-q05),
+            "VaR_99": float(-q01),
+            "terminal_vol_mean": float(term_vol.mean()),
+            "terminal_vol_p95": float(np.percentile(term_vol, 0.95)),
+        }
+
+    return results
 
 
 def _pricing_prior_recalibration(model, cfg: dict) -> dict:
@@ -412,11 +487,15 @@ def run_usecases(n_paths: int = 5000, seed: int = 123) -> dict:
         risk = _simulate_risk_metrics(model, cfg, n_paths=n_paths, seed=seed)
         pricing = _pricing_prior_recalibration(model, cfg)
 
+        # Neural SDE-driven stress testing (uses the model, not BS shocks)
+        neural_stress = _neural_stress_scenarios(model, cfg, n_paths=n_paths, seed=seed + 1)
+
         report["profiles"][profile] = {
             "model_path": entry["model_path"],
             "config_path": entry["config_path"],
             "risk_scenarios": risk,
             "pricing_prior_local_recalibration": pricing,
+            "neural_stress_test": neural_stress,
         }
 
     out_path = Path("outputs/model_usecases_report.json")

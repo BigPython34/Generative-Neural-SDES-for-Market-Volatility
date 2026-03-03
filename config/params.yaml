@@ -55,14 +55,15 @@ training:
   mean_penalty_mode: "global"           # "global" or "marginal" (Bayer & Stemper 2018)
   mean_penalty_space: "log_v"           # "variance" (legacy) or "log_v" (avoids Jensen bias)
   # Training purpose determines which losses are active:
-  #   "pricing":      MMD + mean + martingale + smile_fit (if Q)
-  #   "stress_test":  MMD + mean (tail fidelity, no smile constraint)
-  #   "general":      MMD + mean + martingale (Q) — legacy default
+  #   "pricing":      smile_fit + martingale + MMD_reg (if Q) — recommended for Q
+  #   "stress_test":  MMD + mean (tail fidelity, no smile constraint) — P-measure
+  #   "general":      MMD + mean + martingale (Q) — fallback when no options data
   training_mode: "general"
   # Q-measure specific
   q_measure:
-    lambda_martingale: 5.0              # Weight for martingale violation loss
-    lambda_smile: 1.0                   # Weight for smile fitting loss (active in pricing mode)
+    lambda_martingale: 5.0              # Weight for martingale violation loss (no-arbitrage)
+    lambda_smile: 1.0                   # Weight for smile fitting loss (PRIMARY Q-loss)
+    lambda_mmd_regularizer: 0.1         # Weight for MMD as regularizer under Q (small!)
     lambda_jump_reg: 0.1                # Weight for jump regularization
     options_data_source: "data/options_cache"  # Path to options cache for smile_fit_loss
 
@@ -94,7 +95,7 @@ neural_sde:
     prior_target: 3.0                   # Target annual jump rate for regularization
   # Fractional backbone parameters (used when backbone=fractional)
   fractional:
-    hurst_init: 0.10                    # Initial Hurst exponent
+    hurst_init: 0.1092                    # Initial Hurst exponent
     eta_init: 1.9                       # Initial vol-of-vol
     learn_hurst: true                   # Allow H to be learned
     learn_eta: true                     # Allow eta to be learned
@@ -115,7 +116,7 @@ simulation:
 
 # Rough Bergomi Benchmark
 bergomi:
-  hurst: 0.07
+  hurst: 0.1092
   eta: 1.9                              # Override; set eta_source=vvix to auto-calibrate from VVIX
   eta_source: "config"                   # "config" (use above value) or "vvix" (auto-calibrate)
   rho: -0.7
