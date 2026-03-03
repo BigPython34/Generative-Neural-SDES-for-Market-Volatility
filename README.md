@@ -445,7 +445,11 @@ This section details the rigorous multi-scale estimation implemented in `quant/h
 
 A **fractional Brownian motion** $B^H = (B^H_t)_{t \geq 0}$ with Hurst parameter $H \in (0,1)$ is the unique centered Gaussian process with covariance:
 
-$$\operatorname{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}\bigl(|t|^{2H} + |s|^{2H} - |t-s|^{2H}\bigr)$$
+Cov(B^H_t, B^H_s) = (1/2)(|t|^(2H) + |s|^(2H) − |t−s|^(2H))
+
+```latex
+\operatorname{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}\bigl(|t|^{2H} + |s|^{2H} - |t-s|^{2H}\bigr)
+```
 
 **Fundamental properties:**
 
@@ -464,11 +468,19 @@ For $H = 1/2$, fBM reduces to standard Brownian motion. For $H < 1/2$, increment
 
 **Proof.** By Kolmogorov's continuity criterion, if a process $X$ satisfies
 
-$$E\bigl[|X_t - X_s|^p\bigr] \leq C\,|t-s|^{1+\beta}$$
+E[|X_t − X_s|^p] ≤ C · |t−s|^(1+β)
+
+```latex
+E\bigl[|X_t - X_s|^p\bigr] \leq C\,|t-s|^{1+\beta}
+```
 
 for some $p \geq 1$ and $\beta > 0$, then $X$ admits a modification with Hölder-continuous paths of order $\gamma$ for any $\gamma < \beta/p$. For fBM, since $B^H_t - B^H_s \sim \mathcal{N}(0, |t-s|^{2H})$, the $p$-th absolute moment of a Gaussian gives:
 
-$$E\bigl[|B^H_t - B^H_s|^p\bigr] = c_p\,|t-s|^{pH}$$
+E[|B^H_t − B^H_s|^p] = c_p · |t−s|^(pH)
+
+```latex
+E\bigl[|B^H_t - B^H_s|^p\bigr] = c_p\,|t-s|^{pH}
+```
 
 where $c_p = E[|\mathcal{N}(0,1)|^p] = 2^{p/2}\Gamma\!\bigl(\frac{p+1}{2}\bigr)/\sqrt{\pi}$. Setting $\beta = pH - 1$, we get Hölder regularity $\gamma < (pH-1)/p = H - 1/p$. Since $p$ can be taken arbitrarily large, $\gamma$ can be made arbitrarily close to $H$. The matching lower bound (paths are *not* $\alpha$-Hölder for $\alpha > H$) follows from the law of the iterated logarithm for fBM (Arcones 1995). $\square$
 
@@ -478,11 +490,19 @@ where $c_p = E[|\mathcal{N}(0,1)|^p] = 2^{p/2}\Gamma\!\bigl(\frac{p+1}{2}\bigr)/
 
 Gatheral, Jaisson & Rosenbaum (2018) discovered empirically that log-realized-volatility of equity indices behaves like fBM with $H \approx 0.1$:
 
-$$X_t = \log \sigma_t \approx X_0 + \eta\, B^H_t$$
+X_t = log(σ_t) ≈ X_0 + η · B^H_t
+
+```latex
+X_t = \log \sigma_t \approx X_0 + \eta\, B^H_t
+```
 
 This is formalized in the **rough Bergomi** (rBergomi) model (Bayer, Friz & Gatheral 2016):
 
-$$\log V_t = \log \xi_0 + \eta\,\hat{W}^H_t - \tfrac{1}{2}\eta^2\,t^{2H}$$
+log(V_t) = log(ξ_0) + η · Ŵ^H_t − (1/2)η²t^(2H)
+
+```latex
+\log V_t = \log \xi_0 + \eta\,\hat{W}^H_t - \tfrac{1}{2}\eta^2\,t^{2H}
+```
 
 where $\hat{W}^H_t = \sqrt{2H}\displaystyle\int_0^t (t-s)^{H-1/2}\,dW_s$ is the **Riemann–Liouville fBM** (Volterra kernel representation). The correction term $-\frac{1}{2}\eta^2 t^{2H}$ ensures $E[V_t] = \xi_0$ (the forward variance curve is preserved under the risk-neutral measure).
 
@@ -498,21 +518,37 @@ We prove the mathematical foundations of each estimator used in our analysis.
 
 **Statement.** *Let $(X_t)_{t \geq 0}$ be a process with stationary increments satisfying $E[|X_{t+\tau} - X_t|^2] = C \cdot \tau^{2H}$ for some $H \in (0,1)$ and $C > 0$. Define the empirical variogram:*
 
-$$m(2, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}(X_{t+\tau} - X_t)^2$$
+m(2, τ) = (1/(N−τ)) · Σ_{t=1}^{N−τ} (X_{t+τ} − X_t)²
+
+```latex
+m(2, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}(X_{t+\tau} - X_t)^2
+```
 
 *Then $\log m(2,\tau) \xrightarrow{p} 2H\log\tau + \log C$ as $N \to \infty$, and the OLS slope of $\log m(2,\tau)$ vs $\log\tau$ divided by 2 is a consistent estimator of $H$.*
 
 **Proof.** By the ergodic theorem for stationary sequences (the increments $(X_{t+\tau}-X_t)^2$ form a stationary, ergodic sequence under mild mixing conditions):
 
-$$m(2, \tau) \xrightarrow{p} E\bigl[(X_{t+\tau} - X_t)^2\bigr] = C\tau^{2H}$$
+m(2, τ) →_p  E[(X_{t+τ} − X_t)²] = C · τ^(2H)
+
+```latex
+m(2, \tau) \xrightarrow{p} E\bigl[(X_{t+\tau} - X_t)^2\bigr] = C\tau^{2H}
+```
 
 Taking logarithms (continuous mapping theorem):
 
-$$\log m(2, \tau) \xrightarrow{p} \log(C\tau^{2H}) = 2H\log\tau + \log C$$
+log m(2, τ) →_p  log(C · τ^(2H)) = 2H · log(τ) + log(C)
+
+```latex
+\log m(2, \tau) \xrightarrow{p} \log(C\tau^{2H}) = 2H\log\tau + \log C
+```
 
 This is a simple linear model $y_k = 2H \cdot x_k + b + \varepsilon_k$ where $y_k = \log m(2, \tau_k)$, $x_k = \log \tau_k$, and $\varepsilon_k \xrightarrow{p} 0$. The OLS estimator $\hat{\beta}$ for the slope converges to $2H$, giving:
 
-$$\hat{H}_{\text{var}} = \frac{\hat{\beta}_{\text{OLS}}}{2}$$
+Ĥ_var = β̂_OLS / 2
+
+```latex
+\hat{H}_{\text{var}} = \frac{\hat{\beta}_{\text{OLS}}}{2}
+```
 
 The $R^2$ of this log-log regression measures goodness-of-fit to the power-law model $m(2,\tau) = C\tau^{2H}$. We observe $R^2 > 0.93$ at all frequencies, validating the fBM scaling assumption. $\square$
 
@@ -522,13 +558,21 @@ The $R^2$ of this log-log regression measures goodness-of-fit to the power-law m
 
 **Statement.** *For a process with fBM-like scaling, the generalized structure function of order $q > 0$:*
 
-$$m(q, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}|X_{t+\tau} - X_t|^q$$
+m(q, τ) = (1/(N−τ)) · Σ_{t=1}^{N−τ} |X_{t+τ} − X_t|^q
+
+```latex
+m(q, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}|X_{t+\tau} - X_t|^q
+```
 
 *converges to $c_q \cdot \tau^{\zeta(q)}$ where $\zeta(q)$ is the scaling exponent. For a monofractal process (single Hurst exponent), $\zeta(q) = qH$ for all $q > 0$.*
 
 **Proof.** By self-similarity of fBM increments, $X_{t+\tau} - X_t \overset{d}{=} \tau^H Z$ where $Z \sim \mathcal{N}(0, C)$. Therefore:
 
-$$E\bigl[|X_{t+\tau} - X_t|^q\bigr] = \tau^{qH}\,E[|Z|^q] = c_q\,\tau^{qH}$$
+E[|X_{t+τ} − X_t|^q] = τ^(qH) · E[|Z|^q] = c_q · τ^(qH)
+
+```latex
+E\bigl[|X_{t+\tau} - X_t|^q\bigr] = \tau^{qH}\,E[|Z|^q] = c_q\,\tau^{qH}
+```
 
 with explicit constant $c_q = C^{q/2} \cdot \dfrac{2^{q/2}\,\Gamma\!\bigl(\frac{q+1}{2}\bigr)}{\sqrt{\pi}}$.
 
@@ -546,15 +590,27 @@ Our results: $R^2 > 0.998$ and $|a_2| < 0.006$ at all frequencies → **single $
 
 **Statement.** *Define:*
 
-$$\hat{H}(\tau) = \frac{1}{2}\log_2\!\left(\frac{m(2, 2\tau)}{m(2, \tau)}\right)$$
+Ĥ(τ) = (1/2) · log₂(m(2, 2τ) / m(2, τ))
+
+```latex
+\hat{H}(\tau) = \frac{1}{2}\log_2\!\left(\frac{m(2, 2\tau)}{m(2, \tau)}\right)
+```
 
 *If $m(2,\tau) = C\tau^{2H}$ exactly, then $\hat{H}(\tau) = H$.*
 
 **Proof.** Direct computation:
 
-$$\frac{m(2, 2\tau)}{m(2, \tau)} = \frac{C(2\tau)^{2H}}{C\tau^{2H}} = 2^{2H}$$
+m(2, 2τ) / m(2, τ) = C(2τ)^(2H) / (C · τ^(2H)) = 2^(2H)
 
-$$\implies \hat{H}(\tau) = \frac{1}{2}\log_2(2^{2H}) = \frac{1}{2} \cdot 2H = H \quad \square$$
+```latex
+\frac{m(2, 2\tau)}{m(2, \tau)} = \frac{C(2\tau)^{2H}}{C\tau^{2H}} = 2^{2H}
+```
+
+⟹  Ĥ(τ) = (1/2) · log₂(2^(2H)) = (1/2) · 2H = H  □
+
+```latex
+\implies \hat{H}(\tau) = \frac{1}{2}\log_2(2^{2H}) = \frac{1}{2} \cdot 2H = H \quad \square
+```
 
 **Advantage:** No regression needed — gives a local $H$ estimate at each lag $\tau$, then averaged. **Disadvantage:** Higher variance (each estimate uses only two lag values). In our data, the ratio estimator gives $\hat{H} \in [0.076, 0.098]$, consistently the lowest — reflecting slight downward bias from finite-sample effects and microstructure residuals at short lags.
 
@@ -562,37 +618,69 @@ $$\implies \hat{H}(\tau) = \frac{1}{2}\log_2(2^{2H}) = \frac{1}{2} \cdot 2H = H 
 
 At ultra-high frequency, market microstructure noise contaminates observed prices. Let:
 
-$$Y_{t_i} = X_{t_i} + \varepsilon_{t_i}$$
+Y_{t_i} = X_{t_i} + ε_{t_i}
+
+```latex
+Y_{t_i} = X_{t_i} + \varepsilon_{t_i}
+```
 
 where $X_t$ is the efficient log-price and $\varepsilon_{t_i} \overset{iid}{\sim} (0, \sigma^2_\varepsilon)$ is microstructure noise (bid-ask bounce, discreteness, etc.).
 
 **Proposition (RV bias).** *The naive realized variance from $n$ high-frequency returns:*
 
-$$RV^{(n)} = \sum_{i=1}^{n}(Y_{t_i} - Y_{t_{i-1}})^2$$
+RV^(n) = Σ_{i=1}^n (Y_{t_i} − Y_{t_{i−1}})²
+
+```latex
+RV^{(n)} = \sum_{i=1}^{n}(Y_{t_i} - Y_{t_{i-1}})^2
+```
 
 *satisfies $E[RV^{(n)}] = \displaystyle\int_0^T \sigma^2_t\,dt + 2n\sigma^2_\varepsilon$. As $n \to \infty$ (finer sampling), the noise term diverges.*
 
 **Proof.** Expand:
 
-$$Y_{t_i} - Y_{t_{i-1}} = \underbrace{(X_{t_i} - X_{t_{i-1}})}_{\text{signal}} + \underbrace{(\varepsilon_{t_i} - \varepsilon_{t_{i-1}})}_{\text{noise}}$$
+Y_{t_i} − Y_{t_{i−1}} = (X_{t_i} − X_{t_{i−1}})_[signal]  +  (ε_{t_i} − ε_{t_{i−1}})_[noise]
+
+```latex
+Y_{t_i} - Y_{t_{i-1}} = \underbrace{(X_{t_i} - X_{t_{i-1}})}_{\text{signal}} + \underbrace{(\varepsilon_{t_i} - \varepsilon_{t_{i-1}})}_{\text{noise}}
+```
 
 Squaring, using independence of $X$ and $\varepsilon$ with $E[\varepsilon] = 0$:
 
-$$E\bigl[(Y_{t_i} - Y_{t_{i-1}})^2\bigr] = E\bigl[(X_{t_i} - X_{t_{i-1}})^2\bigr] + E\bigl[\varepsilon_{t_i}^2 + \varepsilon_{t_{i-1}}^2 - 2\varepsilon_{t_i}\varepsilon_{t_{i-1}}\bigr]$$
+E[(Y_{t_i} − Y_{t_{i−1}})²] = E[(X_{t_i} − X_{t_{i−1}})²] + E[ε_{t_i}² + ε_{t_{i−1}}² − 2ε_{t_i}ε_{t_{i−1}}]
+
+```latex
+E\bigl[(Y_{t_i} - Y_{t_{i-1}})^2\bigr] = E\bigl[(X_{t_i} - X_{t_{i-1}})^2\bigr] + E\bigl[\varepsilon_{t_i}^2 + \varepsilon_{t_{i-1}}^2 - 2\varepsilon_{t_i}\varepsilon_{t_{i-1}}\bigr]
+```
 
 The noise term equals $2\sigma^2_\varepsilon$ (i.i.d. assumption). Summing over $i = 1, \ldots, n$:
 
-$$E[RV^{(n)}] = \underbrace{\sum_{i=1}^n E[(X_{t_i}-X_{t_{i-1}})^2]}_{\to \int_0^T \sigma^2_t\,dt} + \underbrace{2n\,\sigma^2_\varepsilon}_{\text{diverges as } n \to \infty} \quad \square$$
+E[RV^(n)] = Σ_{i=1}^n E[(X_{t_i}−X_{t_{i−1}})²]  →  ∫₀ᵀ σ²_t dt  +  2n · σ²_ε  (diverges as n → ∞)  □
+
+```latex
+E[RV^{(n)}] = \underbrace{\sum_{i=1}^n E[(X_{t_i}-X_{t_{i-1}})^2]}_{\to \int_0^T \sigma^2_t\,dt} + \underbrace{2n\,\sigma^2_\varepsilon}_{\text{diverges as } n \to \infty} \quad \square
+```
 
 **Two-Scale RV.** Subsample at a coarser grid with $K \ll n$ points to get $RV^{(K)}$ (bias $2K\sigma^2_\varepsilon$, much smaller). Define:
 
-$$\widehat{\text{TSRV}} = RV^{(K)} - \frac{K}{n}\,RV^{(n)}$$
+TSRV-hat = RV^(K) − (K/n) · RV^(n)
+
+```latex
+\widehat{\text{TSRV}} = RV^{(K)} - \frac{K}{n}\,RV^{(n)}
+```
 
 **Proof of unbiasedness:**
 
-$$E[\widehat{\text{TSRV}}] = \left(\int_0^T\sigma^2_t\,dt + 2K\sigma^2_\varepsilon\right) - \frac{K}{n}\left(\int_0^T\sigma^2_t\,dt + 2n\sigma^2_\varepsilon\right)$$
+E[TSRV-hat] = (∫₀ᵀ σ²_t dt + 2K · σ²_ε) − (K/n)(∫₀ᵀ σ²_t dt + 2n · σ²_ε)
 
-$$= \int_0^T\sigma^2_t\,dt\left(1 - \frac{K}{n}\right) + 2K\sigma^2_\varepsilon - 2K\sigma^2_\varepsilon = \left(1 - \frac{K}{n}\right)\int_0^T\sigma^2_t\,dt$$
+```latex
+E[\widehat{\text{TSRV}}] = \left(\int_0^T\sigma^2_t\,dt + 2K\sigma^2_\varepsilon\right) - \frac{K}{n}\left(\int_0^T\sigma^2_t\,dt + 2n\sigma^2_\varepsilon\right)
+```
+
+= ∫₀ᵀ σ²_t dt · (1 − K/n) + 2K · σ²_ε − 2K · σ²_ε = (1 − K/n) · ∫₀ᵀ σ²_t dt
+
+```latex
+= \int_0^T\sigma^2_t\,dt\left(1 - \frac{K}{n}\right) + 2K\sigma^2_\varepsilon - 2K\sigma^2_\varepsilon = \left(1 - \frac{K}{n}\right)\int_0^T\sigma^2_t\,dt
+```
 
 For $K \ll n$, the factor $(1 - K/n) \approx 1$ and the noise bias is eliminated to leading order. The optimal subsampling rate is $K \asymp n^{2/3}$ (Zhang et al. 2005, Theorem 2), yielding convergence rate $O(n^{-1/6})$ vs $O(1)$ for naive RV. $\square$
 
@@ -602,13 +690,21 @@ For $K \ll n$, the factor $(1 - K/n) \approx 1$ and the noise bias is eliminated
 
 This explains a crucial subtlety. The VIX index measures the risk-neutral expected integrated variance over 30 days:
 
-$$\text{VIX}^2_t \propto E^{\mathbb{Q}}\!\left[\frac{1}{\Delta}\int_t^{t+\Delta} \sigma^2_s\,ds\;\Bigg|\;\mathcal{F}_t\right], \quad \Delta = 30\text{ days}$$
+VIX²_t  ∝  E^Q[(1/Δ) · ∫_t^{t+Δ} σ²_s ds | F_t],  Δ = 30 days
+
+```latex
+\text{VIX}^2_t \propto E^{\mathbb{Q}}\!\left[\frac{1}{\Delta}\int_t^{t+\Delta} \sigma^2_s\,ds\;\Bigg|\;\mathcal{F}_t\right], \quad \Delta = 30\text{ days}
+```
 
 Even though $\log\sigma_t$ is rough ($H \approx 0.1$), VIX appears smooth ($H \approx 0.5$). Here is why.
 
 **Proposition (Moving-average smoothing of fBM).** *Let $X_t$ be fBM($H$) and define the moving average:*
 
-$$\bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\int_{t}^{t+\Delta} X_s\,ds$$
+X̄_t^(Δ) = (1/Δ) · ∫_t^{t+Δ} X_s ds
+
+```latex
+\bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\int_{t}^{t+\Delta} X_s\,ds
+```
 
 *Then for the variogram of the smoothed process:*
 
@@ -617,7 +713,11 @@ $$\bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\int_{t}^{t+\Delta} X_s\,ds$$
 
 **Proof sketch.** Write the increment of the smoothed process:
 
-$$\bar{X}_{t+\tau}^{(\Delta)} - \bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\left(\int_{t+\Delta}^{t+\tau+\Delta} X_s\,ds - \int_t^{t+\tau}X_s\,ds\right)$$
+X̄_{t+τ}^(Δ) − X̄_t^(Δ) = (1/Δ)(∫_{t+Δ}^{t+τ+Δ} X_s ds − ∫_t^{t+τ} X_s ds)
+
+```latex
+\bar{X}_{t+\tau}^{(\Delta)} - \bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\left(\int_{t+\Delta}^{t+\tau+\Delta} X_s\,ds - \int_t^{t+\tau}X_s\,ds\right)
+```
 
 **Case $\tau \gg \Delta$:** The two integration windows $[t, t+\Delta]$ and $[t+\tau, t+\tau+\Delta]$ are well-separated. The averaging windows are small relative to the lag, so $\bar{X}_{t+\tau} - \bar{X}_t \approx X_{t+\tau} - X_t$, which scales as $\tau^{2H}$.
 
@@ -629,19 +729,35 @@ $$\bar{X}_{t+\tau}^{(\Delta)} - \bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\left(\in
 
 **Statement.** *Given $K$ unbiased estimators $\hat{H}_1, \ldots, \hat{H}_K$ with variances $\sigma^2_1, \ldots, \sigma^2_K$ (from bootstrap), the weighted average:*
 
-$$\hat{H}_w = \frac{\sum_{k=1}^K w_k\,\hat{H}_k}{\sum_{k=1}^K w_k}, \quad w_k = \frac{1}{\sigma^2_k}$$
+Ĥ_w = (Σ_{k=1}^K w_k · Ĥ_k) / (Σ_{k=1}^K w_k),  where  w_k = 1/σ²_k
+
+```latex
+\hat{H}_w = \frac{\sum_{k=1}^K w_k\,\hat{H}_k}{\sum_{k=1}^K w_k}, \quad w_k = \frac{1}{\sigma^2_k}
+```
 
 *is the **Best Linear Unbiased Estimator** (BLUE) — it has the smallest variance among all linear unbiased combinations.*
 
 **Proof.** We minimize $\operatorname{Var}(\hat{H}_w) = \sum_k \alpha_k^2 \sigma_k^2$ subject to $\sum_k \alpha_k = 1$ (unbiasedness), where $\alpha_k = w_k / \sum_j w_j$. By Lagrange multipliers:
 
-$$\mathcal{L} = \sum_k \alpha_k^2\sigma_k^2 - \lambda\!\left(\sum_k\alpha_k - 1\right)$$
+ℒ = Σ_k α_k² · σ_k² − λ(Σ_k α_k − 1)
 
-$$\frac{\partial\mathcal{L}}{\partial\alpha_k} = 2\alpha_k\sigma_k^2 - \lambda = 0 \implies \alpha_k = \frac{\lambda}{2\sigma_k^2} \propto \frac{1}{\sigma_k^2}$$
+```latex
+\mathcal{L} = \sum_k \alpha_k^2\sigma_k^2 - \lambda\!\left(\sum_k\alpha_k - 1\right)
+```
+
+∂ℒ/∂α_k = 2α_k · σ_k² − λ = 0  ⟹  α_k = λ/(2σ_k²) ∝ 1/σ_k²
+
+```latex
+\frac{\partial\mathcal{L}}{\partial\alpha_k} = 2\alpha_k\sigma_k^2 - \lambda = 0 \implies \alpha_k = \frac{\lambda}{2\sigma_k^2} \propto \frac{1}{\sigma_k^2}
+```
 
 The constraint $\sum_k \alpha_k = 1$ gives $\alpha_k = \dfrac{1/\sigma_k^2}{\sum_j 1/\sigma_j^2}$, i.e., inverse-variance weighting. The resulting minimum variance is:
 
-$$\operatorname{Var}(\hat{H}_w) = \frac{1}{\sum_{k=1}^K 1/\sigma_k^2}$$
+Var(Ĥ_w) = 1 / (Σ_{k=1}^K 1/σ_k²)
+
+```latex
+\operatorname{Var}(\hat{H}_w) = \frac{1}{\sum_{k=1}^K 1/\sigma_k^2}
+```
 
 No other linear unbiased combination achieves smaller variance. $\square$
 
@@ -675,7 +791,11 @@ Given the above theoretical foundations, our concrete pipeline is:
 
 1. **Realized Variance** — For each frequency $\Delta \in \{5\text{m}, 15\text{m}, 30\text{m}, 1\text{h}, \text{daily}\}$, compute daily RV:
 
-$$RV_d^{(\Delta)} = \sum_{i} \left(\log S_{t_i+\Delta} - \log S_{t_i}\right)^2$$
+RV_d^(Δ) = Σ_i (log S_{t_i+Δ} − log S_{t_i})²
+
+```latex
+RV_d^{(\Delta)} = \sum_{i} \left(\log S_{t_i+\Delta} - \log S_{t_i}\right)^2
+```
 
 2. **TSRV correction** — For $\Delta \leq 1$ min, apply Two-Scale RV (Theorem 4) to remove microstructure noise.
 
@@ -695,7 +815,11 @@ $$RV_d^{(\Delta)} = \sum_{i} \left(\log S_{t_i+\Delta} - \log S_{t_i}\right)^2$$
 | **1h** | 2,974 | 0.094 | 0.091 | 0.082 | 0.991 |
 | **daily** | 1,821 | 0.087 | 0.087 | 0.091 | 0.978 |
 
-$$\boxed{H_{\text{consensus}} = 0.110 \pm 0.003 \quad \text{(inverse-variance weighted, 95\% CI)}}$$
+**H_consensus = 0.110 ± 0.003  (inverse-variance weighted, 95% CI)**
+
+```latex
+\boxed{H_{\text{consensus}} = 0.110 \pm 0.003 \quad \text{(inverse-variance weighted, 95\% CI)}}
+```
 
 All three reliable estimators (variogram, structure function, ratio) agree on $H \in [0.08, 0.12]$ across all time scales. The DMA estimator gives $H \approx 0.4$ — a known upward bias for rough processes, naturally downweighted by the inverse-variance scheme.
 
@@ -916,7 +1040,12 @@ Monte Carlo pricing for path-dependent exotics:
 
 Second-order Taylor decomposition:
 
-$$\Delta C \approx \underbrace{\Delta \cdot \delta S}_{\text{Delta}} + \underbrace{\tfrac{1}{2}\Gamma \cdot (\delta S)^2}_{\text{Gamma}} + \underbrace{\nu \cdot \delta\sigma}_{\text{Vega}} + \underbrace{\Theta \cdot \delta t}_{\text{Theta}} + \underbrace{\text{Vanna} \cdot \delta S \cdot \delta\sigma}_{\text{Cross}} + \underbrace{\tfrac{1}{2}\text{Volga} \cdot (\delta\sigma)^2}_{\text{Convexity}} + \underbrace{\rho \cdot \delta r}_{\text{Rho}}$$
+ΔC ≈ Δ·δS  +  (1/2)Γ·(δS)²  +  ν·δσ  +  Θ·δt  +  Vanna·δS·δσ  +  (1/2)Volga·(δσ)²  +  ρ·δr
+     (Delta)       (Gamma)        (Vega)  (Theta)     (Cross)           (Convexity)         (Rho)
+
+```latex
+\Delta C \approx \underbrace{\Delta \cdot \delta S}_{\text{Delta}} + \underbrace{\tfrac{1}{2}\Gamma \cdot (\delta S)^2}_{\text{Gamma}} + \underbrace{\nu \cdot \delta\sigma}_{\text{Vega}} + \underbrace{\Theta \cdot \delta t}_{\text{Theta}} + \underbrace{\text{Vanna} \cdot \delta S \cdot \delta\sigma}_{\text{Cross}} + \underbrace{\tfrac{1}{2}\text{Volga} \cdot (\delta\sigma)^2}_{\text{Convexity}} + \underbrace{\rho \cdot \delta r}_{\text{Rho}}
+```
 
 Also includes `NeuralSDEGreeks`: model-implied $\Delta$, $\Gamma$, Vega via **JAX autodiff through the full MC pricing pipeline** (pathwise differentiation). These capture stochastic vol effects that BS Greeks miss.
 
@@ -944,11 +1073,20 @@ The model supports two backbone architectures, selectable via `neural_sde.backbo
 
 **OU backbone** (default — fast, good for P-measure / stress testing):
 
-$$dX_t = \underbrace{\kappa(\theta - X_t)}_{\text{OU Prior}} dt + \underbrace{f_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Drift}} dt + \underbrace{g_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Diffusion}} dW_t + \underbrace{J \cdot dN_t}_{\text{Jumps (optional)}}$$
+dX_t = κ(θ − X_t) dt  +  f_θ(𝕊_{0,t}, X_t) dt  +  g_θ(𝕊_{0,t}, X_t) dW_t  +  J·dN_t
+        [OU Prior]          [Neural Drift]          [Neural Diffusion]         [Jumps]
+
+```latex
+dX_t = \underbrace{\kappa(\theta - X_t)}_{\text{OU Prior}} dt + \underbrace{f_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Drift}} dt + \underbrace{g_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Diffusion}} dW_t + \underbrace{J \cdot dN_t}_{\text{Jumps (optional)}}
+```
 
 **Fractional backbone** (nests rBergomi exactly — for Q-measure / pricing):
 
-$$X_t = \eta \cdot \hat{W}^H_t - \tfrac{1}{2}\eta^2 \text{Var}[\hat{W}^H_t] + \int_0^t f_\theta(\mathbb{S}_{0,s}, X_s) ds + \int_0^t g_\theta(\mathbb{S}_{0,s}, X_s) dW_s$$
+X_t = η · Ŵ^H_t − (1/2)η² · Var[Ŵ^H_t] + ∫₀ᵗ f_θ(𝕊_{0,s}, X_s) ds + ∫₀ᵗ g_θ(𝕊_{0,s}, X_s) dW_s
+
+```latex
+X_t = \eta \cdot \hat{W}^H_t - \tfrac{1}{2}\eta^2 \text{Var}[\hat{W}^H_t] + \int_0^t f_\theta(\mathbb{S}_{0,s}, X_s) ds + \int_0^t g_\theta(\mathbb{S}_{0,s}, X_s) dW_s
+```
 
 where $\hat{W}^H_t = \sqrt{2H} \int_0^t (t-s)^{H-1/2} dW_s$ is the Riemann-Liouville fBM with **learnable** $(H, \eta)$. When $f_\theta = g_\theta = 0$, this exactly recovers rBergomi.
 
