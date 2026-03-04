@@ -136,6 +136,56 @@ Key optimizations: JAX-vectorized Volterra kernel, kernel cache, strike subsampl
 
 > **Key result**: $H_{\text{consensus}} = 0.110 \pm 0.003$ — firmly in the rough volatility regime. Universal across assets (SPX, SPY, CAC40) and monofractal.
 
+### Mathematical Framework
+
+#### The Rough Volatility Hypothesis
+
+Gatheral, Jaisson & Rosenbaum (2018) discovered empirically that log-realized-volatility behaves like fractional Brownian motion with $H \approx 0.1$:
+
+$$X_t = \log \sigma_t \approx X_0 + \eta\, B^H_t$$
+
+A fractional Brownian motion $B^H$ with Hurst parameter $H \in (0,1)$ has covariance $\text{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}(|t|^{2H} + |s|^{2H} - |t-s|^{2H})$ and satisfies the self-similarity property $(B^H_{ct}) \overset{d}{=} c^H (B^H_t)$. For $H < 1/2$, increments are **negatively correlated** — creating the jagged, anti-persistent paths observed in real volatility. By the Kolmogorov–Čentsov theorem, sample paths have Hölder regularity exactly $H$ almost surely (Arcones 1995).
+
+For $H = 0.11$, paths are vastly rougher than Brownian motion ($H = 0.5$): they have infinite $p$-variation for $p < 1/H \approx 9$.
+
+#### Variogram Estimator
+
+The primary estimator exploits fBM scaling $E[|X_{t+\tau} - X_t|^2] = C\,\tau^{2H}$. The empirical variogram:
+
+$$m(2, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}(X_{t+\tau} - X_t)^2 \;\xrightarrow{\;p\;}\; C\tau^{2H}$$
+
+by the ergodic theorem, so $\log m(2,\tau) \to 2H\log\tau + \log C$. The OLS slope divided by 2 gives a consistent estimator $\hat{H}_{\text{var}}$ (Gatheral et al. 2018 §3). We observe $R^2 > 0.93$ at all frequencies.
+
+#### Structure Function and Monofractality
+
+The generalized structure function $m(q,\tau) = \frac{1}{N-\tau}\sum_t |X_{t+\tau} - X_t|^q$ converges to $c_q \cdot \tau^{\zeta(q)}$. For a **monofractal** process (single $H$), $\zeta(q) = qH$ is linear in $q$. If $\zeta(q)$ is concave, multiple exponents coexist (multifractality). We test by fitting $\zeta(q) = a_1 q + a_2 q^2$ for $q \in \{0.5, 1, 1.5, 2, 3, 4\}$:
+
+Our results: $R^2_{\text{linear}} > 0.998$ and curvature $|a_2| < 0.006$ at all frequencies → **single $H$ confirmed** → validates using one Hurst parameter in the rBergomi backbone. (Ref: Frisch 1995, Gatheral et al. 2018 §4.)
+
+#### Ratio Estimator
+
+A regression-free alternative (Istas & Lang 1997): $\hat{H}(\tau) = \frac{1}{2}\log_2\big(m(2,2\tau)/m(2,\tau)\big)$. If $m(2,\tau) = C\tau^{2H}$, then $m(2,2\tau)/m(2,\tau) = 2^{2H}$ and $\hat{H}(\tau) = H$ exactly. Each lag gives a local estimate, then averaged. Higher variance but no regression assumptions.
+
+#### Microstructure Correction (TSRV)
+
+At ultra-high frequency, observed prices $Y_{t_i} = X_{t_i} + \varepsilon_{t_i}$ are contaminated by microstructure noise. Naive RV diverges: $E[RV^{(n)}] = \int_0^T \sigma^2_t\,dt + 2n\sigma^2_\varepsilon$. The Two-Scale RV (Zhang, Mykland & Aït-Sahalia 2005) eliminates this bias:
+
+$$\hat{\text{TSRV}} = RV^{(K)} - \tfrac{K}{n}\,RV^{(n)}$$
+
+with $K \asymp n^{2/3}$ (optimal subsampling rate). Applied for $\Delta \leq 1$min; for $\Delta \geq 5$min noise is negligible.
+
+#### Consensus Aggregation
+
+Given $K$ estimators $\hat{H}_k$ with bootstrap variances $\sigma^2_k$, the inverse-variance weighted average $\hat{H}_w = \sum_k \hat{H}_k/\sigma^2_k \big/ \sum_k 1/\sigma^2_k$ is BLUE (minimum variance among linear unbiased combinations, by the Gauss-Markov theorem). Block bootstrap with $\ell = \lceil n^{1/3} \rceil$ preserves temporal dependence (Politis & Romano 1994).
+
+#### Why VIX Shows $H \approx 0.5$
+
+VIX measures expected integrated variance over 30 days. For a moving average $\bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\int_t^{t+\Delta} X_s\,ds$ of an fBM($H$) process:
+- Lags $\tau \gg \Delta$: roughness preserved, variogram $\sim \tau^{2H}$
+- Lags $\tau \ll \Delta$: appears Lipschitz, variogram $\sim \tau^2$ ($H_{\text{eff}} \to 1$)
+
+Our measurements confirm: VIX 15-min → $H \approx 0.47$, VIX 30-min → $H \approx 0.45$. Roughness must be estimated from **realized vol** (SPX intraday returns), not VIX. (Ref: Bennedsen et al. 2016.)
+
 ### Results — SPX Multi-Scale
 
 | Frequency | Days | $H_{\text{var}}$ | $H_{\text{struct}}$ | $H_{\text{ratio}}$ | $R^2$ |
@@ -155,23 +205,6 @@ $$\boxed{H_{\text{consensus}} = 0.110 \pm 0.003 \quad \text{(inverse-variance we
 | **S&P 500** | 0.110 ± 0.003 | [0.105, 0.115] |
 | **SPY (ETF)** | 0.111 ± 0.009 | [0.093, 0.129] |
 | **CAC 40** | 0.090 ± 0.011 | [0.068, 0.112] |
-
-### Estimation Methods
-
-Four independent estimators, each grounded in standard results:
-
-| Estimator | Reference | Method |
-|---|---|---|
-| **Variogram** | Gatheral et al. 2018 §3 | OLS slope of $\log m(2,\tau)$ vs $\log\tau$, divided by 2 |
-| **Structure function** | Frisch 1995, Gatheral et al. 2018 §4 | Generalized $m(q,\tau) \propto \tau^{qH}$; monofractality test via $\zeta(q) = qH$ linearity |
-| **Ratio** | Istas & Lang 1997 | $\hat{H}(\tau) = \frac{1}{2}\log_2\big(m(2,2\tau)/m(2,\tau)\big)$ — regression-free, local |
-| **TSRV correction** | Zhang, Mykland & Aït-Sahalia 2005 | Two-Scale RV for microstructure debiasing at $\Delta \leq 1$min |
-
-Consensus via **inverse-variance weighting** (BLUE — Gauss-Markov theorem). Block bootstrap CI with $\ell = \lceil n^{1/3} \rceil$ (Politis & Romano 1994).
-
-### Why VIX Shows $H \approx 0.5$
-
-VIX is a 30-day moving average of variance. Integration smooths roughness: at lags $\tau \ll 30$d, the smoothed process appears Lipschitz ($H_{\text{eff}} \to 1$). Our measurements confirm: VIX 15-min → $H \approx 0.47$, VIX 30-min → $H \approx 0.45$. Roughness must be estimated from **realized vol** (SPX intraday returns), not VIX. (Ref: Bennedsen et al. 2016.)
 
 ### Diagnostic Plots
 
