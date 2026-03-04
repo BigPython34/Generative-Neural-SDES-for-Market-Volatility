@@ -1,233 +1,202 @@
-# DeepRoughVol Configuration
-# --------------------------
-# All parameters centralized for reproducibility
-
-# Data Configuration
 data:
-  # VIX sources (for training in Q-measure)
-  source: "data/market/vix/vix_15m.csv"       # VIX 15min for IV training (Q-measure)
+  source: data/market/vix/vix_15m.csv
   vix_files:
-    5:  "data/market/vix/vix_5m.csv"
-    10: "data/market/vix/vix_10m.csv"
-    15: "data/market/vix/vix_15m.csv"
-    30: "data/market/vix/vix_30m.csv"
-  # SPX sources (for P-measure roughness / realized vol)
-  rv_source: "data/market/spx/spx_5m.csv"
+    5: data/market/vix/vix_5m.csv
+    10: data/market/vix/vix_10m.csv
+    15: data/market/vix/vix_15m.csv
+    30: data/market/vix/vix_30m.csv
+  rv_source: data/market/spx/spx_5m.csv
   spx_files:
-    5:  "data/market/spx/spx_5m.csv"
-    30: "data/market/spx/spx_30m.csv"
-  # Historical S&P 500 daily (for pricing benchmarks)
-  spx_daily: "data/market/spx/spx_daily_2010_latest.csv"
-  # VVIX (vol-of-vol) for eta calibration
-  vvix_source: "data/market/vvix/vvix_daily.csv"
-  # Risk-free rates
-  sofr_source: "data/rates/sofr_daily_nyfed.csv"
-  data_type: "vix"                      # 'realized_vol' or 'vix'
-  segment_length: 120                   # Path length for training (~4.6 trading days at 15min)
-  stride_ratio: 0.5                     # 50% overlap between paths
-  rv_window: 78                         # Window for RV calculation (78 x 5min = 1 trading day)
-  rv_bar_interval_min: 5                # Bar interval for RV source (5min SPX)
-  # Temporal coherence
-  max_gap_hours: 4                      # Max acceptable gap between consecutive points
-  max_overnight_jump: 0.5               # Max relative VIX variance jump at overnight gaps (filter)
-  trading_hours_per_day: 6.5            # NYSE trading hours (9:30 - 16:00)
-  options_cache_dir: "data/options_cache"
-  # Multi-scale segment lengths (for long-horizon pricing)
+    5: data/market/spx/spx_5m.csv
+    30: data/market/spx/spx_30m.csv
+  spx_daily: data/market/spx/spx_daily_2010_latest.csv
+  vvix_source: data/market/vvix/vvix_daily.csv
+  sofr_source: data/rates/sofr_daily_nyfed.csv
+  data_type: vix
+  segment_length: 120
+  stride_ratio: 0.5
+  rv_window: 78
+  rv_bar_interval_min: 5
+  max_gap_hours: 4
+  max_overnight_jump: 0.5
+  trading_hours_per_day: 6.5
+  options_cache_dir: data/options_cache
   multi_scale:
-    enabled: false                      # Enable multi-scale training
-    scales:                             # Each scale: {freq_min, segment_length, weight}
-      - {freq_min: 15, segment_length: 120, weight: 1.0}    # Short-term (default)
-      - {freq_min: 30, segment_length: 240, weight: 0.5}    # Medium-term
-      - {freq_min: 60, segment_length: 120, weight: 0.3}    # Longer-term (if data available)
-
-# Model Training
+    enabled: false
+    scales:
+    - freq_min: 15
+      segment_length: 120
+      weight: 1.0
+    - freq_min: 30
+      segment_length: 240
+      weight: 0.5
+    - freq_min: 60
+      segment_length: 120
+      weight: 0.3
 training:
   n_epochs: 100
   batch_size: 256
   learning_rate_init: 0.001
-  learning_rate_final: 0.00001
+  learning_rate_final: 1.0e-05
   decay_steps: 500
   gradient_clip: 1.0
   lambda_mean: 10.0
   warmup_steps: 50
   validation_split: 0.15
   early_stopping_patience: 50
-  mean_penalty_mode: "global"           # "global" or "marginal" (Bayer & Stemper 2018)
-  mean_penalty_space: "log_v"           # "variance" (legacy) or "log_v" (avoids Jensen bias)
-  # Training purpose determines which losses are active:
-  #   "pricing":      smile_fit + martingale + MMD_reg (if Q) — recommended for Q
-  #   "stress_test":  MMD + mean (tail fidelity, no smile constraint) — P-measure
-  #   "general":      MMD + mean + martingale (Q) — fallback when no options data
-  training_mode: "general"
-  # Q-measure specific
+  mean_penalty_mode: global
+  mean_penalty_space: log_v
+  training_mode: general
   q_measure:
-    lambda_martingale: 5.0              # Weight for martingale violation loss (no-arbitrage)
-    lambda_smile: 1.0                   # Weight for smile fitting loss (PRIMARY Q-loss)
-    lambda_mmd_regularizer: 0.1         # Weight for MMD as regularizer under Q (small!)
-    lambda_jump_reg: 0.1                # Weight for jump regularization
-    options_data_source: "data/options_cache"  # Path to options cache for smile_fit_loss
-
-# Neural SDE Architecture
+    lambda_martingale: 5.0
+    lambda_smile: 1.0
+    lambda_mmd_regularizer: 0.1
+    lambda_jump_reg: 0.1
+    options_data_source: data/options_cache
 neural_sde:
-  # Backbone choice: "ou" (OU prior, default) or "fractional" (Volterra kernel prior)
-  # "fractional" allows the model to nest rBergomi as a special case.
-  # Use "fractional" for pricing/hedging where smile fit matters.
-  # Use "ou" for P-measure / stress testing / fast training.
-  backbone: "ou"
+  backbone: ou
   sig_truncation_order: 3
   mlp_width: 64
   mlp_depth: 3
-  drift_scale: 0.5                      # Max neural drift correction magnitude
-  diffusion_min: 0.1                    # Min diffusion (vol-of-vol floor)
-  diffusion_max: 1.6                    # Max diffusion (vol-of-vol cap)
+  drift_scale: 0.5
+  diffusion_min: 0.1
+  diffusion_max: 1.6
   learn_ou_params: true
-  # OU prior (used when backbone=ou)
   kappa: 2.72
   theta: -3.5
-  # Log-variance clipping
   log_v_clip_min: -7.0
   log_v_clip_max: 2.0
-  # Jump-diffusion (Merton 1976)
   jumps:
-    lambda_init: 2.0                    # Initial jump intensity (jumps/year)
-    mu_j_init: 0.5                      # Mean jump size in log-variance
-    sigma_j_init: 0.3                   # Jump size volatility
-    prior_target: 3.0                   # Target annual jump rate for regularization
-  # Fractional backbone parameters (used when backbone=fractional)
+    lambda_init: 2.0
+    mu_j_init: 0.5
+    sigma_j_init: 0.3
+    prior_target: 3.0
   fractional:
-    hurst_init: 0.1092                    # Initial Hurst exponent
-    eta_init: 1.9                       # Initial vol-of-vol
-    learn_hurst: true                   # Allow H to be learned
-    learn_eta: true                     # Allow eta to be learned
-
-# Simulation Configuration
+    hurst_init: 0.02
+    eta_init: 0.959
+    learn_hurst: true
+    learn_eta: true
 simulation:
   n_steps: 120
-  T: 0.01832                            # ~4.6 trading days at 15-min bars
+  T: 0.01832
   n_paths: 5000
   bars_per_day: 26
   bar_interval_min: 15
-  # Temporal coherence test: verify generated moments at multiple horizons
   coherence_test:
     enabled: true
-    horizons_days: [5, 10, 20, 30]       # Test horizons (in trading days)
-    tolerance_mean: 0.15                 # Max relative error on mean variance
-    tolerance_std: 0.30                  # Max relative error on std deviation
-
-# Rough Bergomi Benchmark
+    horizons_days:
+    - 5
+    - 10
+    - 20
+    - 30
+    tolerance_mean: 0.15
+    tolerance_std: 0.3
 bergomi:
-  hurst: 0.1092
-  eta: 1.9                              # Override; set eta_source=vvix to auto-calibrate from VVIX
-  eta_source: "config"                   # "config" (use above value) or "vvix" (auto-calibrate)
-  rho: -0.7
-  xi0: 0.0225
-  fBm_method: "volterra"
-
-# Pricing Configuration
+  hurst: 0.02
+  eta: 0.959
+  eta_source: config
+  rho: -0.955
+  xi0: 0.029241
+  fBm_method: volterra
 pricing:
   strike: 100.0
   barrier: 90.0
   spot: 100.0
-  risk_free_rate: 0.05                  # Fallback — overridden by SOFR when available
+  risk_free_rate: 0.05
   maturity: 0.01832
   n_mc_paths: 5000
-  use_sofr: true                        # Use real SOFR rates instead of fixed r
-
-# Backtesting Configuration
+  use_sofr: true
 backtesting:
   n_days: 30
   n_mc_paths: 10000
-  rv_source: "data/SP_SPX, 30.csv"
+  rv_source: data/SP_SPX, 30.csv
   maturity_days: 30
-  moneyness_range: [-0.15, 0.15]
+  moneyness_range:
+  - -0.15
+  - 0.15
   n_strikes: 11
-
-# Risk Engine Configuration
 risk:
-  confidence_levels: [0.95, 0.99]
-  var_horizon_days: 1                   # VaR holding period
+  confidence_levels:
+  - 0.95
+  - 0.99
+  var_horizon_days: 1
   stressed_var_multiplier: 1.5
-  n_mc_paths: 50000                     # MC paths for risk (higher for tail accuracy)
+  n_mc_paths: 50000
   stress_scenarios:
     black_monday:
       spot_shock: -0.22
-      vol_shock: 1.50
+      vol_shock: 1.5
     lehman:
       spot_shock: -0.08
-      vol_shock: 0.80
+      vol_shock: 0.8
     covid:
       spot_shock: -0.12
-      vol_shock: 2.00
+      vol_shock: 2.0
     flash_crash:
       spot_shock: -0.09
-      vol_shock: 0.50
+      vol_shock: 0.5
     volmageddon:
       spot_shock: -0.04
-      vol_shock: 1.00
-
-# Hedging Configuration
+      vol_shock: 1.0
 hedging:
-  transaction_cost_bps: 2.0             # One-way transaction cost in basis points
-  default_hedge_freq: "daily"           # 'daily', 'intraday_4h', 'intraday_1h', 'weekly'
-  rebalance_threshold_delta: 0.01       # Min delta change to trigger rebalance
-
-# Regime Detection
+  transaction_cost_bps: 2.0
+  default_hedge_freq: daily
+  rebalance_threshold_delta: 0.01
 regime:
   signals:
     vix_level:
-      weight: 0.30
-      thresholds: {calm: 13, normal: 20, stressed: 30}
+      weight: 0.3
+      thresholds:
+        calm: 13
+        normal: 20
+        stressed: 30
     vvix:
-      weight: 0.20
-      thresholds: {calm: 80, normal: 100, stressed: 130}
+      weight: 0.2
+      thresholds:
+        calm: 80
+        normal: 100
+        stressed: 130
     term_structure:
-      weight: 0.20
+      weight: 0.2
     vrp:
       weight: 0.15
     vix_percentile:
       weight: 0.15
-  # Per-regime model overrides
   regime_params:
     calm:
-      H: 0.10
+      H: 0.1
       eta: 1.5
       rho: -0.65
     normal:
       H: 0.07
       eta: 1.9
-      rho: -0.70
+      rho: -0.7
     stressed:
       H: 0.06
       eta: 2.5
-      rho: -0.80
+      rho: -0.8
     crisis:
       H: 0.03
       eta: 3.5
-      rho: -0.90
-
-# Exotic Pricing
+      rho: -0.9
 exotics:
   asian:
-    averaging: "arithmetic"             # 'arithmetic' or 'geometric'
+    averaging: arithmetic
   autocallable:
     coupon_rate: 0.08
-    autocall_barrier: 1.0               # 100% of S0
-    ki_barrier: 0.6                     # 60% of S0 (knock-in put)
+    autocall_barrier: 1.0
+    ki_barrier: 0.6
   cliquet:
     local_cap: 0.05
     local_floor: -0.03
     global_floor: 0.0
-
-# API Server
 api:
-  host: "0.0.0.0"
+  host: 0.0.0.0
   port: 8000
   workers: 1
-
-# Output paths
 outputs:
-  dir: "outputs"
-  model_dir: "outputs/models"
-  plots_dir: "outputs/plots"
-  backtest: "outputs/backtest_results.json"
-  calibration: "outputs/advanced_calibration.json"
+  dir: outputs
+  model_dir: outputs/models
+  plots_dir: outputs/plots
+  backtest: outputs/backtest_results.json
+  calibration: outputs/advanced_calibration.json
