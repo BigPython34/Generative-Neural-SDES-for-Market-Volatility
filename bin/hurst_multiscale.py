@@ -332,6 +332,7 @@ def plot_logrv_timeseries(result: MultiScaleResult, save_dir: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
 
     freq_labels = list(result.rv_series.keys())
     n = len(freq_labels)
@@ -350,12 +351,41 @@ def plot_logrv_timeseries(result: MultiScaleResult, save_dir: Path) -> None:
     for i, freq in enumerate(freq_labels):
         ax = axes[i]
         log_rv = result.rv_series[freq]
+        dates = result.dates.get(freq, None)
         color = freq_colors.get(freq, 'steelblue')
-        ax.plot(log_rv, linewidth=0.4, color=color, alpha=0.8)
-        # Add rolling mean to distinguish visually
-        if len(log_rv) > 60:
-            roll = pd.Series(log_rv).rolling(30, min_periods=1).mean().values
-            ax.plot(roll, linewidth=1.5, color='black', alpha=0.5, label='30-day MA')
+        
+        # Plot with dates if available, otherwise use index
+        if dates is not None and len(dates) == len(log_rv):
+            ax.plot(dates, log_rv, linewidth=0.4, color=color, alpha=0.8)
+            # Add rolling mean with dates
+            if len(log_rv) > 60:
+                roll = pd.Series(log_rv).rolling(30, min_periods=1).mean().values
+                ax.plot(dates, roll, linewidth=1.5, color='black', alpha=0.5, label='30-day MA')
+            
+            # Format x-axis with dates
+            date_range = (dates[-1] - dates[0]).days
+            if date_range > 3650:  # > 10 years
+                ax.xaxis.set_major_locator(mdates.YearLocator(2))
+                ax.xaxis.set_minor_locator(mdates.YearLocator())
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            elif date_range > 1825:  # 5-10 years
+                ax.xaxis.set_major_locator(mdates.YearLocator())
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            elif date_range > 730:  # 2-5 years
+                ax.xaxis.set_major_locator(mdates.YearLocator())
+                ax.xaxis.set_minor_locator(mdates.MonthLocator((1, 7)))
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            else:  # < 2 years
+                ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right', fontsize=8)
+        else:
+            ax.plot(log_rv, linewidth=0.4, color=color, alpha=0.8)
+            if len(log_rv) > 60:
+                roll = pd.Series(log_rv).rolling(30, min_periods=1).mean().values
+                ax.plot(roll, linewidth=1.5, color='black', alpha=0.5, label='30-day MA')
+        
         ax.set_ylabel("log(RV)", fontsize=10)
         rv_annualized = np.sqrt(np.exp(np.mean(log_rv)) * 252) * 100
         ax.set_title(
@@ -368,7 +398,7 @@ def plot_logrv_timeseries(result: MultiScaleResult, save_dir: Path) -> None:
         if len(log_rv) > 60:
             ax.legend(fontsize=8, loc='upper right')
 
-    axes[-1].set_xlabel("Trading day index", fontsize=10)
+    axes[-1].set_xlabel("Date", fontsize=10)
     fig.suptitle(f"Daily log(RV) Time Series — {result.asset}", fontsize=13, y=1.01)
     fig.tight_layout()
     fig.savefig(save_dir / "hurst_logrv_timeseries.png", dpi=150, bbox_inches="tight")

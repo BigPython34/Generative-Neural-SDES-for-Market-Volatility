@@ -100,6 +100,7 @@ class MultiScaleResult:
     estimates: dict[str, list[HurstBootstrapResult]]  # method -> list over scales
     rv_series: dict[str, np.ndarray]                   # freq_label -> daily log(RV)
     tsrv_series: dict[str, np.ndarray]                 # freq_label -> daily log(TSRV)
+    dates: dict[str, pd.DatetimeIndex]                 # freq_label -> dates for each RV point
     consensus_H: float                                 # Weighted consensus H
     consensus_std: float                               # Uncertainty on consensus
 
@@ -245,7 +246,7 @@ def compute_daily_rv_multiscale(
     min_bars_per_day: int = 10,
     use_tsrv: bool = False,
     tsrv_K: Optional[int] = None,
-) -> tuple[np.ndarray, int]:
+) -> tuple[np.ndarray, list]:
     """
     Load a CSV and compute daily RV (or TSRV) from intraday prices.
 
@@ -259,17 +260,21 @@ def compute_daily_rv_multiscale(
 
     Returns
     -------
-    (rv_array, n_days) — daily (T)RV values and number of trading days
+    (rv_array, dates_list) — daily (T)RV values and corresponding end-of-day dates
     """
     df = pd.read_csv(file_path)
     segments = _segment_trading_days(df, max_gap_hours, min_bars_per_day)
 
+    dates_list = [seg['datetime'].iloc[-1] for seg in segments if len(seg) > 0]
+    
     if use_tsrv:
         rv = compute_tsrv_from_segments(segments, K=tsrv_K)
     else:
         rv = compute_rv_from_segments(segments)
 
-    return rv, len(rv)
+    # Match dates to rv (some segments might not have valid RV)
+    valid_dates = dates_list[:len(rv)]
+    return rv, valid_dates
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -694,12 +699,12 @@ def compute_log_rv_from_file(
     file_path: str | Path,
     freq_label: str,
     max_gap_hours: float = 4.0,
-) -> np.ndarray:
+) -> tuple[np.ndarray, pd.DatetimeIndex]:
     """
     Compute log(RV) or log(TSRV) daily series from a CSV file.
 
-    For daily data, we use |log-return|² as the RV proxy
-    (since there's no intraday structure to aggregate).
+    For daily data, we use rolling realized variance.
+    For intraday data, we aggregate returns within each trading day.
 
     Parameters
     ----------
@@ -709,7 +714,7 @@ def compute_log_rv_from_file(
 
     Returns
     -------
-    1-D array of log(RV_daily) or log(TSRV_daily).
+    tuple: (log_rv, dates) where dates is a DatetimeIndex for each RV point.
     """
     file_path = Path(file_path)
     if not file_path.exists():
@@ -718,9 +723,9 @@ def compute_log_rv_from_file(
     min_bars = MIN_BARS_PER_DAY.get(freq_label, 10)
 
     if freq_label == "daily":
-        # For daily data: use squared log-returns as a proxy for daily vol
-        # (This is NOT a true RV — it's the daily return squared.  
-        #  We include it for multi-scale comparison but weight it less.)
+        # For daily data: use non-overlapping 5-day windows to compute
+        # realized variance from daily close-to-close returns.
+        # Non-overlapping avoids autocorrelation bias in Hurst estimation.
         df = pd.read_csv(file_path)
         df['close'] = pd.to_numeric(df['close'], errors='coerce')
         df['datetime'] = pd.to_datetime(df['time'], unit='s', utc=True)
@@ -728,21 +733,26 @@ def compute_log_rv_from_file(
         # Filter to post-1990 (pre-1990 data may have quality issues)
         df = df[df['datetime'].dt.year >= 1990].reset_index(drop=True)
         log_returns = np.diff(np.log(df['close'].values))
-        # Use rolling realized variance: 5-day window
-        # RV_weekly = Σ_{i=t}^{t+4} r²ᵢ (non-overlapping)
+        dates = df['datetime'].values[1:]  # dates corresponding to returns
+        
+        # Non-overlapping 5-day windows (stride = window)
         window = 5
+        rv_list = []
+        dates_list = []
         n_windows = len(log_returns) // window
-        rv = np.zeros(n_windows)
-        for w in range(n_windows):
-            chunk = log_returns[w * window: (w + 1) * window]
-            rv[w] = np.sum(chunk ** 2)
-        rv = rv[rv > 1e-16]
-        return np.log(rv)
+        for i in range(n_windows):
+            chunk = log_returns[i * window : (i + 1) * window]
+            rv_val = np.sum(chunk ** 2)
+            if rv_val > 1e-16:
+                rv_list.append(rv_val)
+                dates_list.append(dates[(i + 1) * window - 1])  # Date of last day in window
+        
+        return np.log(np.array(rv_list)), pd.DatetimeIndex(dates_list)
 
     # Intraday data → segment into trading days → compute (T)RV
     use_tsrv = freq_label in TSRV_FREQUENCIES
 
-    rv, n_days = compute_daily_rv_multiscale(
+    rv, dates_rv = compute_daily_rv_multiscale(
         file_path,
         max_gap_hours=max_gap_hours,
         min_bars_per_day=min_bars,
@@ -755,7 +765,7 @@ def compute_log_rv_from_file(
             f"Check data quality or reduce min_bars_per_day."
         )
 
-    return np.log(rv)
+    return np.log(rv), pd.DatetimeIndex(dates_rv)
 
 
 def run_multiscale_hurst(
@@ -797,6 +807,7 @@ def run_multiscale_hurst(
         methods = ["variogram", "structure_q1", "ratio", "dma"]
 
     rv_series: dict[str, np.ndarray] = {}
+    dates_series: dict[str, pd.DatetimeIndex] = {}
     tsrv_labels: dict[str, np.ndarray] = {}
     all_estimates: dict[str, list[HurstBootstrapResult]] = {m: [] for m in methods}
 
@@ -812,13 +823,14 @@ def run_multiscale_hurst(
             continue
 
         try:
-            log_rv = compute_log_rv_from_file(fpath, freq_label)
+            log_rv, dates = compute_log_rv_from_file(fpath, freq_label)
         except (ValueError, FileNotFoundError) as e:
             if verbose:
                 print(f"  [{freq_label:>6s}] SKIP — {e}")
             continue
 
         rv_series[freq_label] = log_rv
+        dates_series[freq_label] = dates
         is_tsrv = freq_label in TSRV_FREQUENCIES
         if is_tsrv:
             tsrv_labels[freq_label] = log_rv
@@ -875,6 +887,7 @@ def run_multiscale_hurst(
         estimates=all_estimates,
         rv_series=rv_series,
         tsrv_series=tsrv_labels,
+        dates=dates_series,
         consensus_H=consensus_H,
         consensus_std=consensus_std,
     )
