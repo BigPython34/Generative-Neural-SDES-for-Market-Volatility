@@ -12,8 +12,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from engine.generative_trainer import GenerativeTrainer
 from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst_from_returns
-from core.bergomi import RoughBergomiModel
-from quant.pricing import DeepPricingEngine
+from quant.models.bergomi import RoughBergomiModel
+from quant.pricers.pricing import DeepPricingEngine
 
 from utils.config import load_config
 

@@ -627,62 +627,17 @@ class JointCalibrator:
 
     def _prepare_spx_targets(self, surface_df, spot):
         """Filter SPX options into per-maturity calibration slices."""
-        df = surface_df.copy()
+        from quant.calibration.market_targets import prepare_spx_slices
 
-        df = df[
-            (df['moneyness'] >= self.moneyness_range[0]) &
-            (df['moneyness'] <= self.moneyness_range[1]) &
-            (df['dte'] >= self.min_dte) &
-            (df['dte'] <= self.max_dte) &
-            (df['impliedVolatility'] > 0.01) &
-            (df['impliedVolatility'] < 2.0)
-        ]
-
-        # Prefer OTM options (more liquid, standard for calibration)
-        df_otm = df[
-            ((df['type'] == 'call') & (df['moneyness'] >= 0)) |
-            ((df['type'] == 'put') & (df['moneyness'] < 0))
-        ]
-        if len(df_otm) < 10:
-            df_otm = df
-
-        slices = []
-        for dte, group in df_otm.groupby('dte'):
-            if len(group) < 3:
-                continue
-
-            # ── Strike subsampling: keep well-spaced in moneyness ──
-            # Reduces from ~100 to ~12 per maturity → ~8× speedup on IV
-            if len(group) > self.max_strikes_per_maturity:
-                group = group.sort_values('moneyness')
-                idx = np.linspace(0, len(group) - 1,
-                                  self.max_strikes_per_maturity, dtype=int)
-                group = group.iloc[idx]
-
-            T = float(group['T'].iloc[0])
-            strikes = group['strike'].values.astype(float)
-            market_ivs = group['impliedVolatility'].values.astype(float)
-            option_types = group['type'].tolist()
-
-            # Vega weights (ATM-centric)
-            d1 = (np.log(spot / strikes) + 0.5 * market_ivs ** 2 * T) / (
-                market_ivs * np.sqrt(max(T, 1e-6))
-            )
-            from scipy.stats import norm
-            vega = spot * np.sqrt(max(T, 1e-6)) * norm.pdf(d1)
-            vega = np.maximum(vega, 1e-6)
-
-            slices.append({
-                'T': T,
-                'dte': dte,
-                'strikes': strikes,
-                'market_ivs': market_ivs,
-                'option_types': option_types,
-                'vega_weights': vega,
-            })
-
-        slices.sort(key=lambda x: x['T'])
-        return slices
+        return prepare_spx_slices(
+            surface_df,
+            spot,
+            max_strikes=self.max_strikes_per_maturity,
+            max_maturities=None,
+            min_dte=self.min_dte,
+            max_dte=self.max_dte,
+            moneyness_range=self.moneyness_range,
+        )
 
     def _prepare_vix_targets(self, vix_ts, dt):
         """
@@ -879,7 +834,7 @@ class JointCalibrator:
                 # ── Fallback: SPX ATM bootstrap ──
                 if self.verbose:
                     print("\n  [Stage 1] Bootstrapping ξ₀(t) from ATM SPX (fallback)...")
-                    print("    ⚠ VIX term structure not available")
+                    print("    VIX term structure not available")
                     print("    Warning: VIX fit may be biased low (~5-8 pts)")
                 xi0_curve = bootstrap_from_surface(
                     market_data.spx_surface, spot,
@@ -940,13 +895,13 @@ class JointCalibrator:
             print("\n  [Stage 2] Grid search over (H, η, ρ)...")
 
         if quick:
-            H_grid = [0.03, 0.05, 0.08, 0.12]
+            H_grid = [0.01, 0.03, 0.05, 0.08]
             eta_grid = [0.8, 1.2, 1.8, 2.5]
-            rho_grid = [-0.90, -0.75, -0.60]
+            rho_grid = [-0.95, -0.85, -0.70]
         else:
-            H_grid = [0.03, 0.05, 0.07, 0.10, 0.13, 0.15, 0.20]
-            eta_grid = [0.6, 0.9, 1.2, 1.6, 2.0, 2.5, 3.0]
-            rho_grid = [-0.95, -0.85, -0.75, -0.65, -0.55]
+            H_grid = [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10]
+            eta_grid = [0.5, 0.8, 1.0, 1.3, 1.6, 2.0, 2.5]
+            rho_grid = [-0.99, -0.95, -0.90, -0.85, -0.80, -0.70, -0.60]
 
         total_combos = len(H_grid) * len(eta_grid) * len(rho_grid)
 
@@ -968,7 +923,7 @@ class JointCalibrator:
         except Exception:
             pass
         if self.verbose:
-            print(f"    ✓ Compiled in {time.time() - t_warmup:.1f}s")
+            print(f"    Compiled in {time.time() - t_warmup:.1f}s")
 
         # ── Common Random Numbers (CRN) ──
         # Use a FIXED JAX key for ALL grid + optimizer evaluations.
@@ -1041,14 +996,14 @@ class JointCalibrator:
         # We use L-BFGS-B for gradient-free bounded optimization.
         # If it fails, fall back to bounded Nelder-Mead with penalty.
         #
-        # Bounds:
-        #   H   ∈ [0.02, 0.40]  (rough volatility regime)
-        #   η   ∈ [0.50, 5.00]  (vol-of-vol; 0.5 is minimum for any skew)
-        #   ρ   ∈ [−0.98, −0.10] (negative correlation required for skew)
+        # Bounds (v2 — widened after literature comparison):
+        #   H   ∈ [0.005, 0.40]  (allows very rough H ≈ 0.01-0.02 from Bayer & Stemper 2018)
+        #   η   ∈ [0.30, 5.00]   (lowered to allow small η when H is very small)
+        #   ρ   ∈ [−0.995, −0.10] (widened: saturated ρ at −0.98 is a common artefact)
 
-        BOUNDS_H   = (0.02, 0.40)
-        BOUNDS_ETA = (0.50, 5.00)
-        BOUNDS_RHO = (-0.98, -0.10)
+        BOUNDS_H   = (0.005, 0.40)
+        BOUNDS_ETA = (0.30, 5.00)
+        BOUNDS_RHO = (-0.995, -0.10)
 
         if self.verbose:
             print(f"\n  [Stage 3] Local refinement (bounded Nelder-Mead)...")

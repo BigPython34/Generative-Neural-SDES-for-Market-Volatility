@@ -84,14 +84,14 @@ In crisis: roughness increases ($H$ drops), vol-of-vol explodes ($\eta$ triples)
 
 | Capability | Black-Scholes | Heston/SABR | **DeepRoughVol** |
 |---|:---:|:---:|:---:|
-| Realistic vol dynamics | ✗ (flat) | ~ (smooth) | **✓** (rough, learned) |
-| Path memory | ✗ (Markov) | ✗ (Markov) | **✓** (signatures) |
-| Forward skew (cliquets) | ✗ | ~ | **✓** |
-| Separate P/Q measures | ✗ | ✗ | **✓** |
-| Auto-calibration | ✗ | manual | **✓** (VVIX, SOFR, VIX futures) |
-| Regime adaptation | ✗ | ✗ | **✓** (5-signal detector) |
-| Neural SDE Greeks | ✗ | FD only | **✓** (exact JAX AD) |
-| Walk-forward validation | n/a | ✗ | **✓** (per-fold recalibration) |
+| Realistic vol dynamics | No (flat) | Partial (smooth) | **Yes** (rough, learned) |
+| Path memory | No (Markov) | No (Markov) | **Yes** (signatures) |
+| Forward skew (cliquets) | No | Partial | **Yes** |
+| Separate P/Q measures | No | No | **Yes** |
+| Auto-calibration | No | Manual | **Yes** (VVIX, SOFR, VIX futures) |
+| Regime adaptation | No | No | **Yes** (5-signal detector) |
+| Neural SDE Greeks | No | FD only | **Yes** (exact JAX AD) |
+| Walk-forward validation | n/a | No | **Yes** (per-fold recalibration) |
 
 ---
 
@@ -177,7 +177,28 @@ The most technically challenging phase. Simultaneous calibration of rBergomi to 
 3. **The SPX-VIX puzzle**: The calibrated model fits VIX to < 0.5 pts at 30d+ tenors, but SPX ATM IV shows a +478 bps bias — the well-documented joint calibration puzzle (Guyon 2019, Rømer 2022). The rBergomi model cannot simultaneously match VIX levels and SPX ATM IV because the gap reflects the variance swap convexity premium from OTM put skew. This is a model limitation, not a bug.
 4. **Performance**: 10× speedup (242s → 27s) via strike subsampling, kernel cache, and CRN.
 
-Calibrated Q-measure parameters: $H_Q = 0.020$, $\eta = 0.959$, $\rho = -0.955$.
+Calibrated Q-measure parameters: $H_Q = 0.005$, $\eta = 1.341$, $\rho = -0.959$ (with refined grid, bounds widened to $H \in [0.005, 0.40]$, $\eta \in [0.30, 5.00]$, $\rho \in [-0.995, -0.10]$).
+
+### Phase 19 (v3.6): Neural SDE Q-Calibration via Girsanov
+
+The rBergomi calibration produces a fixed parametric model. This phase extends it by learning a **risk-neutral drift correction** $\lambda_\phi(v,t)$ via Girsanov's theorem — a neural network P→Q bridge.
+
+**Core idea**: The P-measure Neural SDE has drift $\mu^P$ and diffusion $\sigma$. Girsanov preserves the diffusion (this is a theorem, not an approximation) — only the drift changes:
+
+$$d\log V_t = [\mu^P - \lambda_\phi(V,t)\cdot\sigma]\,dt + \sigma\,dW^Q_t$$
+
+The **market price of variance risk** $\lambda_\phi$ is parameterized as a small MLP (2→32→32→1, GELU, tanh × $\lambda_{\max}$) — only **1,185 trainable parameters**.
+
+**Key technical challenges solved**:
+1. **equinox freezing**: P-model parameters frozen via `eqx.partition` + `jax.tree_util.tree_map_with_path` — only Girsanov weights trained
+2. **JIT compatibility**: Replaced `@jax.jit` with `@eqx.filter_jit` so activation functions (non-array leaves) pass through JAX compilation
+3. **Price-space loss**: Replaced IV-extraction (scipy bisection, not differentiable) with vega-normalized price loss (fully JAX-traceable, equivalent to first order)
+4. **OU parameter mapping**: Naive $\kappa = \eta^2/(2H)$ diverges for $H \ll 0.5$ — clipped to moderate range and let the Girsanov MLP compensate
+5. **Time-aware MLP**: Added normalized time $t/T$ as input to the Girsanov MLP (not constant 0.5)
+
+**Data consumption**: 12 VIX tenors (6 indices + 6 futures), 12 SPX maturities × 8 strikes = 96 options, VVIX, SOFR.
+
+**Results**: Total Q-loss = 0.097, martingale error < $10^{-6}$, VIX 30d fit ±0.24 pts, training time 94s on CPU.
 
 ---
 
@@ -315,7 +336,7 @@ This is the key architectural idea: a **physics-informed prior** (rBergomi) augm
 
 These are the hard-won insights from 18 phases of development. Each cost real debugging time.
 
-1. **P ≠ Q**: Training on realized vol and testing on implied vol is fundamentally wrong. Use VIX for Q-measure, SPX RV for P-measure. Mixing measures gives biased results in both directions.
+1. **P ≠ Q**: Training on realized vol and testing on implied vol is fundamentally wrong. Use VIX for Q-measure, SPX RV for P-measure. Mixing measures gives biased results in both directions. The Girsanov theorem provides the correct P→Q bridge: it preserves the diffusion and only changes the drift by $-\lambda_\phi \cdot \sigma$.
 
 2. **Temporal scale must be physical**: `dt = T/n_steps` in annual units, not `1/n_steps`. Getting this wrong introduces a 328× error that is invisible in the code but catastrophic in the outputs.
 

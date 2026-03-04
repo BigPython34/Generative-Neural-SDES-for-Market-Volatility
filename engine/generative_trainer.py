@@ -143,11 +143,11 @@ class GenerativeTrainer:
         if self.measure == 'Q':
             self._smile_target = self._load_smile_target(q_cfg)
             if self._smile_target is None:
-                print(f"   ⚠ [Q-measure] No options data → falling back to legacy "
+                print(f"   [Q-measure] No options data -> falling back to legacy "
                       f"P+martingale loss. This is theoretically weaker.")
                 print(f"     Run `python bin/fetch_options.py` to cache SPY options.")
             else:
-                print(f"   ✓ [Q-measure] IV surface loaded → smile_fit is PRIMARY loss")
+                print(f"   [Q-measure] IV surface loaded -> smile_fit is PRIMARY loss")
 
         # η auto-calibration from VVIX (when configured)
         bergomi_cfg = self.yaml_config.get('bergomi', {})

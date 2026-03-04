@@ -34,6 +34,14 @@ from quant.calibration.joint_calibrator import (
     JointCalibrationResult,
     ExtendedRoughBergomi,
 )
+from quant.calibration.neural_sde_q_calibrator import (
+    GirsanovDrift,
+    NeuralSDEQModel,
+    NeuralSDEQResult,
+    train_neural_sde_q,
+    QLossWeights,
+)
+from quant.calibration.market_targets import prepare_spx_slices
 
 __all__ = [
     # Hurst estimation
@@ -64,4 +72,11 @@ __all__ = [
     "JointCalibrator",
     "JointCalibrationResult",
     "ExtendedRoughBergomi",
+    # Neural SDE Q-calibration (Girsanov)
+    "GirsanovDrift",
+    "NeuralSDEQModel",
+    "NeuralSDEQResult",
+    "train_neural_sde_q",
+    "QLossWeights",
+    "prepare_spx_slices",
 ]

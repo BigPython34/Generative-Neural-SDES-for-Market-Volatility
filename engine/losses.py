@@ -27,7 +27,7 @@ Components:
   - p_measure_loss:              Composite P-loss (MMD + mean penalty)
   - q_measure_loss:              Composite Q-loss (smile + martingale + MMD reg)
 
-Removed (see obsolete/deprecated_losses.py):
+Removed (legacy components):
   - feller_condition_loss:       Only for CIR/Heston variance-space (we use log-V)
   - path_regularity_loss:        Contradicts rough volatility (penalizes roughness)
   - mean_penalty_loss_logv:      Correct idea but inlined in trainer, never called

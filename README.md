@@ -15,16 +15,17 @@
 1. [Abstract](#abstract)
 2. [Key Results](#key-results)
 3. [Joint SPX-VIX Calibration](#joint-spx-vix-calibration-q-measure)
-4. [Multi-Scale Hurst Estimation](#multi-scale-hurst-estimation)
-5. [Architecture Overview](#architecture-overview)
-6. [Multi-Measure Framework](#multi-measure-framework)
-7. [Modules](#modules)
-8. [Methodology](#methodology)
-9. [Data Sources](#data-sources)
-10. [Usage](#usage)
-11. [API Reference](#api-reference)
-12. [File Structure](#file-structure)
-13. [References](#references)
+4. [Neural SDE Q-Calibration](#neural-sde-q-calibration-girsanov)
+5. [Multi-Scale Hurst Estimation](#multi-scale-hurst-estimation)
+6. [Architecture Overview](#architecture-overview)
+7. [Multi-Measure Framework](#multi-measure-framework)
+8. [Modules](#modules)
+9. [Methodology](#methodology)
+10. [Data Sources](#data-sources)
+11. [Usage](#usage)
+12. [API Reference](#api-reference)
+13. [File Structure](#file-structure)
+14. [References](#references)
 
 > **Research narrative**: For the full story — design decisions, false starts, code insights, and lessons learned — see [RESEARCH.md](RESEARCH.md).
 
@@ -66,9 +67,10 @@ The model is benchmarked against **Rough Bergomi** (rBergomi) and **Black-Schole
 | Parameter | Symbol | Value | Source |
 |-----------|:---:|:---:|---|
 | **Hurst (P-measure consensus)** | $H_P$ | **0.110 ± 0.003** | Multi-scale variogram + structure function + ratio (5m → daily, 500 bootstrap) |
-| **Hurst (Q-measure)** | $H_Q$ | **0.020** | Joint SPX-VIX calibration |
-| **Vol-of-Vol (Q-cal)** | $\eta_Q$ | **0.959** | Joint SPX-VIX calibration |
-| **Correlation (Q-cal)** | $\rho_Q$ | **−0.955** | Joint SPX-VIX calibration |
+| **Hurst (Q-measure)** | $H_Q$ | **0.005** | Joint SPX-VIX rBergomi calibration (refined grid) |
+| **Vol-of-Vol (Q-cal)** | $\eta_Q$ | **1.341** | Joint SPX-VIX calibration |
+| **Correlation (Q-cal)** | $\rho_Q$ | **−0.959** | Joint SPX-VIX calibration |
+| **Girsanov Q-loss** | $L_Q$ | **0.097** | Neural SDE Q-calibration (1,185 params, Girsanov MLP) |
 | Vol-of-Vol (VVIX) | $\eta$ | 1.33 | VVIX with H-correction |
 | Mean Reversion | $\kappa$ | 2.72 | VIX Futures term structure |
 | SOFR Rate | $r$ | 3.73% | NY Fed SOFR daily |
@@ -129,6 +131,76 @@ The +478 bps ATM bias is the well-documented **SPX-VIX joint calibration puzzle*
 | Normal | 245 pts | 8,000 | 12 | ~90s | ~2.7 pts/s |
 
 Key optimizations: JAX-vectorized Volterra kernel, kernel cache, strike subsampling (12/maturity), CRN, bounded Nelder-Mead ($\eta \geq 0.5$).
+
+---
+
+## Neural SDE Q-Calibration (Girsanov)
+
+> **P2b of the research roadmap**: learn a risk-neutral drift correction $\lambda_\phi(v,t)$ via Girsanov's theorem, on top of the frozen P-measure Neural SDE. This produces Q-dynamics that reprice the full SPX options surface + VIX term structure + VIX futures simultaneously.
+
+### Method
+
+Under the physical measure P, the Neural SDE has drift $\mu^P(V,t)$ and diffusion $\sigma(V,t)$. Girsanov's theorem gives the Q-dynamics:
+
+$$d\log V_t = \big[\mu^P(V,t) - \lambda_\phi(V,t)\cdot\sigma(V,t)\big]dt + \sigma(V,t)\,dW^Q_t$$
+
+**Key insight**: $\sigma(V,t)$ is **frozen** from the P-model — Girsanov preserves the diffusion coefficient. Only the market price of risk $\lambda_\phi$ is learned via a small MLP (2→32→32→1, GELU activation, tanh output × $\lambda_{\max}$). The Novikov condition $E\big[\exp\big(\frac{1}{2}\int_0^T |\lambda_\phi|^2\,dt\big)\big] < \infty$ ensures the measure change is valid and is enforced via soft penalty.
+
+### Loss Function
+
+The composite Q-loss trains on **5 simultaneous objectives**:
+
+$$L = w_{\text{smile}}\cdot L_{SPX} + w_{\text{vix}}\cdot L_{VIX} + w_{\text{mart}}\cdot L_{\text{mart}} + w_{\text{cal}}\cdot L_{\text{cal}} + w_{\text{nov}}\cdot E\Big[\sum \lambda^2\,dt\Big]$$
+
+where $L_{SPX}$ is the multi-maturity **vega-normalized price loss** (≈ IV loss to first order, fully JAX-differentiable), and $L_{VIX}$ uses relative squared error across 12 combined tenors.
+
+### Data Used
+
+| Source | # Points | Tenors/Maturities |
+|--------|:---:|---|
+| **VIX Index TS** | 6 | 1d, 9d, 30d, 90d, 180d, 365d |
+| **VIX Futures (CBOE)** | 6 | 11d, 42d, 103d, 164d, 195d, 225d |
+| **SPX/SPY Options Surface** | 96 | 12 maturities × 8 strikes (5d → 179d DTE) |
+| **VVIX** | 1 | Vol-of-vol prior for η |
+| **SOFR** | 1 | Risk-free rate = 3.73% |
+
+### Results
+
+| Component | Loss | Assessment |
+|-----------|:---:|---|
+| **Smile (SPX)** | 0.062 | Vega-normalized, 12 maturities |
+| **VIX TS** | 0.014 | 12 combined tenors |
+| **Martingale** | < 1e-6 | $E^Q[e^{-rT}S_T] = S_0$ |
+| **Calendar** | < 1e-6 | Total var monotone |
+| **Novikov** | 0.060 | MLP active, bounded |
+| **Total** | **0.097** | — |
+
+### VIX Term Structure Fit (Q-model)
+
+| Tenor | Market | Model | Δ |
+|:---:|:---:|:---:|:---:|
+| 1d | 17.10 | 22.76 | +5.66 |
+| 9d | 23.77 | 22.81 | −0.96 |
+| 30d | 22.66 | 22.90 | **+0.24** |
+| 90d | 23.24 | 23.04 | **−0.20** |
+| 180d | 24.70 | 23.20 | −1.50 |
+| 225d (futures) | 22.60 | 23.41 | +0.81 |
+
+30d–90d fit within ±0.3 pts. The 1d gap reflects the VIX1D intraday regime (very short-dated). The Girsanov MLP has only **1,185 trainable parameters** and trains in **94 seconds** on CPU.
+
+### Diagnostic Plots
+
+| Plot | File |
+|---|---|
+| Training loss curve | `outputs/plots/neural_q_loss_curve.png` |
+| VIX TS fit | `outputs/plots/neural_q_vix_fit.png` |
+| Loss decomposition | `outputs/plots/neural_q_loss_components.png` |
+
+```bash
+python bin/calibration/neural_q_calibration.py --quick                # Quick: 50 epochs, 2048 paths
+python bin/calibration/neural_q_calibration.py --epochs 300 --paths 4096  # Full calibration
+python bin/calibration/neural_q_calibration.py --H 0.03 --rho -0.95  # Custom seed params
+```
 
 ---
 
@@ -218,9 +290,9 @@ $$\boxed{H_{\text{consensus}} = 0.110 \pm 0.003 \quad \text{(inverse-variance we
 | Log(RV) time series | `outputs/plots/hurst_logrv_timeseries.png` |
 
 ```bash
-python bin/hurst_multiscale.py                    # Full analysis (~3 min)
-python bin/hurst_multiscale.py --cross-asset      # + SPY & CAC40
-python bin/hurst_multiscale.py --update-config    # Write consensus H to params.yaml
+python bin/analysis/hurst_multiscale.py                    # Full analysis (~3 min)
+python bin/analysis/hurst_multiscale.py --cross-asset      # + SPY & CAC40
+python bin/analysis/hurst_multiscale.py --update-config    # Write consensus H to params.yaml
 ```
 
 ### Proving Roughness: ACF / Variogram Evidence
@@ -340,15 +412,20 @@ Volterra kernel implementation (Bayer, Friz & Gatheral 2016) with exact spot-vol
 
 ## Data Sources
 
-| Dataset | Source | Frequency | Period |
-|---------|--------|-----------|--------|
-| VIX Spot | TradingView / Yahoo | 5/10/15/30-min | 2023–2026 |
-| SPX | TradingView / Yahoo | 5/30-min | 2023–2026 |
-| SPX Daily | Yahoo Finance | Daily | 2010–2026 |
-| VVIX | Yahoo Finance | Daily | 2013–2026 |
-| VIX Futures | CBOE | Daily | 2013–2026 |
-| SOFR Rate | NY Fed | Daily | 2018–2026 |
-| SPY Options | Yahoo Finance | Snapshots | Latest cache |
+| Dataset | Source | Format | Volume | Used By |
+|---------|--------|--------|--------|---------|
+| **VIX Term Structure** | CBOE / TradingView | VIX1D, VIX9D, VIX, VIX3M, VIX6M, VIX1Y | 6 tenors, 5m–daily | rBergomi + Neural Q |
+| **VIX Futures** | CBOE | 6 contracts (front month → 3M) | 25,618 rows (2013–2026) | Neural Q |
+| **SPX / SPY** | TradingView | 5s, 5m, 15m, 30m, 1h, daily | ~40k rows per freq | Hurst + calibration |
+| **SPY Options Surface** | Yahoo Finance | Cached snapshots (5 dates) | 2,345 options × 20 mats | rBergomi + Neural Q |
+| **VVIX** | CBOE / TradingView | 5m–daily | ~40k rows | η prior |
+| **SOFR Rate** | NY Fed | Daily | 1,968 rows (2018–2026) | Risk-free rate |
+| **VIX Futures (TradingView)** | TradingView | VX1!, VX2! (5m–daily) | Continuous contracts | Regime detection |
+| **SKEW Index** | TradingView | Daily | 9,044 rows | Future: smile prior |
+| **Put/Call Ratio** | TradingView | Daily | 4,858 rows | Future: sentiment |
+| **Implied Correlation** | TradingView | COR1M (5m–daily) | ~40k rows | Future: dispersion |
+| **US Rates** | TradingView | 2Y, 5Y, 10Y, 30Y | Multiple freq | Future: macro regime |
+| **CAC 40** | TradingView | 5m, 15m, 30m | ~40k rows | Cross-asset Hurst |
 
 ---
 
@@ -369,28 +446,28 @@ pip install -r requirements.txt
 ### Step 1 — Download Market Data
 
 ```bash
-python bin/regenerate_data.py --mode yahoo      # Yahoo Finance + CBOE
+python bin/data/regenerate_data.py --mode yahoo      # Yahoo Finance + CBOE
 # Or: --mode tradingview if you have TradingView CSV exports in data/
 ```
 
 ### Step 2 — Fetch SPY Options Surface
 
 ```bash
-python bin/fetch_options.py                     # Cached in data/options_cache/
+python bin/data/fetch_options.py                # Cached in data/options_cache/
 ```
 
 ### Step 3 — Calibrate Parameters
 
 ```bash
-python bin/calibrate.py                         # → outputs/advanced_calibration.json
-python bin/hurst_multiscale.py --update-config  # Multi-scale H estimation → params.yaml
+python bin/calibration/calibrate.py             # -> outputs/advanced_calibration.json
+python bin/analysis/hurst_multiscale.py --update-config  # Multi-scale H estimation -> params.yaml
 ```
 
 ### Step 4 — Train Neural SDE
 
 ```bash
-python bin/train_multi.py                       # P + Q models (~15 min total)
-python bin/train_multi.py --measure Q --jumps   # Optional: crisis model
+python bin/training/train_multi.py              # P + Q models (~15 min total)
+python bin/training/train_multi.py --measure Q --jumps   # Optional: crisis model
 ```
 
 | Flag | Model File | Use For |
@@ -403,32 +480,33 @@ python bin/train_multi.py --measure Q --jumps   # Optional: crisis model
 ### Step 5 — Backtest & Validate
 
 ```bash
-python bin/backtest.py                          # IV RMSE: Neural SDE vs Bergomi vs BS
-python bin/verify_roughness.py                  # Roughness proof + signature + ablation
-python bin/walk_forward.py                      # Out-of-sample temporal backtest
+python bin/backtesting/backtest.py              # IV RMSE: Neural SDE vs Bergomi vs BS
+python bin/analysis/verify_roughness.py         # Roughness proof + signature + ablation
+python bin/backtesting/walk_forward.py          # Out-of-sample temporal backtest
 ```
 
 ### Step 6 — Joint SPX-VIX Calibration
 
 ```bash
-python bin/joint_calibration.py --quick         # ~27s, Q-measure rBergomi calibration
-python bin/joint_calibration.py                 # Full grid (~90s)
+python bin/calibration/joint_calibration.py --quick         # ~27s, Q-measure rBergomi calibration
+python bin/calibration/joint_calibration.py                 # Full grid (~90s)
+python bin/calibration/neural_q_calibration.py --quick      # Neural SDE Girsanov Q-calibration
 ```
 
 ### Step 7 — Reports & Dashboard
 
 ```bash
-python bin/model_suite.py --run-usecases        # VaR, stress, exotic pricing, regime
-python bin/dashboard.py                         # → outputs/dashboard.html
-python bin/api_server.py                        # → http://localhost:8000 (UI + API)
+python bin/backtesting/model_suite.py --run-usecases   # VaR, stress, exotic pricing, regime
+python bin/apps/dashboard.py                    # -> outputs/dashboard.html
+python bin/apps/api_server.py                   # -> http://localhost:8000 (UI + API)
 ```
 
 ### Step 8 — Diagnostics (optional)
 
 ```bash
-python bin/hurst_diagnostic.py                  # VIX vs RV Hurst comparison
-python bin/compare_vix_vs_rv.py                 # Side-by-side roughness analysis
-python bin/robustness_check.py                  # Full robustness: MMD, Hurst, smiles
+python bin/analysis/hurst_diagnostic.py         # VIX vs RV Hurst comparison
+python bin/analysis/compare_vix_vs_rv.py        # Side-by-side roughness analysis
+python bin/analysis/robustness_check.py         # Full robustness: MMD, Hurst, smiles
 python main.py                                  # Legacy all-in-one demo
 ```
 
@@ -448,7 +526,7 @@ python main.py                                  # Legacy all-in-one demo
 
 ## API Reference
 
-Launch: `python bin/api_server.py` → Swagger at `http://localhost:8000/docs`
+Launch: `python bin/apps/api_server.py` → Swagger at `http://localhost:8000/docs`
 
 | Endpoint | Method | Description |
 |---|:---:|---|
@@ -473,17 +551,33 @@ Top-level overview (run `tree /F` for full listing):
 DeepRoughVol/
 ├── main.py                    # Full demo pipeline
 ├── config/params.yaml         # Central config (200+ keys)
-├── bin/                       # CLI entry points (train, backtest, calibrate, API, ...)
-├── core/                      # Stochastic models (rBergomi, fBM)
+├── bin/                       # CLI entry points (domain-first)
+│   ├── calibration/           # Calibration pipelines (joint, neural_q, options, RN)
+│   ├── analysis/              # Diagnostics & research analyses (Hurst)
+│   ├── training/              # P/Q training entrypoints
+│   ├── apps/                  # API server + dashboard
+│   ├── data/                  # Data ingestion/regeneration tasks
+│   └── ops/                   # Operational utility scripts
+├── core/                      # Compatibility shims (legacy imports)
 ├── engine/                    # ML engine (Neural SDE, signatures, losses, trainer)
 ├── quant/                     # Quant library (pricing, risk, hedging, P&L, regime)
-│   └── calibration/           # Joint SPX-VIX calibrator, forward variance, VIX loader
+│   ├── models/                # Canonical stochastic models (rBergomi, fBM)
+│   ├── calibration/           # Calibration engines and data targets
+│   ├── workflows/             # Backtesting and walk-forward workflows
+│   ├── pricers/               # Vanilla and exotic pricing engines
+│   ├── hedging/               # Hedging simulator and PnL attribution
+│   ├── risk/                  # Risk engine
+│   ├── regimes/               # Regime detection
+│   ├── analysis/              # Hurst and diagnostics analysis
+│   └── data/                  # Quant-side data helpers
 ├── utils/                     # SOFR, VVIX calibration, BS, Greeks AD, data pipeline
-├── data/                      # Market data (VIX, SPX, VVIX, SOFR, options, futures)
+├── data/                      # Market data (~115 CSVs, options cache, SOFR)
+│   ├── trading_view/          # 33+ volatility, equity, futures, rates files
+│   ├── cboe_vix_futures_full/ # 25k+ rows of VIX futures
+│   └── options_cache/         # 5 SPY surface snapshots (2345 options)
 ├── models/                    # Trained models (.eqx)
 ├── outputs/                   # Results, reports, plots, dashboard
-├── research/                  # LaTeX proofs (maths_proofs.tex, proof.tex)
-└── obsolete/                  # Superseded code
+└── research/                  # LaTeX proofs (maths_proofs.tex, proof.tex)
 ```
 
 ---
@@ -510,6 +604,9 @@ DeepRoughVol/
 16. Rømer (2022). *Empirical analysis of rough and classical stochastic volatility models*. Quantitative Finance.
 17. Jacquier, Martini & Muguruza (2018). *On VIX Futures in the Rough Bergomi Model*. SIAM J. Financial Mathematics.
 18. Istas & Lang (1997). *Quadratic variations and estimation of the local Hölder index of a Gaussian process*. Annales de l'I.H.P.
+19. Gierjatowicz, Sabate-Vidales, Šiška, Szpruch & Žurič (2022). *Robust pricing and hedging via neural SDEs*. JCAM.
+20. Buehler, Gonon, Teichmann, Wood & Mohan (2021). *Deep Hedging: Hedging Derivatives Under Generic Market Frictions Using Reinforcement Learning*. Swiss Finance Institute.
+21. Girsanov (1960). *On transforming a certain class of stochastic processes by absolutely continuous substitution of measures*. Theory of Probability.
 
 ### Technical
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from core.bergomi import RoughBergomiModel
+from quant.models.bergomi import RoughBergomiModel
 from utils.black_scholes import BlackScholes
 
 

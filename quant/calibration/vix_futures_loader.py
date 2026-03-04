@@ -606,7 +606,7 @@ def assemble_calibration_data(
     -------
     CalibrationMarketData
     """
-    from quant.options_cache import OptionsDataCache
+    from quant.data.options_cache import OptionsDataCache
 
     data = CalibrationMarketData()
 
@@ -619,11 +619,11 @@ def assemble_calibration_data(
         data.timestamp = meta.get('datetime', '')
         if verbose:
             n_mats = surface_df['dte'].nunique()
-            print(f"  ✓ SPY surface: {len(surface_df)} options, {n_mats} maturities "
+            print(f"  SPY surface: {len(surface_df)} options, {n_mats} maturities "
                   f"(spot=${meta['spot']:.2f})")
     except Exception as e:
         if verbose:
-            print(f"  ✗ SPY surface: {e}")
+            print(f"  SPY surface error: {e}")
 
     # 2. VIX term structure (TradingView indices)
     try:
@@ -631,13 +631,13 @@ def assemble_calibration_data(
         data.vix_term_structure = vts
         data.vix_spot = float(vts.vix_levels[vts.labels.index('vix')]) if 'vix' in vts.labels else None
         if verbose:
-            print(f"  ✓ VIX term structure: {vts.n_tenors} tenors "
+            print(f"  VIX term structure: {vts.n_tenors} tenors "
                   f"({vts.date.strftime('%Y-%m-%d')})")
             for i, label in enumerate(vts.labels):
                 print(f"      {label:>6}: {vts.vix_levels[i]:.2f}")
     except Exception as e:
         if verbose:
-            print(f"  ✗ VIX term structure: {e}")
+            print(f"  VIX term structure error: {e}")
 
     # 3. VIX futures (CBOE)
     try:
@@ -648,11 +648,11 @@ def assemble_calibration_data(
             term = vix_fut.get_latest_term_structure(vix_spot=data.vix_spot)
         data.vix_futures_term = term
         if verbose:
-            print(f"  ✓ VIX futures: {term.n_contracts} contracts "
+            print(f"  VIX futures: {term.n_contracts} contracts "
                   f"({term.trade_date.strftime('%Y-%m-%d')})")
     except Exception as e:
         if verbose:
-            print(f"  ✗ VIX futures: {e}")
+            print(f"  VIX futures error: {e}")
 
     # 4. VVIX
     try:
@@ -666,10 +666,10 @@ def assemble_calibration_data(
             else:
                 data.vvix = float(vvix_df['close'].iloc[-1])
             if verbose and data.vvix is not None:
-                print(f"  ✓ VVIX: {data.vvix:.2f}")
+                print(f"  VVIX: {data.vvix:.2f}")
     except Exception as e:
         if verbose:
-            print(f"  ✗ VVIX: {e}")
+            print(f"  VVIX error: {e}")
 
     # 5. SOFR
     try:
@@ -678,9 +678,9 @@ def assemble_calibration_data(
         if sofr.is_available:
             data.risk_free_rate = sofr.get_rate()
             if verbose:
-                print(f"  ✓ SOFR: {data.risk_free_rate*100:.3f}%")
+                print(f"  SOFR: {data.risk_free_rate*100:.3f}%")
     except Exception as e:
         if verbose:
-            print(f"  ✗ SOFR (using default {data.risk_free_rate*100:.1f}%): {e}")
+            print(f"  SOFR error (using default {data.risk_free_rate*100:.1f}%): {e}")
 
     return data

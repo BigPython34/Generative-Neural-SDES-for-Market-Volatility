@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-02T23:27:15.767464",
+  "timestamp": "2026-03-04T23:00:49.634262",
   "data_source": "Real SPY options (Yahoo Finance cache)",
   "fair_mode": true,
   "vix_term_structure": {
@@ -7,194 +7,311 @@
     "60": 20.15,
     "90": 20.76
   },
-  "n_scenarios": 12,
+  "n_scenarios": 20,
   "summary": {
-    "bs_mean_rmse": 7.7259839717247205,
-    "bergomi_mean_rmse": 5.632270081006259,
-    "neural_sde_mean_rmse": 7.270047341276573
+    "bs_mean_rmse": 7.234720899621188,
+    "bergomi_mean_rmse": 6.186586944007297,
+    "neural_sde_mean_rmse": 8.274876890175262
   },
   "win_rates": {
-    "Bergomi": 9,
-    "Neural": 3
+    "Bergomi": 10,
+    "Neural": 7,
+    "BS": 3
   },
   "by_maturity": {
     "6": {
       "bs_rmse": 12.794010367642418,
-      "bergomi_rmse": 19.864772967614257
+      "bergomi_rmse": 13.236941220982722
     },
     "7": {
-      "bs_rmse": 10.841528587922252,
-      "bergomi_rmse": 1.7336052976070542
+      "bs_rmse": 8.717437682602101,
+      "bergomi_rmse": 6.715232067763103
     },
     "14": {
       "bs_rmse": 7.629998482105241,
-      "bergomi_rmse": 2.073793034916546
+      "bergomi_rmse": 3.370311849169934
+    },
+    "15": {
+      "bs_rmse": 7.766508087372076,
+      "bergomi_rmse": 9.285779512826842
+    },
+    "16": {
+      "bs_rmse": 8.10676523631804,
+      "bergomi_rmse": 4.106610666181918
     },
     "20": {
       "bs_rmse": 7.452834978780768,
-      "bergomi_rmse": 4.319669333338309
+      "bergomi_rmse": 7.4989949225587145
     },
     "28": {
-      "bs_rmse": 6.265112497883334,
-      "bergomi_rmse": 2.218430316412072
+      "bs_rmse": 5.696516133689297,
+      "bergomi_rmse": 3.917969352013348
+    },
+    "29": {
+      "bs_rmse": 5.752300179369998,
+      "bergomi_rmse": 8.647128119462206
     },
     "34": {
       "bs_rmse": 6.402419046728559,
-      "bergomi_rmse": 2.8029160136564064
+      "bergomi_rmse": 3.4674291236878645
     },
     "40": {
       "bs_rmse": 4.959020573418615,
-      "bergomi_rmse": 2.629580338515761
+      "bergomi_rmse": 4.272713655740279
     },
     "41": {
       "bs_rmse": 4.758598159645108,
-      "bergomi_rmse": 2.3275350168899704
+      "bergomi_rmse": 4.077821192215763
+    },
+    "43": {
+      "bs_rmse": 4.671754768123215,
+      "bergomi_rmse": 5.11783035805955
+    },
+    "44": {
+      "bs_rmse": 5.246577831164439,
+      "bergomi_rmse": 4.192464428974581
     }
   },
   "daily_results": [
     {
       "snapshot": 1,
+      "spot": 685.719970703125,
+      "dte": 7,
+      "n_options": 71,
+      "atm_vol": 17.30124203491211,
+      "xi0": 0.04060224999999999,
+      "bs_rmse": 7.655443932110131,
+      "bergomi_rmse": 4.450592995410421,
+      "neural_sde_rmse": 13.975477570528202,
+      "best_model": "Bergomi"
+    },
+    {
+      "snapshot": 1,
+      "spot": 685.719970703125,
+      "dte": 15,
+      "n_options": 118,
+      "atm_vol": 17.53317330932617,
+      "xi0": 0.040920069521331946,
+      "bs_rmse": 7.766508087372076,
+      "bergomi_rmse": 9.285779512826842,
+      "neural_sde_rmse": 10.150852225139538,
+      "best_model": "BS"
+    },
+    {
+      "snapshot": 1,
+      "spot": 685.719970703125,
+      "dte": 28,
+      "n_options": 72,
+      "atm_vol": 17.00980207824707,
+      "xi0": 0.04196154010405827,
+      "bs_rmse": 5.12791976949526,
+      "bergomi_rmse": 4.051613794606867,
+      "neural_sde_rmse": 7.1376291784033,
+      "best_model": "Bergomi"
+    },
+    {
+      "snapshot": 1,
+      "spot": 685.719970703125,
+      "dte": 43,
+      "n_options": 114,
+      "atm_vol": 17.39584558105469,
+      "xi0": 0.04313111858371406,
+      "bs_rmse": 4.671754768123215,
+      "bergomi_rmse": 5.11783035805955,
+      "neural_sde_rmse": 2.71204199996785,
+      "best_model": "Neural"
+    },
+    {
+      "snapshot": 2,
+      "spot": 678.6099853515625,
+      "dte": 7,
+      "n_options": 69,
+      "atm_vol": 19.79450323486328,
+      "xi0": 0.04060224999999999,
+      "bs_rmse": 7.6553405277739195,
+      "bergomi_rmse": 12.988525214440813,
+      "neural_sde_rmse": 3.7162278516640397,
+      "best_model": "Neural"
+    },
+    {
+      "snapshot": 2,
+      "spot": 678.6099853515625,
+      "dte": 16,
+      "n_options": 118,
+      "atm_vol": 19.7700894165039,
+      "xi0": 0.04099971800208116,
+      "bs_rmse": 8.10676523631804,
+      "bergomi_rmse": 4.106610666181918,
+      "neural_sde_rmse": 5.200500439676245,
+      "best_model": "Bergomi"
+    },
+    {
+      "snapshot": 2,
+      "spot": 678.6099853515625,
+      "dte": 29,
+      "n_options": 73,
+      "atm_vol": 18.67451931762695,
+      "xi0": 0.0420421953069719,
+      "bs_rmse": 5.752300179369998,
+      "bergomi_rmse": 8.647128119462206,
+      "neural_sde_rmse": 9.340672982522893,
+      "best_model": "BS"
+    },
+    {
+      "snapshot": 2,
+      "spot": 678.6099853515625,
+      "dte": 44,
+      "n_options": 116,
+      "atm_vol": 18.74318318176269,
+      "xi0": 0.04316449007256114,
+      "bs_rmse": 5.246577831164439,
+      "bergomi_rmse": 4.192464428974581,
+      "neural_sde_rmse": 3.0753598832704583,
+      "best_model": "Neural"
+    },
+    {
+      "snapshot": 3,
       "spot": 685.3300170898438,
       "dte": 6,
       "n_options": 120,
       "atm_vol": 12.2506333618164,
       "xi0": 0.04060224999999999,
       "bs_rmse": 14.412070279018439,
-      "bergomi_rmse": 20.56482389538193,
-      "neural_sde_rmse": 3.5109127958350457,
-      "best_model": "Neural"
+      "bergomi_rmse": 5.61153759355416,
+      "neural_sde_rmse": 22.86481275994477,
+      "best_model": "Bergomi"
     },
     {
-      "snapshot": 1,
+      "snapshot": 3,
       "spot": 685.3300170898438,
       "dte": 20,
       "n_options": 121,
       "atm_vol": 13.21497918701172,
       "xi0": 0.04131908632674298,
       "bs_rmse": 7.892995280756124,
-      "bergomi_rmse": 4.8263886063199495,
-      "neural_sde_rmse": 12.669933975750899,
-      "best_model": "Bergomi"
+      "bergomi_rmse": 11.17363594823462,
+      "neural_sde_rmse": 4.7856995094675305,
+      "best_model": "Neural"
     },
     {
-      "snapshot": 1,
+      "snapshot": 3,
       "spot": 685.3300170898438,
       "dte": 34,
       "n_options": 112,
       "atm_vol": 14.109135284423829,
       "xi0": 0.042446632924037456,
       "bs_rmse": 6.709426864183723,
-      "bergomi_rmse": 3.6597723839719434,
-      "neural_sde_rmse": 4.384307563202781,
+      "bergomi_rmse": 3.4057221099345476,
+      "neural_sde_rmse": 4.640958319053329,
       "best_model": "Bergomi"
     },
     {
-      "snapshot": 1,
+      "snapshot": 3,
       "spot": 685.3300170898438,
       "dte": 40,
       "n_options": 68,
       "atm_vol": 14.14117842102051,
       "xi0": 0.04293451359001041,
       "bs_rmse": 5.1912370708533455,
-      "bergomi_rmse": 2.7514187699789967,
-      "neural_sde_rmse": 3.1352235637381023,
-      "best_model": "Bergomi"
+      "bergomi_rmse": 4.088953993286022,
+      "neural_sde_rmse": 3.3737525405515916,
+      "best_model": "Neural"
     },
     {
-      "snapshot": 2,
+      "snapshot": 4,
       "spot": 684.47998046875,
       "dte": 6,
       "n_options": 120,
       "atm_vol": 16.513896392822268,
       "xi0": 0.04060224999999999,
       "bs_rmse": 11.175950456266397,
-      "bergomi_rmse": 19.164722039846588,
-      "neural_sde_rmse": 4.636144106875441,
-      "best_model": "Neural"
+      "bergomi_rmse": 20.862344848411283,
+      "neural_sde_rmse": 22.48877494715163,
+      "best_model": "BS"
     },
     {
-      "snapshot": 2,
+      "snapshot": 4,
       "spot": 684.47998046875,
       "dte": 20,
       "n_options": 121,
       "atm_vol": 15.73265420532226,
       "xi0": 0.04131908632674298,
       "bs_rmse": 7.012674676805411,
-      "bergomi_rmse": 3.812950060356668,
-      "neural_sde_rmse": 3.1914813661791004,
-      "best_model": "Neural"
+      "bergomi_rmse": 3.824353896882808,
+      "neural_sde_rmse": 12.687486777033158,
+      "best_model": "Bergomi"
     },
     {
-      "snapshot": 2,
+      "snapshot": 4,
       "spot": 684.47998046875,
       "dte": 34,
       "n_options": 113,
       "atm_vol": 16.08970629882812,
       "xi0": 0.042446632924037456,
       "bs_rmse": 6.0954112292733935,
-      "bergomi_rmse": 1.9460596433408694,
-      "neural_sde_rmse": 8.308452075269198,
+      "bergomi_rmse": 3.529136137441181,
+      "neural_sde_rmse": 5.330188454741552,
       "best_model": "Bergomi"
     },
     {
-      "snapshot": 2,
+      "snapshot": 4,
       "spot": 684.47998046875,
       "dte": 40,
       "n_options": 68,
       "atm_vol": 15.95085270690918,
       "xi0": 0.04293451359001041,
       "bs_rmse": 4.7268040759838845,
-      "bergomi_rmse": 2.507741907052525,
-      "neural_sde_rmse": 3.1588212471127015,
-      "best_model": "Bergomi"
+      "bergomi_rmse": 4.456473318194536,
+      "neural_sde_rmse": 3.1703704698398347,
+      "best_model": "Neural"
     },
     {
-      "snapshot": 3,
+      "snapshot": 5,
       "spot": 684.1699829101562,
       "dte": 7,
       "n_options": 121,
       "atm_vol": 18.12215667724609,
       "xi0": 0.04060224999999999,
       "bs_rmse": 10.841528587922252,
-      "bergomi_rmse": 1.7336052976070542,
-      "neural_sde_rmse": 22.23144411232041,
+      "bergomi_rmse": 2.7065779934380743,
+      "neural_sde_rmse": 19.135529048780818,
       "best_model": "Bergomi"
     },
     {
-      "snapshot": 3,
+      "snapshot": 5,
       "spot": 684.1699829101562,
       "dte": 14,
       "n_options": 115,
       "atm_vol": 17.23410403442383,
       "xi0": 0.04084049848074921,
       "bs_rmse": 7.629998482105241,
-      "bergomi_rmse": 2.073793034916546,
-      "neural_sde_rmse": 3.9380170705181605,
+      "bergomi_rmse": 3.370311849169934,
+      "neural_sde_rmse": 4.402035682588191,
       "best_model": "Bergomi"
     },
     {
-      "snapshot": 3,
+      "snapshot": 5,
       "spot": 684.1699829101562,
       "dte": 28,
       "n_options": 124,
       "atm_vol": 17.09372457885742,
       "xi0": 0.04196154010405827,
       "bs_rmse": 6.265112497883334,
-      "bergomi_rmse": 2.218430316412072,
-      "neural_sde_rmse": 9.587468049007299,
+      "bergomi_rmse": 3.784324909419829,
+      "neural_sde_rmse": 4.455725962327753,
       "best_model": "Bergomi"
     },
     {
-      "snapshot": 3,
+      "snapshot": 5,
       "spot": 684.1699829101562,
       "dte": 41,
       "n_options": 68,
       "atm_vol": 16.671060348510743,
       "xi0": 0.04301609807492196,
       "bs_rmse": 4.758598159645108,
-      "bergomi_rmse": 2.3275350168899704,
-      "neural_sde_rmse": 8.488362169509749,
-      "best_model": "Bergomi"
+      "bergomi_rmse": 4.077821192215763,
+      "neural_sde_rmse": 2.853441200852568,
+      "best_model": "Neural"
     }
   ]
 }
