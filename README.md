@@ -38,7 +38,7 @@
 The project provides a complete quantitative finance toolkit:
 
 - **Volatility modeling**: Signature-conditioned Neural SDE with **dual backbone** (OU or Volterra/fractional — nests rBergomi exactly) and optional Merton jump-diffusion
-- **Roughness proof**: Empirical verification of $H \approx 0.1$ from SPX realized vol, with ACF, variogram, signature correlation (0.9996), and MMD ablation
+- **Roughness proof**: Empirical verification of H ≈ 0.1 from SPX realized vol, with ACF, variogram, signature correlation (0.9996), and MMD ablation
 - **Multi-measure training**: Separate P-measure (physical) and Q-measure (risk-neutral) models with appropriate loss functions
 - **Exact path signatures**: Chen's identity implemented at orders 2, 3, 4 — making the SDE genuinely non-Markovian
 - **Option pricing**: European vanillas, barriers, Asian, lookback, autocallable, cliquet, variance/volatility swaps
@@ -84,18 +84,18 @@ The model is benchmarked against **Rough Bergomi** (rBergomi) with Volterra kern
 
 | Parameter | Symbol | Value | Source |
 |-----------|:---:|:---:|---|
-| **Hurst (consensus)** | $H$ | **0.110 ± 0.003** | Multi-scale variogram + structure function + ratio (5m → daily, 500 bootstrap) |
-| Hurst (SPX 5-min RV) | $H$ | 0.119 | Variogram on daily RV (510 days) |
-| Hurst (SPX 30-min RV) | $H$ | 0.117 | Variogram on daily RV (2974 days) |
-| Hurst (SPX 1h RV) | $H$ | 0.094 | Variogram on daily RV (2974 days) |
-| Hurst (SPX daily) | $H$ | 0.087 | Variogram on weekly RV (1821 weeks) |
-| Vol-of-Vol (VVIX-calibrated) | $\eta$ | 1.33 | VVIX with H-correction |
-| Vol-of-Vol (config) | $\eta$ | 1.9 | Bergomi benchmark |
-| Mean Reversion | $\kappa$ | 2.72 | VIX Futures term structure |
-| Long-term log-var | $\theta$ | -3.5 | Historical VIX mean |
-| Correlation | $\rho$ | -0.7 | SPX-VIX leverage effect |
+| **Hurst (consensus)** | H | **0.110 ± 0.003** | Multi-scale variogram + structure function + ratio (5m → daily, 500 bootstrap) |
+| Hurst (SPX 5-min RV) | H | 0.119 | Variogram on daily RV (510 days) |
+| Hurst (SPX 30-min RV) | H | 0.117 | Variogram on daily RV (2974 days) |
+| Hurst (SPX 1h RV) | H | 0.094 | Variogram on daily RV (2974 days) |
+| Hurst (SPX daily) | H | 0.087 | Variogram on weekly RV (1821 weeks) |
+| Vol-of-Vol (VVIX-calibrated) | η | 1.33 | VVIX with H-correction |
+| Vol-of-Vol (config) | η | 1.9 | Bergomi benchmark |
+| Mean Reversion | κ | 2.72 | VIX Futures term structure |
+| Long-term log-var | θ | -3.5 | Historical VIX mean |
+| Correlation | ρ | -0.7 | SPX-VIX leverage effect |
 | VVIX (current) | — | 109 | CBOE VVIX index |
-| SOFR Rate | $r$ | 3.73% | NY Fed SOFR daily |
+| SOFR Rate | r | 3.73% | NY Fed SOFR daily |
 | Market Regime | — | elevated | Multi-signal consensus |
 
 ---
@@ -111,7 +111,7 @@ Most quantitative finance projects either:
 
 | Feature | Standard Quant Projects | DeepRoughVol |
 |---|---|---|
-| Vol dynamics | Smooth (Heston, SABR) | **Rough** ($H \approx 0.1$, verified on real SPX data) |
+| Vol dynamics | Smooth (Heston, SABR) | **Rough** (H ≈ 0.1, verified on real SPX data) |
 | Memory | Markovian (no path memory) | **Path-dependent** (signature conditioning via Chen's identity) |
 | Architecture | Parametric model OR black-box NN | **Neural SDE = OU/Volterra prior + learned corrections** |
 | Measures | Single measure | **P-measure (risk) and Q-measure (pricing) with separate losses** |
@@ -129,7 +129,7 @@ This section explains **why** you would use DeepRoughVol and **how**, focused on
 
 ### 1. Learn Volatility Dynamics from Data (Not Assume Them)
 
-**The problem**: Black-Scholes assumes constant vol. Heston/SABR assume a fixed parametric form (mean-reverting CIR). Real volatility is **rough** ($H \approx 0.1$), **path-dependent**, and **non-Markovian** — none of which these models capture.
+**The problem**: Black-Scholes assumes constant vol. Heston/SABR assume a fixed parametric form (mean-reverting CIR). Real volatility is **rough** (H ≈ 0.1), **path-dependent**, and **non-Markovian** — none of which these models capture.
 
 **What DeepRoughVol does**: The Neural SDE learns the dynamics directly from market data. The signature conditioning gives it memory of the entire path history, not just the current state.
 
@@ -155,14 +155,14 @@ python main.py
 
 ### 2. Separate P-Measure and Q-Measure Models
 
-**The problem**: In most projects, a single model is trained on historical data and used for pricing. This is mathematically wrong: the probability measure under which volatility moves in the real world ($\mathbb{P}$) is **not** the measure under which derivatives are priced ($\mathbb{Q}$).
+**The problem**: In most projects, a single model is trained on historical data and used for pricing. This is mathematically wrong: the probability measure under which volatility moves in the real world (**P**) is **not** the measure under which derivatives are priced (**Q**).
 
 **What DeepRoughVol does**: Train separate models with different loss functions:
 
 | | P-measure | Q-measure |
 |---|---|---|
 | **Data** | Realized vol (SPX 5-min returns) | VIX (implied vol) + SPY options surface |
-| **Loss** | MMD on path signatures (match distribution) | IV smile fit (primary) + martingale $E^Q[e^{-rT}S_T] = S_0$ + MMD regularizer |
+| **Loss** | MMD on path signatures (match distribution) | IV smile fit (primary) + martingale E^Q[e^(-rT) S_T] = S_0 + MMD regularizer |
 | **Use for** | VaR, CVaR, stress testing, vol forecasting | Option pricing, hedging, calibration |
 | **Model file** | `neural_sde_best_p.eqx` | `neural_sde_best_q.eqx` |
 
@@ -234,7 +234,7 @@ pricer.asian_call(s_paths, strike=100)
 
 **The problem**: Parametric VaR assumes normal returns. Historical VaR uses past data directly. Neither captures the non-linear, path-dependent tail risk of a derivatives portfolio.
 
-**What DeepRoughVol does**: Monte Carlo VaR using the P-measure Neural SDE. The generated paths have realistic fat tails, leverage effect ($\rho = -0.7$), and vol clustering — all learned from data.
+**What DeepRoughVol does**: Monte Carlo VaR using the P-measure Neural SDE. The generated paths have realistic fat tails, leverage effect (ρ = -0.7), and vol clustering — all learned from data.
 
 ```python
 from quant.risk_engine import RiskEngine
@@ -255,27 +255,27 @@ engine.neural_stress_test(trainer, model)
 ```
 
 **What's different from BS VaR**:
-- **Parametric VaR** assumes $\Delta PnL \sim N(\mu, \sigma^2)$ → misses fat tails (kurtosis ≈ 4–6 in real markets)
+- **Parametric VaR** assumes Δ PnL ~ N(μ, σ²) → misses fat tails (kurtosis ≈ 4–6 in real markets)
 - **Historical VaR** is backward-looking only → misses regime changes
 - **Neural SDE VaR** generates forward-looking scenarios with realistic tail behavior, leverage, and vol clustering
 
 The stress testing includes both:
-- **Deterministic scenarios**: Black Monday ($-22\%$), Lehman ($-8\%$), COVID ($-12\%$) — quick sensitivity
+- **Deterministic scenarios**: Black Monday (-22%), Lehman (-8%), COVID (-12%) — quick sensitivity
 - **Neural stress scenarios**: Condition the Neural SDE on crisis initial states → realistic path dynamics during stress
 
 ---
 
 ### 5. Hedging with Neural SDE Greeks
 
-**The problem**: BS delta assumes flat vol. In reality, vol moves with spot ($\rho \approx -0.7$) → BS delta systematically underhedges in crashes and overhedges in rallies.
+**The problem**: BS delta assumes flat vol. In reality, vol moves with spot (ρ ≈ -0.7) → BS delta systematically underhedges in crashes and overhedges in rallies.
 
 **What DeepRoughVol does**: Three hedging strategies, compared on the same paths:
 
 | Strategy | Delta Formula | What It Captures |
 |---|---|---|
-| **Black-Scholes** | $\Delta^{BS}(\sigma_{ATM})$ | Nothing — flat vol assumption |
-| **Bartlett** | $\Delta^{BS} + \text{Vanna} \cdot \rho \cdot \sigma / S$ | Spot-vol correlation (minimum-variance hedge) |
-| **Neural-AD** | $\partial C / \partial S$ via JAX autodiff | Full stochastic vol effect through MC pipeline |
+| **Black-Scholes** | Δ_BS(σ_ATM) | Nothing — flat vol assumption |
+| **Bartlett** | Δ_BS + Vanna · ρ · σ / S | Spot-vol correlation (minimum-variance hedge) |
+| **Neural-AD** | ∂C/∂S via JAX autodiff | Full stochastic vol effect through MC pipeline |
 
 ```python
 from quant.hedging_simulator import HedgingSimulator
@@ -289,7 +289,7 @@ results = sim.run(neural_sde_spot_paths, neural_sde_var_paths, hedge_freq='daily
 # Neural-AD:     tracking_error = 0.06 (6%)  ← best: exact delta from the model
 ```
 
-**Key insight**: The Bartlett delta uses $\rho$ from config (calibrated, not hardcoded). The Neural-AD delta uses JAX autodiff to differentiate through the entire pricing function — it "sees" the stochastic vol structure.
+**Key insight**: The Bartlett delta uses ρ from config (calibrated, not hardcoded). The Neural-AD delta uses JAX autodiff to differentiate through the entire pricing function — it "sees" the stochastic vol structure.
 
 ---
 
@@ -297,7 +297,7 @@ results = sim.run(neural_sde_spot_paths, neural_sde_var_paths, hedge_freq='daily
 
 **The problem**: Most model comparisons are in-sample. You calibrate on all data, then evaluate on the same data → inflated performance.
 
-**What DeepRoughVol does**: Strict temporal rolling — train on $[t-w, t]$, test on $[t, t+h]$. Bergomi parameters $(H, \eta, \xi_0)$ are recalibrated per fold using only past data.
+**What DeepRoughVol does**: Strict temporal rolling — train on [t-w, t], test on [t, t+h]. Bergomi parameters (H, η, ξ_0) are recalibrated per fold using only past data.
 
 ```bash
 python bin/walk_forward.py
@@ -336,14 +336,14 @@ result = detector.detect()
 #    "recommended_params": {"H": 0.06, "eta": 2.5, "rho": -0.80}}
 ```
 
-| Regime | VIX Range | Recommended $H$ | Recommended $\eta$ | Recommended $\rho$ |
+| Regime | VIX Range | Recommended H | Recommended η | Recommended ρ |
 |---|:---:|:---:|:---:|:---:|
 | Calm | < 13 | 0.10 | 1.5 | -0.65 |
 | Normal | 13–20 | 0.07 | 1.9 | -0.70 |
 | Stressed | 20–30 | 0.06 | 2.5 | -0.80 |
 | Crisis | > 30 | 0.03 | 3.5 | -0.90 |
 
-In crisis: roughness increases ($H$ drops), vol-of-vol explodes ($\eta$ triples), correlation deepens ($\rho \to -0.9$). Using calm-regime parameters in a crisis systematically underestimates tail risk.
+In crisis: roughness increases (H drops), vol-of-vol explodes (η triples), correlation deepens (ρ → -0.9). Using calm-regime parameters in a crisis systematically underestimates tail risk.
 
 ---
 
@@ -355,12 +355,12 @@ In crisis: roughness increases ($H$ drops), vol-of-vol explodes ($\eta$ triples)
 
 | Parameter | Source | Method |
 |---|---|---|
-| $H$ (Hurst) | SPX multi-frequency returns | Multi-scale variogram + structure function + ratio on daily RV, 500 bootstrap, inverse-variance consensus |
-| $\eta$ (vol-of-vol) | VVIX index | $\eta = \text{VVIX} / (100 \cdot H^{0.4})$ with H-correction |
-| $\xi_0$ (initial variance) | VIX futures term structure | $(F_{30d} / 100)^2$ at nearest 30-DTE future |
-| $\kappa$ (mean reversion) | VIX futures curve | Slope of $\log(F_T)$ vs $T$ |
-| $r$ (risk-free rate) | NY Fed SOFR | Daily SOFR rate (3.73% as of March 2026) |
-| $\rho$ (spot-vol corr) | SPX returns vs $\Delta$VIX | Historical rolling correlation |
+| H (Hurst) | SPX multi-frequency returns | Multi-scale variogram + structure function + ratio on daily RV, 500 bootstrap, inverse-variance consensus |
+| η (vol-of-vol) | VVIX index | η = VVIX / (100 · H^0.4) with H-correction |
+| ξ_0 (initial variance) | VIX futures term structure | (F_30d / 100)² at nearest 30-DTE future |
+| κ (mean reversion) | VIX futures curve | Slope of log(F_T) vs T |
+| r (risk-free rate) | NY Fed SOFR | Daily SOFR rate (3.73% as of March 2026) |
+| ρ (spot-vol corr) | SPX returns vs ΔVIX | Historical rolling correlation |
 
 ```bash
 python bin/calibrate.py
@@ -435,7 +435,7 @@ Every endpoint that generates MC paths now respects the `model` parameter: `"neu
 
 ### Multi-Scale Hurst Estimation — Roughness Is Real
 
-> **Key result**: Using 4 independent estimators across 5 time scales on 10+ years of SPX data, we find a consensus Hurst exponent of $H = 0.110 \pm 0.003$, firmly in the rough volatility regime. This is universal across assets (SPX, SPY, CAC40) and monofractal (single $H$, no multifractality).
+> **Key result**: Using 4 independent estimators across 5 time scales on 10+ years of SPX data, we find a consensus Hurst exponent of H = 0.110 ± 0.003, firmly in the rough volatility regime. This is universal across assets (SPX, SPY, CAC40) and monofractal (single H, no multifractality).
 
 This section details the rigorous multi-scale estimation implemented in `quant/hurst_estimation.py` and run via `bin/hurst_multiscale.py`.
 
@@ -443,50 +443,60 @@ This section details the rigorous multi-scale estimation implemented in `quant/h
 
 ##### Definition — Fractional Brownian Motion (fBM)
 
-A **fractional Brownian motion** $B^H = (B^H_t)_{t \geq 0}$ with Hurst parameter $H \in (0,1)$ is the unique centered Gaussian process with covariance:
+A **fractional Brownian motion** B^H = (B^H_t)_{t ≥ 0} with Hurst parameter H ∈ (0,1) is the unique centered Gaussian process with covariance:
 
-$$\operatorname{Cov}(B^H_t, B^H_s) = \tfrac{1}{2}\bigl(|t|^{2H} + |s|^{2H} - |t-s|^{2H}\bigr)$$
+```math
+Cov(B^H_t, B^H_s) = (1/2)(|t|^(2H) + |s|^(2H) - |t-s|^(2H))
+```
 
 **Fundamental properties:**
 
 | Property | Statement | Consequence |
 |:--|:--|:--|
-| Self-similarity | $(B^H_{ct})_t \overset{d}{=} c^H(B^H_t)_t$ for all $c > 0$ | Scale invariance of increments |
-| Stationary increments | $B^H_{t+\tau} - B^H_t \overset{d}{=} B^H_\tau$ for all $t$ | Time-shift invariance |
-| Variance scaling | $\operatorname{Var}(B^H_t) = t^{2H}$ | Power-law variance growth |
-| Increment correlation | $\operatorname{Corr}(\Delta_1 B^H, \Delta_2 B^H) < 0$ when $H < 1/2$ | Anti-persistence (roughness) |
+| Self-similarity | (B^H_{ct}) =^d c^H·(B^H_t)  for all c > 0 | Scale invariance of increments |
+| Stationary increments | B^H_{t+τ} - B^H_t =^d B^H_τ  for all t | Time-shift invariance |
+| Variance scaling | Var(B^H_t) = t^(2H) | Power-law variance growth |
+| Increment correlation | Corr(ΔB^H_1, ΔB^H_2) < 0 when H < 1/2 | Anti-persistence (roughness) |
 
-For $H = 1/2$, fBM reduces to standard Brownian motion. For $H < 1/2$, increments are **negatively correlated** — a positive move is more likely followed by a negative one, creating the jagged, erratic paths characteristic of rough processes.
+For H = 1/2, fBM reduces to standard Brownian motion. For H < 1/2, increments are **negatively correlated** — a positive move is more likely followed by a negative one, creating the jagged, erratic paths characteristic of rough processes.
 
 ##### Hölder Regularity and Sample Path Properties
 
-**Theorem (Kolmogorov–Čentsov).** *The sample paths of $B^H$ are almost surely Hölder continuous of every order $\alpha < H$, and almost surely not Hölder continuous of order $\alpha > H$. That is, the Hölder exponent of $B^H$ equals $H$ almost surely.*
+**Theorem (Kolmogorov–Čentsov).** *The sample paths of B^H are almost surely Hölder continuous of every order α < H, and almost surely not Hölder continuous of order α > H. That is, the Hölder exponent of B^H equals H almost surely.*
 
-**Proof.** By Kolmogorov's continuity criterion, if a process $X$ satisfies
+**Proof.** By Kolmogorov's continuity criterion, if a process X satisfies
 
-$$E\bigl[|X_t - X_s|^p\bigr] \leq C\,|t-s|^{1+\beta}$$
+```math
+E[|X_t - X_s|^p] ≤ C · |t-s|^(1+β)
+```
 
-for some $p \geq 1$ and $\beta > 0$, then $X$ admits a modification with Hölder-continuous paths of order $\gamma$ for any $\gamma < \beta/p$. For fBM, since $B^H_t - B^H_s \sim \mathcal{N}(0, |t-s|^{2H})$, the $p$-th absolute moment of a Gaussian gives:
+for some p ≥ 1 and β > 0, then X admits a modification with Hölder-continuous paths of order γ for any γ < β/p. For fBM, since B^H_t - B^H_s ~ N(0, |t-s|^(2H)), the p-th absolute moment of a Gaussian gives:
 
-$$E\bigl[|B^H_t - B^H_s|^p\bigr] = c_p\,|t-s|^{pH}$$
+```math
+E[|B^H_t - B^H_s|^p] = c_p · |t-s|^(pH)
+```
 
-where $c_p = E[|\mathcal{N}(0,1)|^p] = 2^{p/2}\Gamma\!\bigl(\frac{p+1}{2}\bigr)/\sqrt{\pi}$. Setting $\beta = pH - 1$, we get Hölder regularity $\gamma < (pH-1)/p = H - 1/p$. Since $p$ can be taken arbitrarily large, $\gamma$ can be made arbitrarily close to $H$. The matching lower bound (paths are *not* $\alpha$-Hölder for $\alpha > H$) follows from the law of the iterated logarithm for fBM (Arcones 1995). $\square$
+where c_p = E[|N(0,1)|^p] = 2^(p/2) · Gamma((p+1)/2) / sqrt(π). Setting β = pH - 1, we get Hölder regularity γ < (pH-1)/p = H - 1/p. Since p can be taken arbitrarily large, γ can be made arbitrarily close to H. The matching lower bound (paths are *not* α-Hölder for α > H) follows from the law of the iterated logarithm for fBM (Arcones 1995). □
 
-**Practical meaning:** For $H = 0.11$, paths are *vastly* rougher than Brownian motion ($H = 0.5$). They have infinite $p$-variation for any $p < 1/H \approx 9$, and are nowhere differentiable — with a quantifiably different degree of irregularity from standard BM.
+**Practical meaning:** For H = 0.11, paths are *vastly* rougher than Brownian motion (H = 0.5). They have infinite p-variation for any p < 1/H ≈ 9, and are nowhere differentiable — with a quantifiably different degree of irregularity from standard BM.
 
 ##### The Rough Volatility Hypothesis
 
-Gatheral, Jaisson & Rosenbaum (2018) discovered empirically that log-realized-volatility of equity indices behaves like fBM with $H \approx 0.1$:
+Gatheral, Jaisson & Rosenbaum (2018) discovered empirically that log-realized-volatility of equity indices behaves like fBM with H ≈ 0.1:
 
-$$X_t = \log \sigma_t \approx X_0 + \eta\, B^H_t$$
+```math
+X_t = log(σ_t) ≈ X_0 + η · B^H_t
+```
 
 This is formalized in the **rough Bergomi** (rBergomi) model (Bayer, Friz & Gatheral 2016):
 
-$$\log V_t = \log \xi_0 + \eta\,\hat{W}^H_t - \tfrac{1}{2}\eta^2\,t^{2H}$$
+```math
+log(V_t) = log(ξ_0) + η · W̃^H_t - (1/2)·η²·t^(2H)
+```
 
-where $\hat{W}^H_t = \sqrt{2H}\displaystyle\int_0^t (t-s)^{H-1/2}\,dW_s$ is the **Riemann–Liouville fBM** (Volterra kernel representation). The correction term $-\frac{1}{2}\eta^2 t^{2H}$ ensures $E[V_t] = \xi_0$ (the forward variance curve is preserved under the risk-neutral measure).
+where W̃^H_t = sqrt(2H) · ∫₀ᵗ (t-s)^(H-1/2) dW_s is the **Riemann–Liouville fBM** (Volterra kernel representation). The correction term -(1/2)·η²·t^(2H) ensures E[V_t] = ξ_0 (the forward variance curve is preserved under the risk-neutral measure).
 
-**The key empirical prediction**: the variogram of $X_t = \log RV_t$ should scale as $\tau^{2H}$ with $H \ll 1/2$. This is exactly what we verify below on 10+ years of SPX data.
+**The key empirical prediction**: the variogram of X_t = log RV_t should scale as τ^(2H) with H ≪ 1/2. This is exactly what we verify below on 10+ years of SPX data.
 
 ---
 
@@ -496,176 +506,227 @@ We prove the mathematical foundations of each estimator used in our analysis.
 
 ##### Theorem 1 — Variogram Estimator for the Hurst Exponent
 
-**Statement.** *Let $(X_t)_{t \geq 0}$ be a process with stationary increments satisfying $E[|X_{t+\tau} - X_t|^2] = C \cdot \tau^{2H}$ for some $H \in (0,1)$ and $C > 0$. Define the empirical variogram:*
+**Statement.** *Let (X_t)_{t ≥ 0} be a process with stationary increments satisfying E[|X_{t+τ} - X_t|²] = C · τ^(2H) for some H ∈ (0,1) and C > 0. Define the empirical variogram:*
 
-$$m(2, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}(X_{t+\tau} - X_t)^2$$
+```math
+m(2, τ) = (1/(N-τ)) · Σ_{t=1}^{N-τ} (X_{t+τ} - X_t)²
+```
 
-*Then $\log m(2,\tau) \xrightarrow{p} 2H\log\tau + \log C$ as $N \to \infty$, and the OLS slope of $\log m(2,\tau)$ vs $\log\tau$ divided by 2 is a consistent estimator of $H$.*
+*Then log m(2,τ) →(p) 2H·log(τ) + log(C)  as N → ∞, and the OLS slope of log m(2,τ) vs log(τ) divided by 2 is a consistent estimator of H.*
 
-**Proof.** By the ergodic theorem for stationary sequences (the increments $(X_{t+\tau}-X_t)^2$ form a stationary, ergodic sequence under mild mixing conditions):
+**Proof.** By the ergodic theorem for stationary sequences (the increments (X_{t+τ}-X_t)² form a stationary, ergodic sequence under mild mixing conditions):
 
-$$m(2, \tau) \xrightarrow{p} E\bigl[(X_{t+\tau} - X_t)^2\bigr] = C\tau^{2H}$$
+```math
+m(2, τ) →(p) E[(X_{t+τ} - X_t)²] = C·τ^(2H)
+```
 
 Taking logarithms (continuous mapping theorem):
 
-$$\log m(2, \tau) \xrightarrow{p} \log(C\tau^{2H}) = 2H\log\tau + \log C$$
+```math
+log m(2, τ) →(p) log(C·τ^(2H)) = 2H·log(τ) + log(C)
+```
 
-This is a simple linear model $y_k = 2H \cdot x_k + b + \varepsilon_k$ where $y_k = \log m(2, \tau_k)$, $x_k = \log \tau_k$, and $\varepsilon_k \xrightarrow{p} 0$. The OLS estimator $\hat{\beta}$ for the slope converges to $2H$, giving:
+This is a simple linear model y_k = 2H·x_k + b + ε_k where y_k = log m(2, τ_k), x_k = log(τ_k), and ε_k →(p) 0. The OLS estimator β_hat for the slope converges to 2H, giving:
 
-$$\hat{H}_{\text{var}} = \frac{\hat{\beta}_{\text{OLS}}}{2}$$
+```math
+Ĥ_var = β_OLS / 2
+```
 
-The $R^2$ of this log-log regression measures goodness-of-fit to the power-law model $m(2,\tau) = C\tau^{2H}$. We observe $R^2 > 0.93$ at all frequencies, validating the fBM scaling assumption. $\square$
+The R² of this log-log regression measures goodness-of-fit to the power-law model m(2,τ) = C·τ^(2H). We observe R² > 0.93 at all frequencies, validating the fBM scaling assumption. □
 
-**In our data:** $\hat{H}_{\text{var}} \in [0.087, 0.119]$ across all 5 frequencies, with $R^2 > 0.93$. This is the primary estimator.
+**In our data:** Ĥ_var ∈ [0.087, 0.119] across all 5 frequencies, with R² > 0.93. This is the primary estimator.
 
 ##### Theorem 2 — Structure Function and Monofractality
 
-**Statement.** *For a process with fBM-like scaling, the generalized structure function of order $q > 0$:*
+**Statement.** *For a process with fBM-like scaling, the generalized structure function of order q > 0:*
 
-$$m(q, \tau) = \frac{1}{N-\tau}\sum_{t=1}^{N-\tau}|X_{t+\tau} - X_t|^q$$
+```math
+m(q, τ) = (1/(N-τ)) · Σ_{t=1}^{N-τ} |X_{t+τ} - X_t|^q
+```
 
-*converges to $c_q \cdot \tau^{\zeta(q)}$ where $\zeta(q)$ is the scaling exponent. For a monofractal process (single Hurst exponent), $\zeta(q) = qH$ for all $q > 0$.*
+*converges to c_q · τ^(ζ(q)) where ζ(q) is the scaling exponent. For a monofractal process (single Hurst exponent), ζ(q) = qH for all q > 0.*
 
-**Proof.** By self-similarity of fBM increments, $X_{t+\tau} - X_t \overset{d}{=} \tau^H Z$ where $Z \sim \mathcal{N}(0, C)$. Therefore:
+**Proof.** By self-similarity of fBM increments, X_{t+τ} - X_t =^d τ^H · Z where Z ~ N(0, C). Therefore:
 
-$$E\bigl[|X_{t+\tau} - X_t|^q\bigr] = \tau^{qH}\,E[|Z|^q] = c_q\,\tau^{qH}$$
+```math
+E[|X_{t+τ} - X_t|^q] = τ^(qH) · E[|Z|^q] = c_q · τ^(qH)
+```
 
-with explicit constant $c_q = C^{q/2} \cdot \dfrac{2^{q/2}\,\Gamma\!\bigl(\frac{q+1}{2}\bigr)}{\sqrt{\pi}}$.
+with explicit constant c_q = C^(q/2) · 2^(q/2) · Gamma((q+1)/2) / sqrt(π).
 
-Defining $\zeta(q) = qH$, the scaling is **linear** in $q$ → monofractal.
+Defining ζ(q) = qH, the scaling is **linear** in q → monofractal.
 
-**Robustness of $q = 1$.** For $q = 1$, $m(1,\tau) \propto \tau^H$ gives $H$ directly from a single log-log regression. The key advantage: $E[|Z|]$ exists for any distribution with finite first moment, while $E[Z^2]$ requires finite variance. For heavy-tailed deviations from Gaussianity, $m(2,\tau)$ is dominated by extreme observations, while $m(1,\tau)$ is robust. $\square$
+**Robustness of q = 1.** For q = 1, m(1,τ) ∝ τ^H gives H directly from a single log-log regression. The key advantage: E[|Z|] exists for any distribution with finite first moment, while E[Z^2] requires finite variance. For heavy-tailed deviations from Gaussianity, m(2,τ) is dominated by extreme observations, while m(1,τ) is robust. □
 
-**Monofractality criterion.** If $\zeta(q) = qH$ is linear in $q$, the process has a single scaling exponent. If $\zeta(q)$ is strictly concave, multiple exponents coexist (multifractality, as in turbulence cascades or multiplicative models). We test this by fitting $\zeta(q) = a_1 q + a_2 q^2$ for $q \in \{0.5, 1, 1.5, 2, 3, 4\}$:
-- **Monofractal**: $R^2_{\text{linear}} > 0.999$ and quadratic curvature $|a_2| < 0.01$
-- **Multifractal**: significant curvature $|a_2| \gg 0.01$
+**Monofractality criterion.** If ζ(q) = qH is linear in q, the process has a single scaling exponent. If ζ(q) is strictly concave, multiple exponents coexist (multifractality, as in turbulence cascades or multiplicative models). We test this by fitting ζ(q) = a_1·q + a_2·q² for q ∈ {0.5, 1, 1.5, 2, 3, 4}:
+- **Monofractal**: R²_linear > 0.999 and quadratic curvature |a_2| < 0.01
+- **Multifractal**: significant curvature |a_2| ≫ 0.01
 
-Our results: $R^2 > 0.998$ and $|a_2| < 0.006$ at all frequencies → **single $H$ confirmed** → validates using one $H$ in the rBergomi / Neural SDE backbone.
+Our results: R² > 0.998 and |a_2| < 0.006 at all frequencies → **single H confirmed** → validates using one H in the rBergomi / Neural SDE backbone.
 
 ##### Proposition 3 — Ratio Estimator (Non-Regression, Local)
 
 **Statement.** *Define:*
 
-$$\hat{H}(\tau) = \frac{1}{2}\log_2\!\left(\frac{m(2, 2\tau)}{m(2, \tau)}\right)$$
+```math
+Ĥ(τ) = (1/2) · log₂( m(2, 2τ) / m(2, τ) )
+```
 
-*If $m(2,\tau) = C\tau^{2H}$ exactly, then $\hat{H}(\tau) = H$.*
+*If m(2,τ) = C·τ^(2H) exactly, then Ĥ(τ) = H.*
 
 **Proof.** Direct computation:
 
-$$\frac{m(2, 2\tau)}{m(2, \tau)} = \frac{C(2\tau)^{2H}}{C\tau^{2H}} = 2^{2H}$$
+```math
+m(2, 2τ) / m(2, τ) = C·(2τ)^(2H) / (C·τ^(2H)) = 2^(2H)
+```
 
-$$\implies \hat{H}(\tau) = \frac{1}{2}\log_2(2^{2H}) = \frac{1}{2} \cdot 2H = H \quad \square$$
+```math
+=> Ĥ(τ) = (1/2)·log₂(2^(2H)) = (1/2)·2H = H  □
+```
 
-**Advantage:** No regression needed — gives a local $H$ estimate at each lag $\tau$, then averaged. **Disadvantage:** Higher variance (each estimate uses only two lag values). In our data, the ratio estimator gives $\hat{H} \in [0.076, 0.098]$, consistently the lowest — reflecting slight downward bias from finite-sample effects and microstructure residuals at short lags.
+**Advantage:** No regression needed — gives a local H estimate at each lag τ, then averaged. **Disadvantage:** Higher variance (each estimate uses only two lag values). In our data, the ratio estimator gives Ĥ ∈ [0.076, 0.098], consistently the lowest — reflecting slight downward bias from finite-sample effects and microstructure residuals at short lags.
 
 ##### Theorem 4 — TSRV Bias Correction (Zhang, Mykland & Aït-Sahalia, 2005)
 
 At ultra-high frequency, market microstructure noise contaminates observed prices. Let:
 
-$$Y_{t_i} = X_{t_i} + \varepsilon_{t_i}$$
+```math
+Y_{t_i} = X_{t_i} + ε_{t_i}
+```
 
-where $X_t$ is the efficient log-price and $\varepsilon_{t_i} \overset{iid}{\sim} (0, \sigma^2_\varepsilon)$ is microstructure noise (bid-ask bounce, discreteness, etc.).
+where X_t is the efficient log-price and ε_{t_i} ~iid (0, σ²_ε) is microstructure noise (bid-ask bounce, discreteness, etc.).
 
-**Proposition (RV bias).** *The naive realized variance from $n$ high-frequency returns:*
+**Proposition (RV bias).** *The naive realized variance from n high-frequency returns:*
 
-$$RV^{(n)} = \sum_{i=1}^{n}(Y_{t_i} - Y_{t_{i-1}})^2$$
+```math
+RV^(n) = Σ_{i=1}^n (Y_{t_i} - Y_{t_{i-1}})²
+```
 
-*satisfies $E[RV^{(n)}] = \displaystyle\int_0^T \sigma^2_t\,dt + 2n\sigma^2_\varepsilon$. As $n \to \infty$ (finer sampling), the noise term diverges.*
+*satisfies E[RV^(n)] = ∫₀ᵀ σ²_t dt + 2n·σ²_ε. As n → ∞ (finer sampling), the noise term diverges.*
 
 **Proof.** Expand:
 
-$$Y_{t_i} - Y_{t_{i-1}} = \underbrace{(X_{t_i} - X_{t_{i-1}})}_{\text{signal}} + \underbrace{(\varepsilon_{t_i} - \varepsilon_{t_{i-1}})}_{\text{noise}}$$
+```math
+Y_{t_i} - Y_{t_{i-1}} = (X_{t_i} - X_{t_{i-1}})   [signal]
+                       + (ε_{t_i} - ε_{t_{i-1}})   [noise]
+```
 
-Squaring, using independence of $X$ and $\varepsilon$ with $E[\varepsilon] = 0$:
+Squaring, using independence of X and ε with E[ε] = 0:
 
-$$E\bigl[(Y_{t_i} - Y_{t_{i-1}})^2\bigr] = E\bigl[(X_{t_i} - X_{t_{i-1}})^2\bigr] + E\bigl[\varepsilon_{t_i}^2 + \varepsilon_{t_{i-1}}^2 - 2\varepsilon_{t_i}\varepsilon_{t_{i-1}}\bigr]$$
+```math
+E[(Y_{t_i} - Y_{t_{i-1}})²] = E[(X_{t_i} - X_{t_{i-1}})²]
+                             + E[ε_{t_i}² + ε_{t_{i-1}}² - 2·ε_{t_i}·ε_{t_{i-1}}]
+```
 
-The noise term equals $2\sigma^2_\varepsilon$ (i.i.d. assumption). Summing over $i = 1, \ldots, n$:
+The noise term equals 2σ²_ε (i.i.d. assumption). Summing over i = 1, …, n:
 
-$$E[RV^{(n)}] = \underbrace{\sum_{i=1}^n E[(X_{t_i}-X_{t_{i-1}})^2]}_{\to \int_0^T \sigma^2_t\,dt} + \underbrace{2n\,\sigma^2_\varepsilon}_{\text{diverges as } n \to \infty} \quad \square$$
+```math
+E[RV^(n)] = Σ_{i=1}^n E[(X_{t_i} - X_{t_{i-1}})²]   [→ ∫₀ᵀ σ²_t dt]
+           + 2n·σ²_ε                                  [diverges as n → ∞]   □
+```
 
-**Two-Scale RV.** Subsample at a coarser grid with $K \ll n$ points to get $RV^{(K)}$ (bias $2K\sigma^2_\varepsilon$, much smaller). Define:
+**Two-Scale RV.** Subsample at a coarser grid with K ≪ n points to get RV^(K) (bias 2K·σ²_ε, much smaller). Define:
 
-$$\widehat{\text{TSRV}} = RV^{(K)} - \frac{K}{n}\,RV^{(n)}$$
+```math
+TSRV_hat = RV^(K) - (K/n)·RV^(n)
+```
 
 **Proof of unbiasedness:**
 
-$$E[\widehat{\text{TSRV}}] = \left(\int_0^T\sigma^2_t\,dt + 2K\sigma^2_\varepsilon\right) - \frac{K}{n}\left(\int_0^T\sigma^2_t\,dt + 2n\sigma^2_\varepsilon\right)$$
+```math
+E[TSRV_hat] = (∫₀ᵀ σ²_t dt + 2K·σ²_ε) - (K/n)·(∫₀ᵀ σ²_t dt + 2n·σ²_ε)
+```
 
-$$= \int_0^T\sigma^2_t\,dt\left(1 - \frac{K}{n}\right) + 2K\sigma^2_\varepsilon - 2K\sigma^2_\varepsilon = \left(1 - \frac{K}{n}\right)\int_0^T\sigma^2_t\,dt$$
+```math
+= ∫₀ᵀ σ²_t dt · (1 - K/n) + 2K·σ²_ε - 2K·σ²_ε = (1 - K/n) · ∫₀ᵀ σ²_t dt
+```
 
-For $K \ll n$, the factor $(1 - K/n) \approx 1$ and the noise bias is eliminated to leading order. The optimal subsampling rate is $K \asymp n^{2/3}$ (Zhang et al. 2005, Theorem 2), yielding convergence rate $O(n^{-1/6})$ vs $O(1)$ for naive RV. $\square$
+For K ≪ n, the factor (1 - K/n) ≈ 1 and the noise bias is eliminated to leading order. The optimal subsampling rate is K ~ n^(2/3) (Zhang et al. 2005, Theorem 2), yielding convergence rate O(n^(-1/6)) vs O(1) for naive RV. □
 
-**In our implementation:** TSRV is applied for $\Delta \leq 1$ min (5-second data). For $\Delta \geq 5$ min, noise is negligible and standard RV suffices — consistent with the realized volatility literature.
+**In our implementation:** TSRV is applied for Δ ≤ 1 min (5-second data). For Δ ≥ 5 min, noise is negligible and standard RV suffices — consistent with the realized volatility literature.
 
-##### Theorem 5 — Integration Smooths Roughness (Why VIX Shows $H \approx 0.5$)
+##### Theorem 5 — Integration Smooths Roughness (Why VIX Shows H ≈ 0.5)
 
 This explains a crucial subtlety. The VIX index measures the risk-neutral expected integrated variance over 30 days:
 
-$$\text{VIX}^2_t \propto E^{\mathbb{Q}}\!\left[\frac{1}{\Delta}\int_t^{t+\Delta} \sigma^2_s\,ds\;\Bigg|\;\mathcal{F}_t\right], \quad \Delta = 30\text{ days}$$
+```math
+VIX²_t ∝ E^Q[ (1/Δ) · ∫_{t}^{t+Δ} σ²_s ds | F_t ],   Δ = 30 days
+```
 
-Even though $\log\sigma_t$ is rough ($H \approx 0.1$), VIX appears smooth ($H \approx 0.5$). Here is why.
+Even though log(σ_t) is rough (H ≈ 0.1), VIX appears smooth (H ≈ 0.5). Here is why.
 
-**Proposition (Moving-average smoothing of fBM).** *Let $X_t$ be fBM($H$) and define the moving average:*
+**Proposition (Moving-average smoothing of fBM).** *Let X_t be fBM(H) and define the moving average:*
 
-$$\bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\int_{t}^{t+\Delta} X_s\,ds$$
+```math
+X̄_t^(Δ) = (1/Δ) · ∫_{t}^{t+Δ} X_s ds
+```
 
 *Then for the variogram of the smoothed process:*
 
-- *For lags $\tau \gg \Delta$: $E[(\bar{X}_{t+\tau} - \bar{X}_t)^2] \sim C_1\,\tau^{2H}$ — roughness preserved*
-- *For lags $\tau \ll \Delta$: $E[(\bar{X}_{t+\tau} - \bar{X}_t)^2] \sim C_2\,\tau^2$ — appears Lipschitz ($H_{\text{eff}} \approx 1$)*
+- *For lags τ ≫ Δ: E[(X̄_{t+τ} - X̄_t)²] ~ C_1·τ^(2H) — roughness preserved*
+- *For lags τ ≪ Δ: E[(X̄_{t+τ} - X̄_t)²] ~ C_2·τ² — appears Lipschitz (H_eff ≈ 1)*
 
 **Proof sketch.** Write the increment of the smoothed process:
 
-$$\bar{X}_{t+\tau}^{(\Delta)} - \bar{X}_t^{(\Delta)} = \frac{1}{\Delta}\left(\int_{t+\Delta}^{t+\tau+\Delta} X_s\,ds - \int_t^{t+\tau}X_s\,ds\right)$$
+```math
+X̄_{t+τ}^(Δ) - X̄_t^(Δ) = (1/Δ)·( ∫_{t+Δ}^{t+τ+Δ} X_s ds  -  ∫_t^{t+τ} X_s ds )
+```
 
-**Case $\tau \gg \Delta$:** The two integration windows $[t, t+\Delta]$ and $[t+\tau, t+\tau+\Delta]$ are well-separated. The averaging windows are small relative to the lag, so $\bar{X}_{t+\tau} - \bar{X}_t \approx X_{t+\tau} - X_t$, which scales as $\tau^{2H}$.
+**Case τ ≫ Δ:** The two integration windows [t, t+Δ] and [t+τ, t+τ+Δ] are well-separated. The averaging windows are small relative to the lag, so X̄_{t+τ} - X̄_t ≈ X_{t+τ} - X_t, which scales as τ^(2H).
 
-**Case $\tau \ll \Delta$:** The two windows almost completely overlap. The difference arises from the non-overlapping boundaries: $\bar{X}_{t+\tau} - \bar{X}_t \approx \frac{\tau}{\Delta}(X_{t+\Delta} - X_t)$, which scales as $\tau$ (deterministic linear factor) — making the process appear Lipschitz ($H_{\text{eff}} \to 1$). $\square$
+**Case τ ≪ Δ:** The two windows almost completely overlap. The difference arises from the non-overlapping boundaries: X̄_{t+τ} - X̄_t ≈ (τ/Δ)·(X_{t+Δ} - X_t), which scales as τ (deterministic linear factor) — making the process appear Lipschitz (H_eff → 1). □
 
-**Consequence for VIX.** Observations at daily/weekly frequency give lags $\tau \in [1, 60]$ days, comparable to $\Delta = 30$ days. At these lags, smoothing is active and the estimated Hurst exponent is biased upward. Our measurements confirm: **VIX 15-min → $H \approx 0.47$, VIX 30-min → $H \approx 0.45$**. This is the **P ≠ Q trap**: roughness must be estimated from **realized volatility** (SPX intraday returns under $\mathbb{P}$), not from VIX (a $\mathbb{Q}$-measure integral).
+**Consequence for VIX.** Observations at daily/weekly frequency give lags τ ∈ [1, 60] days, comparable to Δ = 30 days. At these lags, smoothing is active and the estimated Hurst exponent is biased upward. Our measurements confirm: **VIX 15-min → H ≈ 0.47, VIX 30-min → H ≈ 0.45**. This is the **P ≠ Q trap**: roughness must be estimated from **realized volatility** (SPX intraday returns under **P**), not from VIX (a **Q**-measure integral).
 
 ##### Proposition 6 — Inverse-Variance Weighting Is BLUE
 
-**Statement.** *Given $K$ unbiased estimators $\hat{H}_1, \ldots, \hat{H}_K$ with variances $\sigma^2_1, \ldots, \sigma^2_K$ (from bootstrap), the weighted average:*
+**Statement.** *Given K unbiased estimators Ĥ_1, …, Ĥ_K with variances σ²_1, …, σ²_K (from bootstrap), the weighted average:*
 
-$$\hat{H}_w = \frac{\sum_{k=1}^K w_k\,\hat{H}_k}{\sum_{k=1}^K w_k}, \quad w_k = \frac{1}{\sigma^2_k}$$
+```math
+Ĥ_w = (Σ_{k=1}^K w_k · Ĥ_k) / (Σ_{k=1}^K w_k),   w_k = 1/σ²_k
+```
 
 *is the **Best Linear Unbiased Estimator** (BLUE) — it has the smallest variance among all linear unbiased combinations.*
 
-**Proof.** We minimize $\operatorname{Var}(\hat{H}_w) = \sum_k \alpha_k^2 \sigma_k^2$ subject to $\sum_k \alpha_k = 1$ (unbiasedness), where $\alpha_k = w_k / \sum_j w_j$. By Lagrange multipliers:
+**Proof.** We minimize Var(Ĥ_w) = Σ_k α²_k · σ²_k subject to Σ_k α_k = 1 (unbiasedness), where α_k = w_k / Σ_j w_j. By Lagrange multipliers:
 
-$$\mathcal{L} = \sum_k \alpha_k^2\sigma_k^2 - \lambda\!\left(\sum_k\alpha_k - 1\right)$$
+```math
+L = Σ_k α_k² · σ²_k  -  λ·(Σ_k α_k - 1)
+```
 
-$$\frac{\partial\mathcal{L}}{\partial\alpha_k} = 2\alpha_k\sigma_k^2 - \lambda = 0 \implies \alpha_k = \frac{\lambda}{2\sigma_k^2} \propto \frac{1}{\sigma_k^2}$$
+```math
+∂L/∂α_k = 2·α_k·σ²_k - λ = 0  =>  α_k = λ/(2·σ²_k)  ∝  1/σ²_k
+```
 
-The constraint $\sum_k \alpha_k = 1$ gives $\alpha_k = \dfrac{1/\sigma_k^2}{\sum_j 1/\sigma_j^2}$, i.e., inverse-variance weighting. The resulting minimum variance is:
+The constraint Σ_k α_k = 1 gives α_k = (1/σ²_k) / Σ_j (1/σ²_j), i.e., inverse-variance weighting. The resulting minimum variance is:
 
-$$\operatorname{Var}(\hat{H}_w) = \frac{1}{\sum_{k=1}^K 1/\sigma_k^2}$$
+```math
+Var(Ĥ_w) = 1 / (Σ_{k=1}^K 1/σ²_k)
+```
 
-No other linear unbiased combination achieves smaller variance. $\square$
+No other linear unbiased combination achieves smaller variance. □
 
-**In practice:** This naturally downweights the DMA estimator ($\hat{H} \approx 0.4$, known upward bias for rough processes → large bootstrap variance) and upweights the variogram and structure function (tight CI, low variance). The consensus $H = 0.110 \pm 0.003$ is dominated by the 30-min and 1-hour frequencies, which have the most data (2974 days each) and therefore the smallest bootstrap variance.
+**In practice:** This naturally downweights the DMA estimator (Ĥ ≈ 0.4, known upward bias for rough processes → large bootstrap variance) and upweights the variogram and structure function (tight CI, low variance). The consensus H = 0.110 ± 0.003 is dominated by the 30-min and 1-hour frequencies, which have the most data (2974 days each) and therefore the smallest bootstrap variance.
 
 ##### Proposition 7 — Block Bootstrap for Dependent Time Series
 
-**Statement (Politis & Romano, 1994).** *For a stationary, weakly dependent time series $(X_t)_{t=1}^n$, the circular block bootstrap with block length $\ell \asymp n^{1/3}$ provides asymptotically consistent variance estimates and confidence intervals.*
+**Statement (Politis & Romano, 1994).** *For a stationary, weakly dependent time series (X_t)_{t=1,...,n}, the circular block bootstrap with block length ℓ ~ n^(1/3) provides asymptotically consistent variance estimates and confidence intervals.*
 
 Standard (i.i.d.) bootstrap fails for time series because it destroys the temporal dependence structure. The **block bootstrap** preserves local dependence by resampling contiguous blocks:
 
-1. Choose block length $\ell = \lceil n^{1/3} \rceil$ (optimal rate — see below)
-2. Draw $\lceil n/\ell \rceil$ blocks uniformly at random from $\{(X_t, \ldots, X_{t+\ell-1}) : t = 1,\ldots,n\}$
-3. Concatenate blocks to form a bootstrap sample $X^*_1, \ldots, X^*_n$
-4. Recompute $\hat{H}$ on the bootstrap sample
-5. Repeat $B = 500$ times to estimate the sampling distribution
+1. Choose block length ℓ = ⌈n^(1/3)⌉ (optimal rate — see below)
+2. Draw ⌈n/ℓ⌉ blocks uniformly at random from {(X_t, …, X_{t+ℓ-1}) : t = 1, …, n}
+3. Concatenate blocks to form a bootstrap sample X*_1, …, X*_n
+4. Recompute Ĥ on the bootstrap sample
+5. Repeat B = 500 times to estimate the sampling distribution
 
-**Circular variant:** Treats the series as periodic ($X_{n+j} = X_j$) to avoid edge effects, ensuring each observation has equal probability of being in a block start position.
+**Circular variant:** Treats the series as periodic (X_{n+j} = X_j) to avoid edge effects, ensuring each observation has equal probability of being in a block start position.
 
-**Why $\ell \asymp n^{1/3}$?** This balances two competing effects:
-- Blocks too short ($\ell \to 1$): destroys temporal dependence → underestimates variance
-- Blocks too long ($\ell \to n$): each block is the whole series → no resampling variation
+**Why ℓ ~ n^(1/3)?** This balances two competing effects:
+- Blocks too short (ℓ → 1): destroys temporal dependence → underestimates variance
+- Blocks too long (ℓ → n): each block is the whole series → no resampling variation
 
-The rate $n^{1/3}$ minimizes the MSE of the bootstrap variance estimator under polynomial mixing (Politis & Romano 1994, Theorem 3.1). **In our data:** For $n = 2974$ (30-min frequency), $\ell = \lceil 2974^{1/3}\rceil = 15$ days. Each bootstrap replicate consists of ~198 non-overlapping 15-day blocks, preserving the vol-clustering structure while allowing genuine resampling variation.
+The rate n^(1/3) minimizes the MSE of the bootstrap variance estimator under polynomial mixing (Politis & Romano 1994, Theorem 3.1). **In our data:** For n = 2974 (30-min frequency), ℓ = ⌈2974^(1/3)⌉ = 15 days. Each bootstrap replicate consists of ~198 non-overlapping 15-day blocks, preserving the vol-clustering structure while allowing genuine resampling variation.
 
 ---
 
@@ -673,21 +734,23 @@ The rate $n^{1/3}$ minimizes the MSE of the bootstrap variance estimator under p
 
 Given the above theoretical foundations, our concrete pipeline is:
 
-1. **Realized Variance** — For each frequency $\Delta \in \{5\text{m}, 15\text{m}, 30\text{m}, 1\text{h}, \text{daily}\}$, compute daily RV:
+1. **Realized Variance** — For each frequency Δ ∈ {5m, 15m, 30m, 1h, daily}, compute daily RV:
 
-$$RV_d^{(\Delta)} = \sum_{i} \left(\log S_{t_i+\Delta} - \log S_{t_i}\right)^2$$
+```math
+RV_d^(Δ) = Σ_i (log S_{t_i+Δ} - log S_{t_i})²
+```
 
-2. **TSRV correction** — For $\Delta \leq 1$ min, apply Two-Scale RV (Theorem 4) to remove microstructure noise.
+2. **TSRV correction** — For Δ ≤ 1 min, apply Two-Scale RV (Theorem 4) to remove microstructure noise.
 
-3. **Hurst estimation** on $X_t = \log RV_t$ using 4 independent methods (Theorems 1–3 + DMA).
+3. **Hurst estimation** on X_t = log RV_t using 4 independent methods (Theorems 1–3 + DMA).
 
-4. **Block bootstrap CI** — 500 replications with $\ell = \lceil n^{1/3}\rceil$ (Proposition 7).
+4. **Block bootstrap CI** — 500 replications with ℓ = ⌈n^(1/3)⌉ (Proposition 7).
 
 5. **Consensus** — Inverse-variance weighted BLUE (Proposition 6).
 
 #### Results — SPX Multi-Scale
 
-| Frequency | Days | $H_{\text{var}}$ (Thm 1) | $H_{\text{struct}}$ (Thm 2) | $H_{\text{ratio}}$ (Prop 3) | $R^2$ (variogram) |
+| Frequency | Days | H_var (Thm 1) | H_struct (Thm 2) | H_ratio (Prop 3) | R² (variogram) |
 |:---------:|:----:|:-------------:|:-------------------:|:---------:|:------------:|
 | **5m** | 510 | 0.119 | 0.114 | 0.076 | 0.933 |
 | **15m** | 1,509 | 0.101 | 0.099 | 0.092 | 0.969 |
@@ -695,25 +758,27 @@ $$RV_d^{(\Delta)} = \sum_{i} \left(\log S_{t_i+\Delta} - \log S_{t_i}\right)^2$$
 | **1h** | 2,974 | 0.094 | 0.091 | 0.082 | 0.991 |
 | **daily** | 1,821 | 0.087 | 0.087 | 0.091 | 0.978 |
 
-$$\boxed{H_{\text{consensus}} = 0.110 \pm 0.003 \quad \text{(inverse-variance weighted, 95\% CI)}}$$
+```math
+H_consensus = 0.110 ± 0.003   (inverse-variance weighted, 95% CI)
+```
 
-All three reliable estimators (variogram, structure function, ratio) agree on $H \in [0.08, 0.12]$ across all time scales. The DMA estimator gives $H \approx 0.4$ — a known upward bias for rough processes, naturally downweighted by the inverse-variance scheme.
+All three reliable estimators (variogram, structure function, ratio) agree on H ∈ [0.08, 0.12] across all time scales. The DMA estimator gives H ≈ 0.4 — a known upward bias for rough processes, naturally downweighted by the inverse-variance scheme.
 
 #### Variogram Log-Log Plot
 
 ![Variogram log-log](outputs/plots/hurst_variogram_loglog.png)
 
-*Log-log variogram $\log m(2,\tau)$ vs $\log \tau$ for each sampling frequency. All lines have slope $\approx 2H \approx 0.2$, confirming rough behavior. The $R^2 > 0.93$ across all scales validates the power-law scaling. Reference lines for $H=0.10$ (rough) and $H=0.50$ (Brownian) are shown.*
+*Log-log variogram log m(2,τ) vs log(τ) for each sampling frequency. All lines have slope ≈ 2H ≈ 0.2, confirming rough behavior. The R² > 0.93 across all scales validates the power-law scaling. Reference lines for H = 0.10 (rough) and H = 0.50 (Brownian) are shown.*
 
 #### Hurst Across Scales
 
 ![Hurst across scales](outputs/plots/hurst_across_scales.png)
 
-*Hurst estimates $\pm$ 95% bootstrap CI at each sampling frequency, colored by estimator. The blue band shows the consensus $H = 0.110 \pm 0.003$. Crucially, $H$ does **not** increase with $\Delta$ — the roughness is intrinsic, not an artifact of high-frequency noise.*
+*Hurst estimates ± 95% bootstrap CI at each sampling frequency, colored by estimator. The blue band shows the consensus H = 0.110 ± 0.003. Crucially, H does **not** increase with Δ — the roughness is intrinsic, not an artifact of high-frequency noise.*
 
 #### Cross-Asset Universality
 
-| Asset | Consensus $H$ | 95% CI | Interpretation |
+| Asset | Consensus H | 95% CI | Interpretation |
 |:-----:|:-------------:|:------:|:--------------:|
 | **S&P 500** | 0.110 ± 0.003 | [0.105, 0.115] | Rough ✓ |
 | **SPY (ETF)** | 0.111 ± 0.009 | [0.093, 0.129] | Rough ✓ |
@@ -721,11 +786,11 @@ All three reliable estimators (variogram, structure function, ratio) agree on $H
 
 ![Cross-asset comparison](outputs/plots/hurst_cross_asset.png)
 
-*Roughness is universal: SPX, SPY, and CAC40 all exhibit $H < 0.15$, consistent with Gatheral et al. (2018) who found $H \approx 0.05$–$0.14$ across multiple equity indices. The CAC40 estimate has wider CI due to shorter data history (398 vs 2974 days).*
+*Roughness is universal: SPX, SPY, and CAC40 all exhibit H < 0.15, consistent with Gatheral et al. (2018) who found H ≈ 0.05–0.14 across multiple equity indices. The CAC40 estimate has wider CI due to shorter data history (398 vs 2974 days).*
 
 #### Multifractal Diagnostic
 
-| Frequency | $H_{\text{mono}}$ | $R^2(\zeta(q) = Hq)$ | Curvature | Verdict |
+| Frequency | H_mono | R²(ζ(q) = Hq) | Curvature | Verdict |
 |:---------:|:------------------:|:---------------------:|:---------:|:-------:|
 | 5m | 0.135 | 0.999 | 0.006 | ✓ Monofractal |
 | 15m | 0.110 | 0.999 | 0.004 | ✓ Monofractal |
@@ -735,19 +800,19 @@ All three reliable estimators (variogram, structure function, ratio) agree on $H
 
 ![Multifractal spectrum](outputs/plots/hurst_multifractal_spectrum.png)
 
-*Left: scaling exponent $\zeta(q)$ is linear in $q$ at all frequencies → single Hurst exponent. Right: $H(q) = \zeta(q)/q$ is constant across moment orders → no multifractality. This validates the use of a single $H$ parameter in the rBergomi / Neural SDE backbone.*
+*Left: scaling exponent ζ(q) is linear in q at all frequencies → single Hurst exponent. Right: H(q) = ζ(q)/q is constant across moment orders → no multifractality. This validates the use of a single H parameter in the rBergomi / Neural SDE backbone.*
 
 #### Bootstrap Distributions
 
 ![Bootstrap distributions](outputs/plots/hurst_bootstrap_distributions.png)
 
-*Bootstrap distributions of $H$ (variogram) at each frequency. The distributions are approximately Gaussian, centered around $H \approx 0.07$–$0.10$ for the bootstrap mean. The wider spread at 5m reflects shorter data history (510 days vs 2974 days for 30m/1h).*
+*Bootstrap distributions of H (variogram) at each frequency. The distributions are approximately Gaussian, centered around H ≈ 0.07–0.10 for the bootstrap mean. The wider spread at 5m reflects shorter data history (510 days vs 2974 days for 30m/1h).*
 
 #### Log(RV) Time Series
 
 ![Log RV timeseries](outputs/plots/hurst_logrv_timeseries.png)
 
-*Daily $\log(RV)$ series at each frequency. The visual roughness (erratic, jagged paths) is immediately apparent — these are not smooth mean-reverting processes. The 30m and 1h series span 12 years (2014–2026), clearly showing vol clustering and crisis spikes (COVID in 2020, rate hikes in 2022).*
+*Daily log(RV) series at each frequency. The visual roughness (erratic, jagged paths) is immediately apparent — these are not smooth mean-reverting processes. The 30m and 1h series span 12 years (2014–2026), clearly showing vol clustering and crisis spikes (COVID in 2020, rate hikes in 2022).*
 
 #### Running the Analysis
 
@@ -771,13 +836,13 @@ python bin/hurst_multiscale.py --update-config
 
 ### Proving Roughness: The ACF / Variogram Evidence
 
-The single most important claim is that volatility is **rough** (Hölder exponent $H \approx 0.1 \ll 0.5$). Here is how we prove it on our actual data:
+The single most important claim is that volatility is **rough** (Hölder exponent H ≈ 0.1 ≪ 0.5). Here is how we prove it on our actual data:
 
 #### 1. Hurst Exponent from SPX Realized Volatility
 
 Using the multi-scale variogram method on log-realized-vol computed from SPX returns at 5 frequencies (Gatheral et al. 2018):
 
-| Source | $H_{\text{variogram}}$ | $R^2$ | Interpretation |
+| Source | H_variogram | R² | Interpretation |
 |---|:---:|:---:|---|
 | SPX 5-min (510 days) | **0.119** | 0.93 | Rough volatility |
 | SPX 15-min (1509 days) | **0.101** | 0.97 | Rough volatility |
@@ -787,14 +852,14 @@ Using the multi-scale variogram method on log-realized-vol computed from SPX ret
 
 Roughness is consistent across all time scales — this is not a microstructure artifact.
 
-#### 2. VIX $H \approx 0.5$ Is Expected (Not a Bug)
+#### 2. VIX H ≈ 0.5 Is Expected (Not a Bug)
 
-| Source | $H_{\text{variogram}}$ | Why |
+| Source | H_variogram | Why |
 |---|:---:|---|
 | VIX 15-min | 0.466 | VIX integrates IV over 30 days → **smoothing kills roughness** |
 | VIX 30-min | 0.445 | Same effect, slightly less data |
 
-This is the **P ≠ Q trap**: VIX is a Q-measure object (risk-neutral expectation of future RV). Its apparent smoothness ($H \approx 0.5$) does not contradict the roughness of actual volatility.
+This is the **P ≠ Q trap**: VIX is a Q-measure object (risk-neutral expectation of future RV). Its apparent smoothness (H ≈ 0.5) does not contradict the roughness of actual volatility.
 
 #### 3. Neural SDE Reproduces the Right Dynamics
 
@@ -871,8 +936,8 @@ Different use cases require different probability measures and loss functions:
 ### Why separate models?
 
 - **P-measure**: Captures real-world dynamics including the variance risk premium. VaR and stress tests must reflect how volatility *actually* moves, not how derivatives price it.
-- **Q-measure**: Enforces the martingale property ($E^Q[e^{-rT}S_T] = S_0$) required for arbitrage-free pricing. Uses real SOFR rates instead of hardcoded $r$.
-- **Q + jumps**: Adds Merton (1976) compound Poisson jumps to the log-variance process with learnable intensity $\lambda$, mean jump $\mu_J$, and jump vol $\sigma_J$. Includes a jump compensator to maintain drift correctness.
+- **Q-measure**: Enforces the martingale property (E^Q[e^(-rT) S_T] = S_0) required for arbitrage-free pricing. Uses real SOFR rates instead of hardcoded r.
+- **Q + jumps**: Adds Merton (1976) compound Poisson jumps to the log-variance process with learnable intensity λ, mean jump μ_J, and jump vol σ_J. Includes a jump compensator to maintain drift correctness.
 
 ---
 
@@ -908,17 +973,25 @@ Monte Carlo pricing for path-dependent exotics:
 
 | Strategy | Delta Formula | Key Advantage |
 |---|---|---|
-| **Black-Scholes** | $\Delta^{BS}(\sigma_{ATM})$ | Simple, fast |
-| **Bartlett** | $\Delta^{BS} + \text{Vanna} \cdot d\sigma/dS$ | Minimum-variance under stoch vol |
-| **Sticky-Strike** | $\Delta^{BS}(\sigma_t^{local})$ | Adapts to realized vol |
+| **Black-Scholes** | Δ_BS(σ_ATM) | Simple, fast |
+| **Bartlett** | Δ_BS + Vanna · dσ/dS | Minimum-variance under stoch vol |
+| **Sticky-Strike** | Δ_BS(σ_t^local) | Adapts to realized vol |
 
 ### P&L Attribution — `quant/pnl_attribution.py`
 
 Second-order Taylor decomposition:
 
-$$\Delta C \approx \underbrace{\Delta \cdot \delta S}_{\text{Delta}} + \underbrace{\tfrac{1}{2}\Gamma \cdot (\delta S)^2}_{\text{Gamma}} + \underbrace{\nu \cdot \delta\sigma}_{\text{Vega}} + \underbrace{\Theta \cdot \delta t}_{\text{Theta}} + \underbrace{\text{Vanna} \cdot \delta S \cdot \delta\sigma}_{\text{Cross}} + \underbrace{\tfrac{1}{2}\text{Volga} \cdot (\delta\sigma)^2}_{\text{Convexity}} + \underbrace{\rho \cdot \delta r}_{\text{Rho}}$$
+```math
+ΔC ≈ Δ·δS            [Delta]
+   + (1/2)·Γ·(δS)²   [Gamma]
+   + ν·δσ            [Vega]
+   + Θ·δt            [Theta]
+   + Vanna·δS·δσ     [Cross]
+   + (1/2)·Volga·(δσ)²  [Convexity]
+   + ρ·δr            [Rho]
+```
 
-Also includes `NeuralSDEGreeks`: model-implied $\Delta$, $\Gamma$, Vega via **JAX autodiff through the full MC pricing pipeline** (pathwise differentiation). These capture stochastic vol effects that BS Greeks miss.
+Also includes `NeuralSDEGreeks`: model-implied Δ, Γ, Vega via **JAX autodiff through the full MC pricing pipeline** (pathwise differentiation). These capture stochastic vol effects that BS Greeks miss.
 
 ### Regime Detection — `quant/regime_detector.py`
 
@@ -932,7 +1005,7 @@ Also includes `NeuralSDEGreeks`: model-implied $\Delta$, $\Gamma$, Vega via **JA
 | VRP | 15% | Implied - Realized |
 | VIX percentile | 15% | Historical rank |
 
-Regimes: **calm** → **normal** → **stressed** → **crisis**, each with recommended $(H, \eta, \rho)$.
+Regimes: **calm** → **normal** → **stressed** → **crisis**, each with recommended (H, η, ρ).
 
 ---
 
@@ -944,26 +1017,35 @@ The model supports two backbone architectures, selectable via `neural_sde.backbo
 
 **OU backbone** (default — fast, good for P-measure / stress testing):
 
-$$dX_t = \underbrace{\kappa(\theta - X_t)}_{\text{OU Prior}} dt + \underbrace{f_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Drift}} dt + \underbrace{g_\theta(\mathbb{S}_{0,t}, X_t)}_{\text{Neural Diffusion}} dW_t + \underbrace{J \cdot dN_t}_{\text{Jumps (optional)}}$$
+```math
+dX_t = κ(θ - X_t) dt             [OU Prior]
+     + f_θ(S_{0,t}, X_t) dt      [Neural Drift]
+     + g_θ(S_{0,t}, X_t) dW_t   [Neural Diffusion]
+     + J·dN_t                    [Jumps (optional)]
+```
 
 **Fractional backbone** (nests rBergomi exactly — for Q-measure / pricing):
 
-$$X_t = \eta \cdot \hat{W}^H_t - \tfrac{1}{2}\eta^2 \text{Var}[\hat{W}^H_t] + \int_0^t f_\theta(\mathbb{S}_{0,s}, X_s) ds + \int_0^t g_\theta(\mathbb{S}_{0,s}, X_s) dW_s$$
+```math
+X_t = η·W̃^H_t - (1/2)·η²·Var[W̃^H_t]
+    + ∫₀ᵗ f_θ(S_{0,s}, X_s) ds
+    + ∫₀ᵗ g_θ(S_{0,s}, X_s) dW_s
+```
 
-where $\hat{W}^H_t = \sqrt{2H} \int_0^t (t-s)^{H-1/2} dW_s$ is the Riemann-Liouville fBM with **learnable** $(H, \eta)$. When $f_\theta = g_\theta = 0$, this exactly recovers rBergomi.
+where W̃^H_t = sqrt(2H) ∫₀ᵗ (t-s)^(H-1/2) dW_s is the Riemann-Liouville fBM with **learnable** (H, η). When f_θ = g_θ = 0, this exactly recovers rBergomi.
 
 In both cases:
-- $X_t = \log(V_t)$ is log-variance
-- $\mathbb{S}_{0,t} \in T^{(M)}(\mathbb{R}^2)$ is the running path signature of $(t, X)$ up to order $M \in \{2,3,4\}$ (configurable), computed via **exact Chen's identity**
-- At order 3: $\dim(\mathbb{S}) = 14$ features; at order 4: $\dim(\mathbb{S}) = 30$ features
+- X_t = log(V_t) is log-variance
+- S_{0,t} ∈ T^(M)(R²) is the running path signature of (t, X) up to order M ∈ {2,3,4} (configurable), computed via **exact Chen's identity**
+- At order 3: dim(S) = 14 features; at order 4: dim(S) = 30 features
 - The signature makes the SDE genuinely **non-Markovian** (path-dependent) — essential for rough volatility
 
 ### Training
 
 - **Distribution matching**: Kernel MMD² with multi-scale RBF (median heuristic)
-- **Mean correction**: In **log-variance space** to avoid Jensen bias ($E[e^X] > e^{E[X]}$)
-- **Marginal mode**: Optional per-step $E[V_t]$ matching (Bayer & Stemper 2018)
-- **Martingale** (Q only): $E^Q[e^{-rT}S_T] = S_0$ constraint with real SOFR rate
+- **Mean correction**: In **log-variance space** to avoid Jensen bias (E[e^X] > e^(E[X]))
+- **Marginal mode**: Optional per-step E[V_t] matching (Bayer & Stemper 2018)
+- **Martingale** (Q only): E^Q[e^(-rT) S_T] = S_0 constraint with real SOFR rate
 - **Smile fit** (Q pricing mode): Vega-weighted IV smile loss from cached SPY options
 - **Jump regularization**: Soft constraint on jump intensity (~3 jumps/year)
 - **η auto-calibration**: When `bergomi.eta_source: vvix`, η is calibrated from VVIX at training time
@@ -972,7 +1054,7 @@ In both cases:
 
 ### Rough Bergomi Benchmark
 
-Volterra kernel implementation (Bayer, Friz & Gatheral 2016) with exact spot-vol correlation and previsible variance in Euler scheme. Walk-forward backtest recalibrates $(\xi_0, H, \eta)$ per fold to avoid look-ahead bias.
+Volterra kernel implementation (Bayer, Friz & Gatheral 2016) with exact spot-vol correlation and previsible variance in Euler scheme. Walk-forward backtest recalibrates (ξ_0, H, η) per fold to avoid look-ahead bias.
 
 ---
 
@@ -1002,7 +1084,7 @@ Volterra kernel implementation (Bayer, Friz & Gatheral 2016) with exact spot-vol
 
 ```bash
 git clone <repo-url>
-cd "Projet IA & quant"
+cd Generative-Neural-SDES-for-Market-Volatility
 pip install -r requirements.txt
 ```
 
@@ -1051,7 +1133,7 @@ Estimate Hurst exponent, vol-of-vol, and other Rough Bergomi parameters from rea
 python bin/calibrate.py
 ```
 
-**Output**: `outputs/advanced_calibration.json` — contains estimated $H$, $\eta$, $\xi_0$, $\rho$ from intraday data.
+**Output**: `outputs/advanced_calibration.json` — contains estimated H, η, ξ_0, ρ from intraday data.
 
 ### Step 4 — Train the Neural SDE Models
 
@@ -1519,12 +1601,12 @@ Built Neural SDE with path signatures, discovered training bugs (weight persiste
 Critical insight: VIX is already Q-measure. Training on VIX = training in risk-neutral measure directly.
 
 ### Phase 4–8: Robustness Audit
-- **Leverage effect**: $\rho(\text{SPX returns}, \Delta\text{VIX}) = -0.86$
-- **VIX smoothing**: VIX is a 30-day integral → $H \approx 0.5$ (not rough). True roughness ($H \approx 0.1$) only on realized vol from SPX returns.
+- **Leverage effect**: ρ(SPX returns, ΔVIX) = -0.86
+- **VIX smoothing**: VIX is a 30-day integral → H ≈ 0.5 (not rough). True roughness (H ≈ 0.1) only on realized vol from SPX returns.
 - **Bergomi bugs**: Davies-Harte variance 500× too low, reversed skew from fGn/BM confusion, adaptedness bias from non-previsible variance.
 
 ### Phase 9–13: Critical Fixes
-- 328× temporal mismatch ($dt = 1/N$ vs $T/N$)
+- 328× temporal mismatch (dt = 1/N vs T/N)
 - Jensen bias (missing mean penalty)
 - Signature normalization (time components dominated)
 - Deterministic validation noise for early stopping
@@ -1543,32 +1625,32 @@ Critical insight: VIX is already Q-measure. Training on VIX = training in risk-n
 ### Phase 15 (v3.0): Mathematical Audit & Rigorous Foundations
 Comprehensive mathematical review → 13 improvements:
 
-- **Fractional backbone**: Volterra kernel with learnable $(H, \eta)$ — nests rBergomi as special case. Neural corrections on top allow the model to go beyond rBergomi.
+- **Fractional backbone**: Volterra kernel with learnable (H, η) — nests rBergomi as special case. Neural corrections on top allow the model to go beyond rBergomi.
 - **Exact Chen's identity**: Signature computation rewritten for orders 2, 3, 4 with mathematically exact tensor updates (replacing the approximate order-3 implementation).
-- **Jensen bias fix**: Mean penalty moved from variance space to **log-variance space** ($E[\log V]$ matching instead of $E[V]$), eliminating the systematic upward bias from $E[e^X] > e^{E[X]}$.
+- **Jensen bias fix**: Mean penalty moved from variance space to **log-variance space** (E[log V] matching instead of E[V]), eliminating the systematic upward bias from E[e^X] > e^(E[X]).
 - **η auto-calibration from VVIX**: When `eta_source: vvix`, η is estimated from market data at training time (1.33 from VVIX vs 1.9 hardcoded — 30% difference).
 - **Smile fit loss**: Vega-weighted IV smile matching from cached SPY options (Q-measure pricing mode).
-- **Walk-forward recalibration**: Per-fold $(\xi_0, H, \eta)$ recalibration using only past data (no look-ahead).
+- **Walk-forward recalibration**: Per-fold (ξ_0, H, η) recalibration using only past data (no look-ahead).
 - **Multi-scale data loading**: Train on multiple VIX frequencies simultaneously.
 - **Neural SDE Greeks**: Model-implied Δ, Γ, Vega via JAX autodiff through the MC pricing pipeline.
 - **Temporal coherence test**: Validates generated moments at T = 5, 10, 20, 30 days against market.
 
 ### Phase 16 (v3.3): Multi-Scale Hurst Estimation & Empirical Validation
-Rigorous estimation of $H$ from real market data across all available time scales:
+Rigorous estimation of H from real market data across all available time scales:
 - **Options-based variance loader**: Extract instantaneous variance under Q from cached SPY options (CBOE VIX methodology + Dupire).
 - **Dead loss audit**: `feller_condition_loss` and `path_regularity_loss` marked deprecated (irrelevant for log-V backbone / contradicts roughness).
 - **All hardcoded params → `config/params.yaml`**: 15+ new config keys for full reproducibility.
 
 ### Phase 17 (v3.4): Mathematical Proofs & Formal Derivations
 Expanded the README with 7 formal theorems/propositions and complete proofs:
-- **Kolmogorov–Čentsov regularity**: Proof that fBM paths have Hölder exponent exactly $H$.
-- **Variogram consistency** (Theorem 1): Proof that OLS slope / 2 → $H$ via ergodic theorem.
-- **Structure function & monofractality** (Theorem 2): Proof of $\zeta(q) = qH$, robustness of $q=1$.
-- **Ratio estimator** (Proposition 3): Direct algebraic proof of $\hat{H}(\tau) = H$.
+- **Kolmogorov–Čentsov regularity**: Proof that fBM paths have Hölder exponent exactly H.
+- **Variogram consistency** (Theorem 1): Proof that OLS slope / 2 → H via ergodic theorem.
+- **Structure function & monofractality** (Theorem 2): Proof of ζ(q) = qH, robustness of q=1.
+- **Ratio estimator** (Proposition 3): Direct algebraic proof of Ĥ(τ) = H.
 - **TSRV bias correction** (Theorem 4): Full derivation of Zhang–Mykland–Aït-Sahalia two-scale construction.
-- **Integration smoothing** (Theorem 5): Proof that moving-average of fBM inflates apparent $H$ — explains VIX $H \approx 0.5$.
+- **Integration smoothing** (Theorem 5): Proof that moving-average of fBM inflates apparent H — explains VIX H ≈ 0.5.
 - **BLUE property** (Proposition 6): Lagrange multiplier proof that inverse-variance weighting minimizes estimator variance.
-- **Block bootstrap** (Proposition 7): Justification of $\ell \asymp n^{1/3}$ block length for dependent data.
+- **Block bootstrap** (Proposition 7): Justification of ℓ ~ n^(1/3) block length for dependent data.
 
 ---
 
@@ -1577,9 +1659,9 @@ Expanded the README with 7 formal theorems/propositions and complete proofs:
 1. **P ≠ Q**: Training on realized vol and testing on implied vol is fundamentally wrong. Use VIX for Q-measure, SPX RV for P-measure.
 2. **Temporal scale must be physical**: `dt = T/n_steps` in annual units, not `1/n_steps`.
 3. **VIX ≠ Volatility for roughness**: VIX is a 30-day integral; roughness requires realized vol from intraday returns.
-4. **Jensen's inequality bites**: $E[e^X] > e^{E[X]}$ — explicit mean penalty needed.
+4. **Jensen's inequality bites**: E[e^X] > e^(E[X]) — explicit mean penalty needed.
 5. **fBM ≠ fGn for correlation**: Volterra kernel preserves spot-vol correlation; Davies-Harte does not.
-6. **Previsible variance**: Use $V_{k-1}$ in Euler scheme, not $V_k$.
+6. **Previsible variance**: Use V_{k-1} in Euler scheme, not V_k.
 7. **Martingale matters**: Without the martingale constraint, Q-measure pricing is systematically biased.
 8. **Real rates matter**: SOFR vs hardcoded 5% makes a material difference for longer maturities.
 9. **Vol-of-vol from VVIX**: Direct calibration from market data beats heuristic estimation.
