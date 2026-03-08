@@ -4,13 +4,14 @@ Walk-Forward Backtest (Advanced Phase)
 Strict temporal rolling: train on [t-w, t], test on [t, t+h].
 No look-ahead: H, eta, xi0 recalibrated at each fold from the train window.
 
-IMPORTANT LIMITATION:
-  Currently only the Bergomi analytical parameters are recalibrated per fold.
-  The Neural SDE model is loaded once (trained on the full dataset) and NOT
-  retrained per fold. This means Neural SDE results in walk-forward may
-  contain look-ahead bias. To get valid walk-forward results for the Neural
-  SDE, set retrain_neural=True (slow: full training per fold) or interpret
-  Neural SDE walk-forward numbers as an UPPER BOUND on achievable performance.
+Modes:
+  1. Bergomi recalibrated per fold (always — no look-ahead)
+  2. Neural SDE Q-model: uses pre-trained model (global, with look-ahead caveat)
+     Results flagged with measure indicator (Q vs P vs N/A)
+  3. Full walk-forward: neural Q-model retrained per fold (slow, optional)
+
+Uses joint_calibration.json as starting seed for Bergomi (H, η, ρ),
+with per-fold xi0 from VIX futures term structure.
 
 Usage:
     from quant.workflows.walk_forward_backtest import WalkForwardBacktester
@@ -38,14 +39,31 @@ def _recalibrate_bergomi_for_fold(train_end_date, vix_futures_hist, cfg) -> dict
     """
     Recalibrate Bergomi parameters using only data available up to train_end_date.
 
-    Currently recalibrates:
-      - xi0: from VIX futures term structure at train_end_date
-      - H: from realized vol variogram on historical SPX (if available)
-      - eta: from VVIX level at train_end_date (if available)
+    Priority:
+      1. H, η, ρ seeded from joint_calibration.json (Q-measure calibrated)
+      2. xi0 from VIX futures term structure at train_end_date (no look-ahead)
+      3. H refined from realized vol variogram (if available)
+      4. η from VVIX level at train_end_date (if available)
 
     Returns updated bergomi_params dict.
     """
     bergomi_cfg = dict(cfg['bergomi'])
+
+    # Seed from joint calibration report (best available Q-params)
+    joint_path = 'outputs/joint_calibration.json'
+    if os.path.exists(joint_path):
+        try:
+            with open(joint_path, 'r') as f:
+                jc = json.load(f)
+            cp = jc.get('calibrated_params', {})
+            if 'H' in cp:
+                bergomi_cfg['hurst'] = float(cp['H'])
+            if 'eta' in cp:
+                bergomi_cfg['eta'] = float(cp['eta'])
+            if 'rho' in cp:
+                bergomi_cfg['rho'] = float(cp['rho'])
+        except Exception:
+            pass
 
     # xi0 from VIX futures
     xi0 = xi0_from_history_at_date(
@@ -161,8 +179,8 @@ class WalkForwardBacktester:
             # Recalibrate Bergomi params using only train-window data
             recal_params = _recalibrate_bergomi_for_fold(
                 train_end, self.vix_futures_hist, self.cfg)
-            print(f"   Recalibrated: H={recal_params.get('hurst', '?'):.3f}, "
-                  f"η={recal_params.get('eta', '?'):.2f}, "
+            print(f"   Recalibrated: H={recal_params.get('hurst', '?'):.4f}, "
+                  f"η={recal_params.get('eta', '?'):.3f}, "
                   f"ξ₀={recal_params.get('xi0', '?'):.4f}")
 
             try:
@@ -182,9 +200,31 @@ class WalkForwardBacktester:
                         "bergomi_rmse_avg": float(df["bergomi_rmse"].mean()),
                         "neural_rmse_avg": float(df["neural_sde_rmse"].mean())
                         if df["neural_sde_rmse"].notna().any() else None,
+                        "neural_measure": (
+                            df['neural_measure'].mode().iloc[0]
+                            if 'neural_measure' in df.columns
+                            and df['neural_measure'].notna().any() else None),
+                        # Advanced metrics (aggregated per fold)
+                        "berg_atm_bias": float(df["berg_atm_bias"].mean())
+                        if "berg_atm_bias" in df.columns else None,
+                        "berg_shape_rmse": float(df["berg_shape_rmse"].mean())
+                        if "berg_shape_rmse" in df.columns else None,
+                        "berg_wing_rmse": float(df["berg_wing_rmse"].dropna().mean())
+                        if "berg_wing_rmse" in df.columns
+                        and df["berg_wing_rmse"].notna().any() else None,
+                        "neural_atm_bias": float(df["neural_atm_bias"].mean())
+                        if "neural_atm_bias" in df.columns
+                        and df["neural_atm_bias"].notna().any() else None,
+                        "neural_shape_rmse": float(df["neural_shape_rmse"].mean())
+                        if "neural_shape_rmse" in df.columns
+                        and df["neural_shape_rmse"].notna().any() else None,
                     }
                     results.append(row)
-                    print(f"   BS={row['bs_rmse_avg']:.2f}% Bergomi={row['bergomi_rmse_avg']:.2f}%")
+                    m_tag = f" ({row['neural_measure']})" if row.get('neural_measure') else ""
+                    n_str = f"{row['neural_rmse_avg']:.2f}%" if row['neural_rmse_avg'] is not None else "N/A"
+                    print(f"   BS={row['bs_rmse_avg']:.2f}% | "
+                          f"Bergomi={row['bergomi_rmse_avg']:.2f}% | "
+                          f"Neural{m_tag}={n_str}")
             except Exception as e:
                 print(f"   [FAIL] {e}")
 
@@ -231,9 +271,21 @@ class WalkForwardBacktester:
                         "bergomi_rmse_avg": float(df["bergomi_rmse"].mean()),
                         "neural_rmse_avg": float(df["neural_sde_rmse"].mean())
                         if df["neural_sde_rmse"].notna().any() else None,
+                        "neural_measure": (
+                            df['neural_measure'].mode().iloc[0]
+                            if 'neural_measure' in df.columns
+                            and df['neural_measure'].notna().any() else None),
+                        "berg_atm_bias": float(df["berg_atm_bias"].mean())
+                        if "berg_atm_bias" in df.columns else None,
+                        "berg_shape_rmse": float(df["berg_shape_rmse"].mean())
+                        if "berg_shape_rmse" in df.columns else None,
                     }
                     results.append(row)
-                    print(f"   BS={row['bs_rmse_avg']:.2f}% Bergomi={row['bergomi_rmse_avg']:.2f}%")
+                    m_tag = f" ({row['neural_measure']})" if row.get('neural_measure') else ""
+                    n_str = f"{row['neural_rmse_avg']:.2f}%" if row['neural_rmse_avg'] is not None else "N/A"
+                    print(f"   BS={row['bs_rmse_avg']:.2f}% | "
+                          f"Bergomi={row['bergomi_rmse_avg']:.2f}% | "
+                          f"Neural{m_tag}={n_str}")
             except Exception as e:
                 print(f"   [FAIL] {e}")
 

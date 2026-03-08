@@ -41,6 +41,65 @@ from utils.black_scholes import BlackScholes
 from utils.config import load_config
 from engine.generative_trainer import GenerativeTrainer
 
+# Q-model support (Girsanov drift correction for risk-neutral pricing)
+try:
+    from quant.calibration.neural_sde_q_calibrator import load_q_model, NeuralSDEQModel
+    _HAS_Q_CALIBRATOR = True
+except ImportError:
+    _HAS_Q_CALIBRATOR = False
+
+
+def _compute_smile_metrics(moneyness, model_ivs, market_ivs):
+    """
+    Compute advanced smile metrics beyond vanilla RMSE.
+
+    All returned values are in vol points (%).
+
+    Metrics (ref: Gatheral & Jacquier 2014, De Marco & Henry-Labordère 2015):
+      - rmse: overall root-mean-square error
+      - atm_bias: model ATM IV − market ATM IV (level error)
+      - shape_rmse: RMSE after removing ATM bias (pure curvature/skew error)
+      - wing_rmse: RMSE on wings only (|moneyness| > 5%)
+      - max_err: worst-case absolute error across strikes
+      - vega_rmse: vega-weighted RMSE (economically relevant)
+    """
+    m = np.asarray(moneyness)
+    mod = np.asarray(model_ivs) * 100
+    mkt = np.asarray(market_ivs) * 100
+
+    diff = mod - mkt
+    rmse = float(np.sqrt(np.mean(diff ** 2)))
+
+    # ATM bias (at the closest-to-ATM point)
+    atm_idx = int(np.argmin(np.abs(m)))
+    atm_bias = float(diff[atm_idx])
+
+    # Shape RMSE (after subtracting ATM level shift)
+    shape_diff = diff - atm_bias
+    shape_rmse = float(np.sqrt(np.mean(shape_diff ** 2)))
+
+    # Wing RMSE (|moneyness| > 5% — where rough vol matters)
+    wing_mask = np.abs(m) > 0.05
+    wing_rmse = (float(np.sqrt(np.mean(diff[wing_mask] ** 2)))
+                 if wing_mask.sum() >= 2 else np.nan)
+
+    # Max absolute error
+    max_err = float(np.max(np.abs(diff)))
+
+    # Vega-weighted RMSE (Gaussian ATM weighting)
+    vega_w = np.exp(-0.5 * (m / 0.10) ** 2)
+    vega_w /= vega_w.sum()
+    vega_rmse = float(np.sqrt(np.sum(vega_w * diff ** 2)))
+
+    return {
+        'rmse': rmse,
+        'atm_bias': atm_bias,
+        'shape_rmse': shape_rmse,
+        'wing_rmse': wing_rmse,
+        'max_err': max_err,
+        'vega_rmse': vega_rmse,
+    }
+
 
 # ===================================================================
 #  VIX Futures Term Structure  (for xi0 calibration)
@@ -511,38 +570,71 @@ class HistoricalBacktester:
         print(f"   {len(snapshots)} snapshots x {len(target_dtes)} maturities  |  MC={n_mc}")
         print(f"{'='*70}")
 
-        # Neural SDE
+        # Neural SDE — prefer Q-model (Girsanov) over P-model
         import jax
         import jax.numpy as jnp
 
         sim_cfg = self.cfg['simulation']
+
+        # Try Q-model first (correct for pricing: risk-neutral measure)
+        q_model = None
+        has_q_model = False
+        if _HAS_Q_CALIBRATOR:
+            q_model = load_q_model()
+            has_q_model = q_model is not None
+
+        # Fallback: P-model (physical measure — biased for pricing)
         config = {'n_steps': sim_cfg['n_steps'], 'T': sim_cfg['T']}
         trainer = GenerativeTrainer(config)
         neural_model = trainer.load_model()
-        has_neural = neural_model is not None
+        has_neural_p = neural_model is not None
 
-        if has_neural:
+        has_neural = has_q_model or has_neural_p
+
+        if has_q_model:
+            print(f"   Neural SDE: Q-model (Girsanov drift, ρ={q_model.rho:.3f})")
+            if has_neural_p:
+                print(f"               P-model also available (fallback)")
+        elif has_neural_p:
             train_dt = sim_cfg['T'] / sim_cfg['n_steps']
-            print(f"   Neural SDE: {sim_cfg['n_steps']} steps, "
-                  f"dt={train_dt:.6f} yr ({train_dt*252*6.5*60:.0f} min)")
+            print(f"   Neural SDE: P-model only (dt={train_dt:.6f} yr)")
+            print(f"   ⚠ P-model pricing is biased — run neural_q_calibration for Q-model")
         else:
             print("   WARNING: No trained Neural SDE found.")
 
-        # Bergomi params
+        # Bergomi params — priority: joint_calibration > calibration_report > config
         bergomi_cfg = dict(self.cfg['bergomi'])
-        calib_path = self.cfg.get('outputs', {}).get(
-            'calibration', 'outputs/advanced_calibration.json')
-        if os.path.exists(calib_path):
+        bergomi_source = 'config/params.yaml'
+
+        calib_sources = [
+            ('outputs/joint_calibration.json', 'calibrated_params',
+             {'H': 'hurst', 'eta': 'eta', 'rho': 'rho'}),
+            ('outputs/calibration_report.json', 'bergomi_params', None),
+            ('outputs/advanced_calibration.json', 'bergomi_params', None),
+        ]
+
+        for calib_path, key_name, field_map in calib_sources:
+            if not os.path.exists(calib_path):
+                continue
             try:
                 with open(calib_path, 'r') as f:
                     calib = json.load(f)
-                if 'bergomi_params' in calib:
-                    bergomi_cfg.update(calib['bergomi_params'])
+                if key_name in calib:
+                    params = calib[key_name]
+                    if field_map:
+                        for src_k, dst_k in field_map.items():
+                            if src_k in params:
+                                bergomi_cfg[dst_k] = params[src_k]
+                    else:
+                        bergomi_cfg.update(params)
+                    bergomi_source = calib_path
+                    break
             except Exception:
-                pass
+                continue
 
-        print(f"   Bergomi: H={bergomi_cfg['hurst']:.3f}, "
-              f"eta={bergomi_cfg['eta']:.2f}, rho={bergomi_cfg['rho']:.2f}")
+        print(f"   Bergomi: H={bergomi_cfg['hurst']:.4f}, "
+              f"η={bergomi_cfg['eta']:.3f}, ρ={bergomi_cfg['rho']:.3f}  "
+              f"(from {bergomi_source})")
 
         rng_key = jax.random.PRNGKey(123)
         results = []
@@ -604,7 +696,26 @@ class HistoricalBacktester:
                     bergomi_ivs = bs_ivs.copy()
 
                 # === 3. Neural SDE ===
-                if has_neural:
+                neural_measure = 'N/A'
+                if has_q_model:
+                    # Q-model (Girsanov): correct for pricing (risk-neutral)
+                    try:
+                        rng_key, sk = jax.random.split(rng_key)
+                        init_log_v = float(np.log(max(atm_vol ** 2, 1e-10)))
+                        n_q_steps = max(1, int(round(T * 252)))
+                        dt_q = 1.0 / 252.0
+                        _, spot_paths_q, _ = q_model.simulate(
+                            init_log_v, n_q_steps, dt_q, sk, n_mc
+                        )
+                        S_T_neural = float(spot) * np.array(spot_paths_q[:, -1])
+                        neural_ivs = self._price_with_mc(
+                            S_T_neural, strikes, spot, T, self.r)
+                        neural_measure = 'Q'
+                    except Exception as e:
+                        print(f"   Neural Q-model error: {e}")
+                        neural_ivs = np.full_like(market_ivs, np.nan)
+                elif has_neural_p:
+                    # P-model fallback (biased for pricing)
                     try:
                         rng_key, sk = jax.random.split(rng_key)
                         S_T_neural = self._neural_sde_terminal_spot(
@@ -612,23 +723,29 @@ class HistoricalBacktester:
                             rho=bergomi_cfg['rho'], rng_key=sk)
                         neural_ivs = self._price_with_mc(
                             S_T_neural, strikes, spot, T, self.r)
+                        neural_measure = 'P'
                     except Exception as e:
-                        print(f"   Neural SDE error: {e}")
+                        print(f"   Neural P-model error: {e}")
                         neural_ivs = np.full_like(market_ivs, np.nan)
                 else:
                     neural_ivs = np.full_like(market_ivs, np.nan)
 
-                # === RMSE ===
-                bs_rmse = np.sqrt(np.mean((bs_ivs - market_ivs)**2)) * 100
-                berg_rmse = np.sqrt(np.mean((bergomi_ivs - market_ivs)**2)) * 100
+                # === Advanced Smile Metrics ===
+                bs_metrics = _compute_smile_metrics(moneyness, bs_ivs, market_ivs)
+                berg_metrics = _compute_smile_metrics(moneyness, bergomi_ivs, market_ivs)
+
+                bs_rmse = bs_metrics['rmse']
+                berg_rmse = berg_metrics['rmse']
 
                 candidates = [('BS', bs_rmse), ('Bergomi', berg_rmse)]
                 if not np.any(np.isnan(neural_ivs)):
-                    neural_rmse = np.sqrt(
-                        np.mean((neural_ivs - market_ivs)**2)) * 100
+                    neural_metrics = _compute_smile_metrics(
+                        moneyness, neural_ivs, market_ivs)
+                    neural_rmse = neural_metrics['rmse']
                     candidates.append(('Neural', neural_rmse))
                 else:
                     neural_rmse = np.nan
+                    neural_metrics = {k: np.nan for k in bs_metrics}
 
                 best = min(candidates, key=lambda x: x[1])[0]
 
@@ -642,7 +759,23 @@ class HistoricalBacktester:
                     'bs_rmse': bs_rmse,
                     'bergomi_rmse': berg_rmse,
                     'neural_sde_rmse': neural_rmse,
+                    'neural_measure': neural_measure,
                     'best_model': best,
+                    # Advanced metrics per model
+                    'bs_atm_bias': bs_metrics['atm_bias'],
+                    'bs_shape_rmse': bs_metrics['shape_rmse'],
+                    'bs_wing_rmse': bs_metrics['wing_rmse'],
+                    'berg_atm_bias': berg_metrics['atm_bias'],
+                    'berg_shape_rmse': berg_metrics['shape_rmse'],
+                    'berg_wing_rmse': berg_metrics['wing_rmse'],
+                    'neural_atm_bias': neural_metrics.get('atm_bias', np.nan),
+                    'neural_shape_rmse': neural_metrics.get('shape_rmse', np.nan),
+                    'neural_wing_rmse': neural_metrics.get('wing_rmse', np.nan),
+                    'neural_max_err': neural_metrics.get('max_err', np.nan),
+                    'neural_vega_rmse': neural_metrics.get('vega_rmse', np.nan),
+                    'berg_max_err': berg_metrics['max_err'],
+                    'berg_vega_rmse': berg_metrics['vega_rmse'],
+                    # Raw data for plots
                     'moneyness': moneyness.tolist(),
                     'market_iv': (market_ivs * 100).tolist(),
                     'bs_iv': (bs_ivs * 100).tolist(),
@@ -652,10 +785,11 @@ class HistoricalBacktester:
                 })
 
                 n_str = f"{neural_rmse:.2f}%" if not np.isnan(neural_rmse) else "N/A"
+                m_tag = f"({neural_measure})" if neural_measure != 'N/A' else ""
                 print(f"   DTE={actual_dte:3d}d | {len(smile):2d} opts | "
                       f"ATM={atm_vol*100:.1f}% | xi0={xi0:.4f} | "
                       f"BS={bs_rmse:.2f}% | Berg={berg_rmse:.2f}% | "
-                      f"Neural={n_str} | \u2192 {best}")
+                      f"Neural{m_tag}={n_str} | \u2192 {best}")
 
         self.backtest_results = pd.DataFrame(results)
         self._print_summary()
@@ -673,11 +807,47 @@ class HistoricalBacktester:
         print(f"   BACKTEST SUMMARY")
         print(f"{'='*70}")
         print(f"\n   Scenarios: {len(df)}")
+
+        # Neural SDE measure indicator
+        if 'neural_measure' in df.columns:
+            measures = df['neural_measure'].dropna().unique()
+            q_tag = ' (Q-Girsanov)' if 'Q' in measures else ' (P-model ⚠)'
+        else:
+            q_tag = ''
+
         print(f"\n   Average RMSE (vol points):")
         print(f"      Black-Scholes : {df['bs_rmse'].mean():.2f}%")
         print(f"      Bergomi       : {df['bergomi_rmse'].mean():.2f}%")
         if df['neural_sde_rmse'].notna().any():
-            print(f"      Neural SDE    : {df['neural_sde_rmse'].mean():.2f}%")
+            print(f"      Neural SDE{q_tag} : {df['neural_sde_rmse'].mean():.2f}%")
+
+        # Advanced metrics
+        print(f"\n   ATM Bias (model − market, vol pts):")
+        print(f"      BS: {df['bs_atm_bias'].mean():+.2f}% | "
+              f"Bergomi: {df['berg_atm_bias'].mean():+.2f}%", end='')
+        if df.get('neural_atm_bias') is not None and df['neural_atm_bias'].notna().any():
+            print(f" | Neural: {df['neural_atm_bias'].mean():+.2f}%")
+        else:
+            print()
+
+        print(f"\n   Shape RMSE (curvature/skew only, after ATM bias removal):")
+        print(f"      BS: {df['bs_shape_rmse'].mean():.2f}% | "
+              f"Bergomi: {df['berg_shape_rmse'].mean():.2f}%", end='')
+        if df.get('neural_shape_rmse') is not None and df['neural_shape_rmse'].notna().any():
+            print(f" | Neural: {df['neural_shape_rmse'].mean():.2f}%")
+        else:
+            print()
+
+        wing_bs = df['bs_wing_rmse'].dropna()
+        wing_berg = df['berg_wing_rmse'].dropna()
+        if len(wing_bs) > 0:
+            print(f"\n   Wing RMSE (|m| > 5% — rough vol advantage zone):")
+            print(f"      BS: {wing_bs.mean():.2f}% | "
+                  f"Bergomi: {wing_berg.mean():.2f}%", end='')
+            if df.get('neural_wing_rmse') is not None and df['neural_wing_rmse'].notna().any():
+                print(f" | Neural: {df['neural_wing_rmse'].dropna().mean():.2f}%")
+            else:
+                print()
 
         print(f"\n   RMSE by Maturity:")
         for dte in sorted(df['dte'].unique()):
@@ -838,12 +1008,27 @@ class HistoricalBacktester:
 
         df = self.backtest_results
         cols = ['snapshot', 'spot', 'dte', 'n_options', 'atm_vol', 'xi0',
-                'bs_rmse', 'bergomi_rmse', 'neural_sde_rmse', 'best_model']
+                'bs_rmse', 'bergomi_rmse', 'neural_sde_rmse', 'neural_measure',
+                'best_model',
+                'bs_atm_bias', 'bs_shape_rmse', 'bs_wing_rmse',
+                'berg_atm_bias', 'berg_shape_rmse', 'berg_wing_rmse',
+                'neural_atm_bias', 'neural_shape_rmse', 'neural_wing_rmse']
+        cols = [c for c in cols if c in df.columns]
+
+        # Load Bergomi source info
+        bergomi_source = 'config'
+        for src_path in ['outputs/joint_calibration.json',
+                         'outputs/calibration_report.json',
+                         'outputs/advanced_calibration.json']:
+            if os.path.exists(src_path):
+                bergomi_source = src_path
+                break
 
         out = {
             'timestamp': datetime.now().isoformat(),
             'data_source': 'Real SPY options (Yahoo Finance cache)',
             'fair_mode': self.fair_mode,
+            'bergomi_params_source': bergomi_source,
             'vix_term_structure': {str(k): v for k, v in self.vix_ts.items()},
             'n_scenarios': len(df),
             'summary': {
@@ -852,6 +1037,34 @@ class HistoricalBacktester:
                 'neural_sde_mean_rmse': (
                     float(df['neural_sde_rmse'].mean())
                     if df['neural_sde_rmse'].notna().any() else None),
+                'neural_measure': (
+                    df['neural_measure'].mode().iloc[0]
+                    if 'neural_measure' in df.columns
+                    and df['neural_measure'].notna().any() else None),
+            },
+            'advanced_metrics': {
+                'bs_atm_bias': float(df['bs_atm_bias'].mean())
+                    if 'bs_atm_bias' in df.columns else None,
+                'berg_atm_bias': float(df['berg_atm_bias'].mean())
+                    if 'berg_atm_bias' in df.columns else None,
+                'neural_atm_bias': (
+                    float(df['neural_atm_bias'].mean())
+                    if 'neural_atm_bias' in df.columns
+                    and df['neural_atm_bias'].notna().any() else None),
+                'bs_shape_rmse': float(df['bs_shape_rmse'].mean())
+                    if 'bs_shape_rmse' in df.columns else None,
+                'berg_shape_rmse': float(df['berg_shape_rmse'].mean())
+                    if 'berg_shape_rmse' in df.columns else None,
+                'neural_shape_rmse': (
+                    float(df['neural_shape_rmse'].mean())
+                    if 'neural_shape_rmse' in df.columns
+                    and df['neural_shape_rmse'].notna().any() else None),
+                'berg_wing_rmse': float(df['berg_wing_rmse'].dropna().mean())
+                    if 'berg_wing_rmse' in df.columns else None,
+                'neural_wing_rmse': (
+                    float(df['neural_wing_rmse'].dropna().mean())
+                    if 'neural_wing_rmse' in df.columns
+                    and df['neural_wing_rmse'].notna().any() else None),
             },
             'win_rates': df['best_model'].value_counts().to_dict(),
             'by_maturity': {

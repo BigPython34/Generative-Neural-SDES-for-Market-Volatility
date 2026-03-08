@@ -53,7 +53,7 @@ def hurst_variogram(series, max_lag=None):
     log_lags = np.log(lags)
     log_var = np.log(variogram + 1e-30)
     
-    slope, intercept, r_value, _, _ = linregress(log_lags, log_var)
+    slope, _, r_value, _, _ = linregress(log_lags, log_var)
     H = slope / 2.0
     
     return H, r_value**2
@@ -82,7 +82,7 @@ def hurst_structure_function(series, order=1, max_lag=None):
     log_lags = np.log(lags)
     log_mom = np.log(moments + 1e-30)
     
-    slope, intercept, r_value, _, _ = linregress(log_lags, log_mom)
+    slope, _, r_value, _, _ = linregress(log_lags, log_mom)
     H = slope / order
     
     return H, r_value**2

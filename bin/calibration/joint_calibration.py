@@ -274,9 +274,10 @@ def main():
         plot_dir = ROOT / "outputs" / "plots"
         generate_plots(result, plot_dir)
 
-    # ── Update config ──
+    # ── Update config (always propagate calibrated params) ──
+    update_config(result)
     if args.update_config:
-        update_config(result)
+        print("  (--update-config flag acknowledged)")
 
     print(f"\n  Joint calibration complete in {result.elapsed_seconds:.1f}s")
     print(f"     H = {result.H:.4f}, η = {result.eta:.3f}, ρ = {result.rho:.3f}")

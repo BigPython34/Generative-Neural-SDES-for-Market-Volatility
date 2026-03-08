@@ -334,6 +334,10 @@ def main():
         json.dump(report, f, indent=2, default=str)
     print(f"  Report: {report_path}")
 
+    # Save Q-model weights to disk for use in backtesting/pricing
+    from quant.calibration.neural_sde_q_calibrator import save_q_model
+    save_q_model(model)
+
     # ═════════════════════════════════════════════════════════════
     # Step 5: Plots
     # ═════════════════════════════════════════════════════════════

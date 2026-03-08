@@ -72,8 +72,8 @@ neural_sde:
     sigma_j_init: 0.3
     prior_target: 3.0
   fractional:
-    hurst_init: 0.02
-    eta_init: 0.959
+    hurst_init: 0.005
+    eta_init: 1.341
     learn_hurst: true
     learn_eta: true
 simulation:
@@ -92,10 +92,10 @@ simulation:
     tolerance_mean: 0.15
     tolerance_std: 0.3
 bergomi:
-  hurst: 0.02
-  eta: 0.959
+  hurst: 0.005
+  eta: 1.341
   eta_source: config
-  rho: -0.955
+  rho: -0.959
   xi0: 0.029241
   fBm_method: volterra
 pricing:

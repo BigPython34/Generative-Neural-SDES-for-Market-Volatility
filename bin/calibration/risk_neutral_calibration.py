@@ -13,8 +13,6 @@ import numpy as np
 import pandas as pd
 import jax
 import jax.numpy as jnp
-import equinox as eqx
-import optax
 from pathlib import Path
 from datetime import datetime
 import json

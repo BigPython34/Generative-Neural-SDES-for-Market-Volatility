@@ -11,7 +11,6 @@ Features:
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
@@ -26,7 +25,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Import our new modules
 from quant.data.options_cache import OptionsDataCache, EnhancedOptionsLoader
-from quant.calibration.bergomi_optimizer import BergomiOptimizer, calibrate_bergomi_to_smile
+from quant.calibration.bergomi_optimizer import  calibrate_bergomi_to_smile
 from utils.black_scholes import BlackScholes
 
 

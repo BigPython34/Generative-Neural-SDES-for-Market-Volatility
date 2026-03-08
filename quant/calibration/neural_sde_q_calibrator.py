@@ -800,3 +800,95 @@ def train_neural_sde_q(
         print(result.summary())
 
     return model, result
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 7. MODEL PERSISTENCE
+# ═══════════════════════════════════════════════════════════════════
+
+def save_q_model(
+    model: NeuralSDEQModel,
+    path: str = "models/neural_sde_q_model.eqx",
+    config_path: str = "models/neural_sde_q_config.json",
+):
+    """
+    Save trained Q-model (Girsanov drift correction) to disk.
+
+    Saves:
+      - EQX model weights  → path
+      - Reconstruction config (architecture + scalar params) → config_path
+    """
+    from pathlib import Path as _P
+    _P(path).parent.mkdir(exist_ok=True)
+    eqx.tree_serialise_leaves(path, model)
+
+    config = {
+        'lambda_max': float(model.girsanov.lambda_max),
+        'kappa': float(model.p_kappa),
+        'theta': float(model.p_theta),
+        'drift_scale': float(model.p_drift_scale),
+        'diff_min': float(model.p_diff_min),
+        'diff_max': float(model.p_diff_max),
+        'rho': float(model.rho),
+        'spot': float(model.spot),
+        'r': float(model.r),
+        'log_v_min': float(model.log_v_min),
+        'log_v_max': float(model.log_v_max),
+    }
+
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    print(f"  Q-model saved: {path}")
+    print(f"  Q-config saved: {config_path}")
+
+
+def load_q_model(
+    path: str = "models/neural_sde_q_model.eqx",
+    config_path: str = "models/neural_sde_q_config.json",
+) -> Optional[NeuralSDEQModel]:
+    """
+    Load trained Q-model from disk.
+
+    Returns None if model file doesn't exist.
+    """
+    from pathlib import Path as _P
+    model_path = _P(path)
+    cfg_path = _P(config_path)
+
+    if not model_path.exists():
+        return None
+
+    # Load reconstruction config
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+    else:
+        cfg = {
+            'lambda_max': 3.0, 'kappa': 2.72, 'theta': -3.5,
+            'drift_scale': 0.5, 'diff_min': 0.5, 'diff_max': 2.0,
+            'rho': -0.9, 'spot': 5500.0, 'r': 0.0373,
+            'log_v_min': -7.0, 'log_v_max': 2.0,
+        }
+
+    # Create skeleton with matching architecture
+    key = jax.random.PRNGKey(0)
+    girsanov = GirsanovDrift(key, lambda_max=cfg.get('lambda_max', 3.0))
+    skeleton = NeuralSDEQModel(
+        girsanov=girsanov,
+        kappa=cfg.get('kappa', 2.72),
+        theta=cfg.get('theta', -3.5),
+        drift_scale=cfg.get('drift_scale', 0.5),
+        diff_min=cfg.get('diff_min', 0.5),
+        diff_max=cfg.get('diff_max', 2.0),
+        rho=cfg.get('rho', -0.9),
+        spot=cfg.get('spot', 5500.0),
+        r=cfg.get('r', 0.0373),
+        log_v_min=cfg.get('log_v_min', -7.0),
+        log_v_max=cfg.get('log_v_max', 2.0),
+    )
+
+    try:
+        return eqx.tree_deserialise_leaves(model_path, skeleton)
+    except Exception as e:
+        print(f"  [WARN] Could not load Q-model: {e}")
+        return None

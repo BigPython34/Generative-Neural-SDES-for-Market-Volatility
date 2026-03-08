@@ -18,12 +18,10 @@ The key insight: Realized Vol exhibits ROUGH behavior (H ~ 0.1)
 while VIX is smoother (H ~ 0.5)
 """
 
-import jax
-import jax.numpy as jnp
 import numpy as np
 from utils.config import load_config
 from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
-from utils.diagnostics import print_distribution_stats, compute_acf, estimate_hurst, estimate_hurst_from_returns
+from utils.diagnostics import compute_acf, estimate_hurst, estimate_hurst_from_returns
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 

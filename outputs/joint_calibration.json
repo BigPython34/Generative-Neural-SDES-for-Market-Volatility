@@ -46,7 +46,7 @@
   "diagnostics": {
     "n_mc_paths": 6000,
     "n_iterations": 52,
-    "elapsed_seconds": 29.615338802337646,
+    "elapsed_seconds": 42.84723138809204,
     "grid_evaluated": 48,
     "method": "grid_search + nelder_mead (JAX-accelerated)"
   }
