@@ -6,14 +6,14 @@ Uses differential evolution and gradient-based optimization.
 """
 
 import numpy as np
-from scipy.optimize import minimize, differential_evolution
+from scipy.optimize import minimize
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from quant.models.bergomi import RoughBergomiModel
-from utils.black_scholes import BlackScholes
+from quant.models.black_scholes import BlackScholes
 
 
 class BergomiOptimizer:

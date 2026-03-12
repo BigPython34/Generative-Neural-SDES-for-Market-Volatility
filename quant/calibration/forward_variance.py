@@ -19,7 +19,7 @@ From the ATM term structure {σ_ATM(Tᵢ)} we extract ξ₀ via:
 
 So the piecewise-constant forward variance on [Tᵢ₋₁, Tᵢ) is
 
-    ξ₀,ᵢ  =  [σ²_ATM(Tᵢ)·Tᵢ − σ²_ATM(Tᵢ₋₁)·Tᵢ₋₁] / (Tᵢ − Tᵢ₋₁)
+    ξ₀,ᵢ  =  [σ²_ATM(Tᵢ)·Tᵢ - σ²_ATM(Tᵢ₋₁)·Tᵢ₋₁] / (Tᵢ - Tᵢ₋₁)
 
 This is exact: the total-variance identity holds for any local-vol model,
 and the rBergomi model's ATM level is controlled by ξ₀(t) alone
@@ -41,8 +41,7 @@ References
 
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass
@@ -190,7 +189,7 @@ def bootstrap_forward_variance(
     """
     Bootstrap piecewise-constant ξ₀(t) from ATM term structure.
 
-    ξ₀,ᵢ = [σ²(Tᵢ)·Tᵢ − σ²(Tᵢ₋₁)·Tᵢ₋₁] / (Tᵢ − Tᵢ₋₁)
+    ξ₀,ᵢ = [σ²(Tᵢ)·Tᵢ - σ²(Tᵢ₋₁)·Tᵢ₋₁] / (Tᵢ - Tᵢ₋₁)
 
     Parameters
     ----------
@@ -301,7 +300,7 @@ def bootstrap_xi0_from_vix(
 
     gives the piecewise-constant forward variance on [τᵢ₋₁, τᵢ):
 
-        ξ₀,ᵢ = [ TV(τᵢ) − TV(τᵢ₋₁) ] / (τᵢ − τᵢ₋₁)
+        ξ₀,ᵢ = [ TV(τᵢ) - TV(τᵢ₋₁) ] / (τᵢ - τᵢ₋₁)
 
     This is the correct approach for joint SPX-VIX calibration
     (Rømer 2022, Bayer et al. 2016 §4):

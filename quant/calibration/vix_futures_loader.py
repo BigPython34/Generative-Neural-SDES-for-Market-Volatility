@@ -36,7 +36,7 @@ where
 
 In the rBergomi model (Bayer, Friz & Gatheral 2016):
 
-    V_s = ξ₀(s) · exp( η Ŵᴴ_s − ½η² Var[Ŵᴴ_s] )
+    V_s = ξ₀(s) · exp( η Ŵᴴ_s - ½η² Var[Ŵᴴ_s] )
 
 The VIX term structure constrains the forward variance curve ξ₀(t)
 and the vol-of-vol parameters (η, H) jointly.
@@ -61,10 +61,9 @@ References
 
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
 
 
 @dataclass
@@ -93,7 +92,7 @@ class VIXFuturesTerm:
         return len(self.prices)
 
     def term_structure_slope(self) -> float:
-        """Contango (+) or backwardation (−) slope."""
+        """Contango (+) or backwardation (-) slope."""
         if self.n_contracts < 2:
             return 0.0
         return float((self.prices[-1] - self.prices[0]) / (self.T_years[-1] - self.T_years[0]))
@@ -606,7 +605,7 @@ def assemble_calibration_data(
     -------
     CalibrationMarketData
     """
-    from quant.data.options_cache import OptionsDataCache
+    from utils.fetcher.options_cache import OptionsDataCache
 
     data = CalibrationMarketData()
 
@@ -673,7 +672,7 @@ def assemble_calibration_data(
 
     # 5. SOFR
     try:
-        from utils.sofr_loader import SOFRRateLoader
+        from utils.loader.sofr_loader import SOFRRateLoader
         sofr = SOFRRateLoader()
         if sofr.is_available:
             data.risk_free_rate = sofr.get_rate()

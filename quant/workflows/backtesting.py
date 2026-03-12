@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import sys
 import json
@@ -35,15 +35,15 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from quant.data.options_cache import OptionsDataCache
+from utils.fetcher.options_cache import OptionsDataCache
 from quant.models.bergomi import RoughBergomiModel
-from utils.black_scholes import BlackScholes
+from quant.models.black_scholes import BlackScholes
 from utils.config import load_config
 from engine.generative_trainer import GenerativeTrainer
 
 # Q-model support (Girsanov drift correction for risk-neutral pricing)
 try:
-    from quant.calibration.neural_sde_q_calibrator import load_q_model, NeuralSDEQModel
+    from quant.calibration.neural_sde_q_calibrator import load_q_model
     _HAS_Q_CALIBRATOR = True
 except ImportError:
     _HAS_Q_CALIBRATOR = False
@@ -57,7 +57,7 @@ def _compute_smile_metrics(moneyness, model_ivs, market_ivs):
 
     Metrics (ref: Gatheral & Jacquier 2014, De Marco & Henry-Labordère 2015):
       - rmse: overall root-mean-square error
-      - atm_bias: model ATM IV − market ATM IV (level error)
+      - atm_bias: model ATM IV - market ATM IV (level error)
       - shape_rmse: RMSE after removing ATM bias (pure curvature/skew error)
       - wing_rmse: RMSE on wings only (|moneyness| > 5%)
       - max_err: worst-case absolute error across strikes
@@ -320,7 +320,7 @@ class HistoricalBacktester:
         """Use real SOFR rate when available, fall back to config."""
         if cfg['pricing'].get('use_sofr', True):
             try:
-                from utils.sofr_loader import get_sofr
+                from utils.loader.sofr_loader import get_sofr
                 sofr = get_sofr()
                 if sofr.is_available:
                     return sofr.get_rate()
@@ -822,7 +822,7 @@ class HistoricalBacktester:
             print(f"      Neural SDE{q_tag} : {df['neural_sde_rmse'].mean():.2f}%")
 
         # Advanced metrics
-        print(f"\n   ATM Bias (model − market, vol pts):")
+        print(f"\n   ATM Bias (model - market, vol pts):")
         print(f"      BS: {df['bs_atm_bias'].mean():+.2f}% | "
               f"Bergomi: {df['berg_atm_bias'].mean():+.2f}%", end='')
         if df.get('neural_atm_bias') is not None and df['neural_atm_bias'].notna().any():

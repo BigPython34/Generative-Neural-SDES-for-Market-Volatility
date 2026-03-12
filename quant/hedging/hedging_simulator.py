@@ -19,7 +19,6 @@ Usage:
 
 import numpy as np
 from dataclasses import dataclass
-from typing import Optional
 from scipy.stats import norm
 
 
@@ -81,11 +80,12 @@ class HedgingSimulator:
             except Exception:
                 self.rho = -0.7  # last-resort fallback
 
-        from utils.black_scholes import BlackScholes
+        from quant.models.black_scholes import BlackScholes
         self.option_price = BlackScholes.price(spot, strike, T, r, iv, opt_type)
 
     def run(self, spot_paths: np.ndarray, var_paths: np.ndarray = None,
-            hedge_freq: str = 'daily', rebalance_every: int = None) -> dict:
+            hedge_freq: str = 'daily', rebalance_every: int = None,
+            deep_policy=None) -> dict:
         n_paths, n_total = spot_paths.shape
         n_steps = n_total - 1
         dt = self.T / n_steps
@@ -105,6 +105,14 @@ class HedgingSimulator:
             results['Neural-AD'] = self._hedge_neural_ad_vec(spot_paths, var_paths, dt, rebal_set)
         except Exception:
             pass  # silently skip if greeks_ad not available or fails
+
+        # Deep Hedge (pre-trained policy from engine.deep_hedger)
+        if deep_policy is not None:
+            try:
+                results['Deep Hedge'] = self._hedge_deep_vec(
+                    spot_paths, var_paths, dt, rebal_set, deep_policy)
+            except Exception:
+                pass
 
         return results
 
@@ -257,6 +265,58 @@ class HedgingSimulator:
 
         pnl = cash + stock_value - payoff
         return self._build_result('Neural-AD', pnl, len(rebal_set))
+
+    def _hedge_deep_vec(self, spot_paths, var_paths, dt, rebal_set, policy) -> HedgingResult:
+        """Delta hedge using a pre-trained deep hedging policy (engine.deep_hedger)."""
+        import jax
+        import jax.numpy as jnp
+
+        n_paths, n_total = spot_paths.shape
+        n_steps = n_total - 1
+        S0 = float(spot_paths[0, 0])
+
+        cash = np.full(n_paths, self.option_price)
+        delta_prev = np.zeros(n_paths)
+
+        for step in range(n_steps):
+            S = spot_paths[:, step]
+            T_rem = max(self.T - step * dt, 1e-8)
+
+            if var_paths is not None and step < var_paths.shape[1]:
+                V = np.clip(var_paths[:, step], 1e-8, None)
+            else:
+                V = np.full(n_paths, self.iv**2)
+
+            if step in rebal_set:
+                sigma = np.sqrt(V)
+                bs_d = _bs_delta_vec(S, self.strike, T_rem, self.r, sigma, self.opt_type)
+                features = np.stack([
+                    S / S0,
+                    np.clip(np.log(np.maximum(V, 1e-10)), -7.0, 2.0),
+                    np.clip(np.log(S / self.strike), -1.0, 1.0),
+                    np.full(n_paths, T_rem / self.T),
+                    delta_prev,
+                    bs_d,
+                ], axis=1)
+                delta_new = np.array(jax.vmap(policy)(jnp.array(features)))
+                delta_new = np.clip(delta_new, -2.0, 2.0)
+
+                trade = delta_new - delta_prev
+                cash -= trade * S
+                cash -= np.abs(trade) * S * self.tc_bps
+                delta_prev = delta_new
+
+            cash *= np.exp(self.r * dt)
+
+        S_T = spot_paths[:, -1]
+        stock_value = delta_prev * S_T
+        if self.opt_type == 'call':
+            payoff = np.maximum(S_T - self.strike, 0)
+        else:
+            payoff = np.maximum(self.strike - S_T, 0)
+
+        pnl = cash + stock_value - payoff
+        return self._build_result('Deep Hedge', pnl, len(rebal_set))
 
     @staticmethod
     def compare_results(results: dict) -> str:

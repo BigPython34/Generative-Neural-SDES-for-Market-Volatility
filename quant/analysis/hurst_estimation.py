@@ -426,7 +426,7 @@ def hurst_dma(
 
     Computes σ²_DMA(n) for windows of size n, then fits:
         log σ_DMA(n) = (H + 0.5) · log(n) + c
-    so  H = slope − 0.5.
+    so  H = slope - 0.5.
 
     Parameters
     ----------

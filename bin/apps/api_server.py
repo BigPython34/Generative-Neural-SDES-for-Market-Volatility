@@ -236,7 +236,7 @@ _regime_detector = None
 def _get_sofr():
     global _sofr
     if _sofr is None:
-        from utils.sofr_loader import SOFRRateLoader
+        from utils.loader.sofr_loader import SOFRRateLoader
         _sofr = SOFRRateLoader()
     return _sofr
 
@@ -244,7 +244,7 @@ def _get_sofr():
 def _get_vvix():
     global _vvix_cal
     if _vvix_cal is None:
-        from utils.vvix_calibrator import VVIXCalibrator
+        from quant.calibration.vvix_calibrator import VVIXCalibrator
         _vvix_cal = VVIXCalibrator()
     return _vvix_cal
 
@@ -390,7 +390,7 @@ def get_sofr_rate(as_of_date: Optional[str] = None):
 
 @app.post("/price/vanilla")
 def price_vanilla(req: VanillaPriceRequest):
-    from utils.black_scholes import BlackScholes
+    from quant.models.black_scholes import BlackScholes
     r = _get_r(req.r)
     price = BlackScholes.price(req.spot, req.strike, req.T, r, req.sigma, req.opt_type)
     delta = BlackScholes.delta(req.spot, req.strike, req.T, r, req.sigma, req.opt_type)
@@ -689,7 +689,7 @@ def animate_hedging(req: HedgeRequest):
     s_paths = req.spot * np.exp(np.cumsum(log_ret, axis=1))
     s_paths = np.column_stack([np.full(n, req.spot), s_paths])
 
-    from utils.black_scholes import BlackScholes
+    from quant.models.black_scholes import BlackScholes
     option_p0 = BlackScholes.price(req.spot, req.strike, req.T, r, sigma, req.opt_type)
 
     cash = np.full(n, option_p0)

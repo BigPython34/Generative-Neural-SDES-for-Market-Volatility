@@ -14,15 +14,15 @@ Mathematical Framework
 
 The rough Bergomi (rBergomi) model under Q:
 
-    V_t = ξ₀(t) · exp( η Ŵᴴ_t − ½η² Var[Ŵᴴ_t] )                   (1)
+    V_t = ξ₀(t) · exp( η Ŵᴴ_t - ½η² Var[Ŵᴴ_t] )                   (1)
 
-    dS_t/S_t = r dt + √V_t [ ρ dW_t + √(1−ρ²) dW⊥_t ]               (2)
+    dS_t/S_t = r dt + √V_t [ ρ dW_t + √(1-ρ²) dW⊥_t ]               (2)
 
 Parameters to calibrate:
     θ = { H, η, ρ, ξ₀(·) }
 
 where H ∈ (0, ½) is the Hurst exponent, η > 0 the vol-of-vol,
-ρ ∈ (−1, 0) the spot-vol correlation, and ξ₀(·) a piecewise-constant
+ρ ∈ (-1, 0) the spot-vol correlation, and ξ₀(·) a piecewise-constant
 forward variance curve.
 
 Calibration Strategy (2-stage)
@@ -66,16 +66,16 @@ The joint loss function:
 
 where:
 
-  L_SPX = Σ_{T,K}  w_{T,K} · [ σ_model(K,T) − σ_market(K,T) ]²
+  L_SPX = Σ_{T,K}  w_{T,K} · [ σ_model(K,T) - σ_market(K,T) ]²
           (vega-weighted IV RMSE across the surface)
 
-  L_VIX = Σ_τ  [ VIX_model(τ) − VIX_market(τ) ]²
+  L_VIX = Σ_τ  [ VIX_model(τ) - VIX_market(τ) ]²
           (VIX term structure MSE, τ ∈ {9d, 30d, 3m, 6m, 1y})
 
-  L_mart = Σ_T  [ E[e^{-rT} S_T] / S_0 − 1 ]²
+  L_mart = Σ_T  [ E[e^{-rT} S_T] / S_0 - 1 ]²
            (martingale constraint)
 
-  L_reg = α_H · (H − H_prior)² + α_η · (η − η_prior)²
+  L_reg = α_H · (H - H_prior)² + α_η · (η - η_prior)²
           (regularization toward P-measure estimates)
 
 VIX pricing under rBergomi
@@ -123,12 +123,10 @@ References
 import numpy as np
 import jax
 import jax.numpy as jnp
-from dataclasses import dataclass, field
-from typing import Optional
-from pathlib import Path
+from dataclasses import dataclass
 import time
-
-from utils.black_scholes import BlackScholes
+from scipy.optimize import minimize as scipy_minimize
+from quant.models.black_scholes import BlackScholes
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -139,7 +137,7 @@ def build_volterra_kernel(n_steps: int, H: float, dt: float):
     """
     Vectorized Volterra RL-fBM kernel — pure JAX, no Python loops.
 
-    A[j,k] = √(2H) · dtᴴ / (H+½) · [(j−k+1)^{H+½} − (j−k)^{H+½}]
+    A[j,k] = √(2H) · dtᴴ / (H+½) · [(j-k+1)^{H+½} - (j-k)^{H+½}]
 
     for k ≤ j  (lower triangular).
 
@@ -204,10 +202,10 @@ def _simulate_paths_jit(Z, Z_perp, A, var_wh, xi0_arr,
     """
     JIT-compiled joint (S, V) simulation under rBergomi.
 
-    V_t = ξ₀(t) · exp(η·Ŵᴴ_t − ½η²·Var[Ŵᴴ_t])
-    dS = S·[r dt + √V_{t−1}·(ρ dW + √(1−ρ²) dW⊥)]
+    V_t = ξ₀(t) · exp(η·Ŵᴴ_t - ½η²·Var[Ŵᴴ_t])
+    dS = S·[r dt + √V_{t-1}·(ρ dW + √(1-ρ²) dW⊥)]
 
-    Uses previsible variance V_{k−1} (Bayer et al. 2016).
+    Uses previsible variance V_{k-1} (Bayer et al. 2016).
 
     Parameters
     ----------
@@ -262,7 +260,7 @@ def _mc_prices_batch(S_T, strikes, is_call, discount):
     S_T      : (n_paths,)
     strikes  : (n_strikes,)
     is_call  : (n_strikes,) boolean mask (1.0 = call, 0.0 = put)
-    discount : scalar exp(−rT)
+    discount : scalar exp(-rT)
 
     Returns  : (n_strikes,) MC prices
     """
@@ -351,7 +349,7 @@ class ExtendedRoughBergomi:
         Joint (S, V) simulation with antithetic variates.
 
         Antithetic sampling: generates N/2 paths from Z, then mirrors
-        to −Z, cutting MC variance roughly in half for monotone payoffs.
+        to -Z, cutting MC variance roughly in half for monotone payoffs.
 
         Returns dict with spot_paths, var_paths, dt, n_paths.
         """
@@ -446,7 +444,7 @@ class ExtendedRoughBergomi:
 
 def vix_term_structure_loss(model_vix, market_vix, weights=None):
     """
-    L_VIX = Σ_τ w_τ · [ VIX_model(τ) − VIX_market(τ) ]²
+    L_VIX = Σ_τ w_τ · [ VIX_model(τ) - VIX_market(τ) ]²
 
     Normalized by VIX level² to make errors comparable across tenors.
     """
@@ -466,7 +464,7 @@ def vix_term_structure_loss(model_vix, market_vix, weights=None):
 
 def spx_smile_loss(model_ivs, market_ivs, vega_weights=None):
     """
-    L_SPX = Σ_K w_K · [ σ_model(K) − σ_market(K) ]²
+    L_SPX = Σ_K w_K · [ σ_model(K) - σ_market(K) ]²
 
     Vega-weighted to focus on liquid ATM region.
     """
@@ -999,7 +997,7 @@ class JointCalibrator:
         # Bounds (v2 — widened after literature comparison):
         #   H   ∈ [0.005, 0.40]  (allows very rough H ≈ 0.01-0.02 from Bayer & Stemper 2018)
         #   η   ∈ [0.30, 5.00]   (lowered to allow small η when H is very small)
-        #   ρ   ∈ [−0.995, −0.10] (widened: saturated ρ at −0.98 is a common artefact)
+        #   ρ   ∈ [-0.995, -0.10] (widened: saturated ρ at -0.98 is a common artefact)
 
         BOUNDS_H   = (0.005, 0.40)
         BOUNDS_ETA = (0.30, 5.00)
@@ -1009,7 +1007,7 @@ class JointCalibrator:
             print(f"\n  [Stage 3] Local refinement (bounded Nelder-Mead)...")
             print(f"    Bounds: H∈{BOUNDS_H}, η∈{BOUNDS_ETA}, ρ∈{BOUNDS_RHO}")
 
-        from scipy.optimize import minimize as scipy_minimize
+        
 
         eval_count = [0]
 

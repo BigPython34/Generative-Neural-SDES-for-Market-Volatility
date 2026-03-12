@@ -55,7 +55,7 @@ class DashboardV2:
 
         # SOFR rate
         try:
-            from utils.sofr_loader import SOFRRateLoader
+            from utils.loader.sofr_loader import SOFRRateLoader
             sofr = SOFRRateLoader()
             if sofr.is_available:
                 self.metrics['sofr_rate'] = sofr.get_rate()
@@ -65,7 +65,7 @@ class DashboardV2:
 
         # VVIX
         try:
-            from utils.vvix_calibrator import VVIXCalibrator
+            from quant.calibration.vvix_calibrator import VVIXCalibrator
             vvix = VVIXCalibrator()
             if vvix.is_available:
                 eta_info = vvix.estimate_eta()
@@ -76,7 +76,7 @@ class DashboardV2:
 
         # Surface
         try:
-            from quant.data.options_cache import OptionsDataCache
+            from utils.fetcher.options_cache import OptionsDataCache
             cache = OptionsDataCache()
             self.surface, info = cache.load_latest("SPY")
             self.metrics['surface_info'] = info

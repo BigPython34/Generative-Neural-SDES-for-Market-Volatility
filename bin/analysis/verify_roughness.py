@@ -374,7 +374,7 @@ def verify_generated_roughness():
     
     H_rv = None
     if Path(rv_source).exists():
-        from utils.diagnostics import estimate_hurst_from_returns
+        from quant.analysis.diagnostics import estimate_hurst_from_returns
         rv_results = estimate_hurst_from_returns(rv_source, rv_window=rv_window)
         H_rv = rv_results['H_variogram']
         

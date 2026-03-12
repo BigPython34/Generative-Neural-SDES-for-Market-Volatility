@@ -109,7 +109,7 @@ pricing:
 backtesting:
   n_days: 30
   n_mc_paths: 10000
-  rv_source: data/SP_SPX, 30.csv
+  rv_source: data/trading_view/equity_indices/spx_30m.csv
   maturity_days: 30
   moneyness_range:
   - -0.15

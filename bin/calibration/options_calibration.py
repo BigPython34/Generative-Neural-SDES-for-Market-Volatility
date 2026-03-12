@@ -24,9 +24,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Import our new modules
-from quant.data.options_cache import OptionsDataCache, EnhancedOptionsLoader
+from utils.fetcher.options_cache import OptionsDataCache, EnhancedOptionsLoader
 from quant.calibration.bergomi_optimizer import  calibrate_bergomi_to_smile
-from utils.black_scholes import BlackScholes
+from quant.models.black_scholes import BlackScholes
 
 
 class MonteCarloOptionPricer:

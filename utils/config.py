@@ -24,26 +24,3 @@ def load_config(config_path: str = None) -> dict:
         return yaml.safe_load(f)
 
 
-def get_data_config() -> dict:
-    """Shortcut for data section."""
-    return load_config()['data']
-
-
-def get_pricing_config() -> dict:
-    """Shortcut for pricing section."""
-    return load_config()['pricing']
-
-
-def get_bergomi_config() -> dict:
-    """Shortcut for bergomi section."""
-    return load_config()['bergomi']
-
-
-def get_simulation_config() -> dict:
-    """Shortcut for simulation section."""
-    return load_config()['simulation']
-
-
-def get_backtesting_config() -> dict:
-    """Shortcut for backtesting section."""
-    return load_config()['backtesting']

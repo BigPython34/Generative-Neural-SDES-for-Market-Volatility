@@ -58,8 +58,10 @@ import pandas as pd
 # =====================================================================
 
 def _load_spx_daily() -> pd.DataFrame:
-    """Load SPX daily OHLCV with datetime index."""
+    """Load SPX daily OHLCV with datetime index.
+    Prefers TradingView (150+ years) over Yahoo."""
     paths = [
+        ROOT / "data" / "trading_view" / "equity_indices" / "spx_daily.csv",
         ROOT / "data" / "market" / "spx" / "spx_daily_2010_latest.csv",
         ROOT / "data" / "market" / "spx" / "spx_daily.csv",
     ]
@@ -84,14 +86,12 @@ def _load_spx_daily() -> pd.DataFrame:
 
 
 def _load_vix_daily() -> pd.DataFrame:
-    """Load VIX daily with datetime index."""
+    """Load VIX daily with datetime index.
+    Prefers TradingView (36 years, 1990-present) over Yahoo."""
     paths = [
+        ROOT / "data" / "trading_view" / "volatility" / "vix_daily.csv",
         ROOT / "data" / "market" / "vix" / "vix_daily.csv",
     ]
-    # Also check TradingView
-    tv_vix = ROOT / "data" / "trading_view" / "volatility" / "vix_daily.csv"
-    if tv_vix.exists():
-        paths.append(tv_vix)
 
     for p in paths:
         if p.exists():
@@ -109,14 +109,13 @@ def _load_vix_daily() -> pd.DataFrame:
 
 
 def _load_spx_intraday_5m() -> Optional[pd.DataFrame]:
-    """Load SPX 5-minute data for precise RV computation."""
+    """Load SPX 5-minute data for precise RV computation.
+    Prefers TradingView SPX 5m (2yr) over Yahoo."""
     paths = [
+        ROOT / "data" / "trading_view" / "equity_indices" / "spx_5m.csv",
         ROOT / "data" / "market" / "spx" / "spx_5m.csv",
+        ROOT / "data" / "trading_view" / "equity_etfs" / "spy_5m.csv",
     ]
-    # TradingView SPY as fallback
-    tv_spy = ROOT / "data" / "trading_view" / "equity_etfs" / "spy_5m.csv"
-    if tv_spy.exists():
-        paths.append(tv_spy)
 
     for p in paths:
         if p.exists():
@@ -137,6 +136,38 @@ def _load_sofr() -> Optional[pd.DataFrame]:
             df["date"] = pd.to_datetime(df["date"])
             return df
     return None
+
+
+def _load_tv_daily(subpath: str) -> Optional[pd.DataFrame]:
+    """Load a TradingView daily CSV -> df with 'date' and 'close'."""
+    p = ROOT / "data" / "trading_view" / subpath
+    if not p.exists():
+        return None
+    df = pd.read_csv(p)
+    if "time" not in df.columns:
+        return None
+    df["date"] = pd.to_datetime(df["time"], unit="s").dt.normalize()
+    df = df.sort_values("date").drop_duplicates("date", keep="last").reset_index(drop=True)
+    return df
+
+
+def _load_regime_signals() -> dict:
+    """Load VVIX, VIX3M, SKEW, PCR daily from TradingView.
+    Returns dict of {signal_name: DataFrame with date+close}."""
+    signals = {}
+    mapping = {
+        "vvix": "volatility/vvix_daily.csv",
+        "vix3m": "volatility/vix3m_daily.csv",
+        "vix6m": "volatility/vix6m_daily.csv",
+        "vix9d": "volatility/vix9d_daily.csv",
+        "skew": "sentiment/skew_daily.csv",
+        "pcr_spx": "sentiment/pcspx_daily.csv",
+    }
+    for name, subpath in mapping.items():
+        df = _load_tv_daily(subpath)
+        if df is not None:
+            signals[name] = df
+    return signals
 
 
 # =====================================================================
@@ -186,42 +217,73 @@ def compute_forward_rv(spx_daily: pd.DataFrame, idx: int, horizon: int = 21) -> 
 # 3. MODEL PREDICTIONS
 # =====================================================================
 
+# -- Neural SDE model cache (load once, reuse) --
+_NEURAL_MODEL_CACHE: dict = {}
+
+
+def _get_neural_model():
+    """Load the trained P-measure Neural SDE model (cached)."""
+    if "model" in _NEURAL_MODEL_CACHE:
+        return _NEURAL_MODEL_CACHE["model"], _NEURAL_MODEL_CACHE["config"]
+
+    from engine.generative_trainer import GenerativeTrainer
+    from utils.config import load_config
+    import jax  # noqa: F811
+
+    yaml_config = load_config()
+    sim_cfg = yaml_config["simulation"]
+    trainer_config = {"n_steps": sim_cfg["n_steps"], "T": sim_cfg["T"]}
+    trainer = GenerativeTrainer(trainer_config)
+    # Data loaded in __init__
+    model = trainer.load_model()  # returns NeuralRoughSimulator
+    if model is None:
+        raise RuntimeError("No trained P-model found in models/")
+
+    _NEURAL_MODEL_CACHE["model"] = model
+    _NEURAL_MODEL_CACHE["config"] = trainer_config
+    _NEURAL_MODEL_CACHE["trainer"] = trainer
+    return model, trainer_config
+
+
 def _predict_neural_sde_rv(date_idx: int, spx_daily: pd.DataFrame,
                             vix_level: float, horizon: int = 21) -> Optional[float]:
     """
-    Use the trained Neural SDE model to predict future RV.
-    Returns annualized variance prediction.
+    Use the trained Neural SDE P-model to predict future RV.
+
+    Strategy:
+      1. Initialize at current VIX level (VIX^2 -> variance -> log_v)
+      2. Generate n_mc variance paths via model.generate_variance_path()
+      3. Average realized variance over the horizon
+      4. Return annualized variance
+
+    Returns annualized variance prediction, or None on failure.
     """
     try:
-        from engine.generative_trainer import GenerativeTrainer
-        from utils.config import load_config
-
-        config = load_config()
-        trainer = GenerativeTrainer(config)
-        trainer.load_data()
-        model = trainer.load_best_model()
-
-        # Initialize at current VIX level (as vol proxy)
-        v0 = (vix_level / 100.0)**2  # VIX -> variance
-        log_v0 = np.log(max(v0, 1e-6))
-
         import jax
         import jax.numpy as jnp
 
-        n_mc = 2000
-        n_steps = config["simulation"]["n_steps"]
-        dt = config["simulation"]["T"] / n_steps
+        model, config = _get_neural_model()
 
-        key = jax.random.PRNGKey(42)
+        # Initialize at current VIX level (as vol proxy)
+        v0 = (vix_level / 100.0) ** 2  # VIX -> variance
+        log_v0 = float(np.log(max(v0, 1e-6)))
+
+        n_mc = 2000
+        n_steps = config["n_steps"]
+        dt = config["T"] / n_steps
+
+        # Vary seed per date to avoid identical predictions
+        key = jax.random.PRNGKey(42 + date_idx)
         noise = jax.random.normal(key, (n_mc, n_steps)) * jnp.sqrt(dt)
         init = jnp.full(n_mc, log_v0)
 
         var_paths = jax.vmap(model.generate_variance_path, in_axes=(0, 0, None))(
             init, noise, dt
         )
-        # Average variance over the simulated horizon
+        # var_paths is in variance space (exp(log_v))
+        # Average over paths and time steps
         mean_var = float(jnp.mean(var_paths))
-        return mean_var
+        return max(mean_var, 1e-8)
     except Exception as e:
         return None
 
@@ -323,6 +385,43 @@ def _compute_straddle_pnl(spot_entry: float, spot_exit: float,
     return pnl_dollar
 
 
+def _detect_regime_at_date(row, merged, regime_signals: dict) -> dict:
+    """Detect regime at a specific backtest date using pre-loaded signals."""
+    try:
+        from quant.regimes.regime_detector import RegimeDetector
+        detector = RegimeDetector.__new__(RegimeDetector)
+        detector.cfg = {"bergomi": {"hurst": 0.07, "eta": 1.9, "rho": -0.7}}
+
+        date = row["date"]
+        vix = row["vix_close"]
+
+        # Look up signal values at this date
+        vvix_val = _lookup_signal(regime_signals.get("vvix"), date)
+        vix3m_val = _lookup_signal(regime_signals.get("vix3m"), date)
+        skew_val = _lookup_signal(regime_signals.get("skew"), date)
+        pcr_val = _lookup_signal(regime_signals.get("pcr_spx"), date)
+
+        # RV from merged data
+        rv_val = row.get("rv_rolling_21d", np.nan)
+
+        return detector.detect_from_values(
+            vix=vix, vvix=vvix_val, vix3m=vix3m_val,
+            skew=skew_val, pcr=pcr_val, rv_annual=rv_val,
+        )
+    except Exception:
+        return {"regime": "normal", "confidence": 0.0}
+
+
+def _lookup_signal(df: Optional[pd.DataFrame], date) -> Optional[float]:
+    """Find closest value in a signal DataFrame for a given date."""
+    if df is None:
+        return None
+    mask = df["date"] <= date
+    if not mask.any():
+        return None
+    return float(df.loc[mask.values, "close"].iloc[-1])
+
+
 def run_vrp_backtest(
     spx_daily: pd.DataFrame,
     vix_daily: pd.DataFrame,
@@ -333,6 +432,7 @@ def run_vrp_backtest(
     end_date: str = None,
     threshold_vol_pts: float = 0.0,  # minimum VRP to trade (in vol pts)
     risk_free_rate: float = 0.045,
+    regime_signals: Optional[dict] = None,
 ) -> BacktestResult:
     """
     Run the VRP backtest for a given model.
@@ -397,6 +497,7 @@ def run_vrp_backtest(
         row = merged.iloc[idx]
         spot = row["spx_close"]
         vix = row["vix_close"]
+        signal = None  # will be set by model or trade decision block
 
         # Skip if VIX is suspicious
         if np.isnan(vix) or vix < 5 or vix > 100:
@@ -431,6 +532,30 @@ def run_vrp_backtest(
             if predicted_rv is None:
                 idx += horizon
                 continue
+        elif model_name == "regime_neural":
+            # Regime-conditional: use RegimeDetector signals to filter,
+            # Neural SDE for RV prediction
+            predicted_rv = _predict_neural_sde_rv(idx, merged, vix, horizon)
+            if predicted_rv is None:
+                # Fallback to bergomi if neural fails
+                predicted_rv = _predict_bergomi_rv(vix, horizon)
+                if predicted_rv is None:
+                    idx += horizon
+                    continue
+            # Regime filter: skip selling variance in stressed/crisis
+            regime_info = _detect_regime_at_date(row, merged, regime_signals)
+            if regime_info["regime"] in ("stressed", "crisis"):
+                # In stress: buy variance (or flat)
+                signal = "flat"
+            # else: normal flow below
+        elif model_name == "regime_bergomi":
+            predicted_rv = _predict_bergomi_rv(vix, horizon)
+            if predicted_rv is None:
+                idx += horizon
+                continue
+            regime_info = _detect_regime_at_date(row, merged, regime_signals)
+            if regime_info["regime"] in ("stressed", "crisis"):
+                signal = "flat"
         else:
             raise ValueError(f"Unknown model: {model_name}")
 
@@ -440,10 +565,13 @@ def run_vrp_backtest(
 
         vrp = iv_vol - predicted_vol  # VRP in vol points
 
-        # Trade decision
+        # Trade decision (respect regime override if signal already set)
         if model_name == "always_sell":
             signal = "sell_var"
             direction = +1   # +1 = sell variance = short straddle
+        elif signal == "flat":
+            # Regime filter already decided to stay flat
+            direction = 0
         elif vrp > threshold_vol_pts:
             signal = "sell_var"
             direction = +1
@@ -601,7 +729,8 @@ def main():
                         help="Holding period in trading days (default 21)")
     parser.add_argument("--threshold", type=float, default=1.0,
                         help="Min VRP (vol pts) to trade (default 1.0)")
-    parser.add_argument("--models", type=str, default="always_sell,historical,bergomi",
+    parser.add_argument("--models", type=str,
+                        default="always_sell,historical,bergomi,regime_bergomi",
                         help="Comma-separated list of models")
     parser.add_argument("--output", type=str, default="outputs/pnl_backtest.json",
                         help="Output JSON path")
@@ -627,6 +756,12 @@ def main():
     else:
         print("  SPX 5m: not available (using daily close-to-close RV)")
 
+    # Load regime signals from TradingView (VVIX, VIX3M, SKEW, PCR)
+    regime_signals = _load_regime_signals()
+    if regime_signals:
+        loaded_names = list(regime_signals.keys())
+        print(f"  Regime signals: {', '.join(loaded_names)}")
+
     # Run all models
     models = [m.strip() for m in args.models.split(",")]
     results = []
@@ -642,6 +777,7 @@ def main():
                 start_date=args.start,
                 end_date=args.end,
                 threshold_vol_pts=args.threshold,
+                regime_signals=regime_signals,
             )
             results.append(r)
         except Exception as e:

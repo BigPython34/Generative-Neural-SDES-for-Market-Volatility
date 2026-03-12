@@ -41,7 +41,7 @@ from engine.losses import (
     martingale_violation_loss, jump_regularization_loss, smile_fit_loss,
 )
 from engine.signature_engine import SignatureFeatureExtractor
-from utils.data_loader import MarketDataLoader, RealizedVolatilityLoader
+from utils.loader.data_loader import MarketDataLoader, RealizedVolatilityLoader
 from utils.config import load_config
 
 
@@ -158,7 +158,7 @@ class GenerativeTrainer:
         self._risk_free_rate = self.yaml_config['pricing']['risk_free_rate']
         if self.measure == 'Q':
             try:
-                from utils.sofr_loader import get_sofr
+                from utils.loader.sofr_loader import get_sofr
                 sofr = get_sofr()
                 if sofr.is_available:
                     self._risk_free_rate = sofr.get_rate()
@@ -473,7 +473,7 @@ class GenerativeTrainer:
           - neural_sde.fractional.eta_init (to initialize fractional backbone)
         """
         try:
-            from utils.vvix_calibrator import VVIXCalibrator
+            from quant.calibration.vvix_calibrator import VVIXCalibrator
             cal = VVIXCalibrator()
             if not cal.is_available:
                 print("   [η AUTO] VVIX data not available — keeping config η")
@@ -559,7 +559,7 @@ class GenerativeTrainer:
         r_smile = self._risk_free_rate if hasattr(self, '_risk_free_rate') else 0.05
         abs_strikes = spot * (1.0 + smile['moneyness'].values)
 
-        from utils.black_scholes import BlackScholes
+        from quant.models.black_scholes import BlackScholes
         market_prices = []
         for i, (K, iv, m) in enumerate(zip(abs_strikes, smile['impliedVolatility'].values,
                                              smile['moneyness'].values)):

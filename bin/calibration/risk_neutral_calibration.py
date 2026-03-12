@@ -25,7 +25,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from engine.neural_sde import NeuralRoughSimulator
 from engine.signature_engine import SignatureFeatureExtractor
-from utils.black_scholes import BlackScholes
+from quant.models.black_scholes import BlackScholes
 import yaml
 
 
@@ -219,7 +219,7 @@ def main():
     """Run risk-neutral calibration"""
     
     # Load options data
-    from quant.data.options_cache import OptionsDataCache
+    from utils.fetcher.options_cache import OptionsDataCache
     
     cache = OptionsDataCache()
     

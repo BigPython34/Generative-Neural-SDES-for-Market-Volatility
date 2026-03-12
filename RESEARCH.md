@@ -73,10 +73,10 @@ Vol dynamics change across market regimes. A model calibrated in calm markets (V
 
 | Regime | VIX Range | $H$ | $\eta$ | $\rho$ |
 |---|:---:|:---:|:---:|:---:|
-| Calm | < 13 | 0.10 | 1.5 | −0.65 |
-| Normal | 13–20 | 0.07 | 1.9 | −0.70 |
-| Stressed | 20–30 | 0.06 | 2.5 | −0.80 |
-| Crisis | > 30 | 0.03 | 3.5 | −0.90 |
+| Calm | < 13 | 0.10 | 1.5 | -0.65 |
+| Normal | 13–20 | 0.07 | 1.9 | -0.70 |
+| Stressed | 20–30 | 0.06 | 2.5 | -0.80 |
+| Crisis | > 30 | 0.03 | 3.5 | -0.90 |
 
 In crisis: roughness increases ($H$ drops), vol-of-vol explodes ($\eta$ triples), correlation deepens ($\rho \to -0.9$).
 
@@ -248,7 +248,7 @@ The rBergomi variance process depends on the Volterra (Riemann-Liouville) repres
 
 def build_volterra_kernel(n_steps: int, H: float, dt: float):
     """
-    A[j,k] = √(2H) · dt^H / (H+½) · [(j−k+1)^{H+½} − (j−k)^{H+½}]
+    A[j,k] = √(2H) · dt^H / (H+½) · [(j-k+1)^{H+½} - (j-k)^{H+½}]
     for k ≤ j (lower triangular).
 
     O(N²) memory, O(1) Python ops (all vectorized in XLA).

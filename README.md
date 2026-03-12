@@ -69,7 +69,7 @@ The model is benchmarked against **Rough Bergomi** (rBergomi) and **Black-Schole
 | **Hurst (P-measure consensus)** | $H_P$ | **0.110 ± 0.003** | Multi-scale variogram + structure function + ratio (5m → daily, 500 bootstrap) |
 | **Hurst (Q-measure)** | $H_Q$ | **0.005** | Joint SPX-VIX rBergomi calibration (refined grid) |
 | **Vol-of-Vol (Q-cal)** | $\eta_Q$ | **1.341** | Joint SPX-VIX calibration |
-| **Correlation (Q-cal)** | $\rho_Q$ | **−0.959** | Joint SPX-VIX calibration |
+| **Correlation (Q-cal)** | $\rho_Q$ | **-0.959** | Joint SPX-VIX calibration |
 | **Girsanov Q-loss** | $L_Q$ | **0.097** | Neural SDE Q-calibration (1,185 params, Girsanov MLP) |
 | Vol-of-Vol (VVIX) | $\eta$ | 1.33 | VVIX with H-correction |
 | Mean Reversion | $\kappa$ | 2.72 | VIX Futures term structure |
@@ -109,11 +109,11 @@ via JAX-accelerated Monte Carlo: vectorized Volterra kernel, batched option pric
 
 | Tenor | Market | Model | Δ |
 |:---:|:---:|:---:|:---:|
-| 9d | 23.77 | 22.13 | −1.64 |
-| 30d | 22.66 | 22.12 | −0.54 |
-| 90d | 23.24 | 22.93 | −0.31 |
-| 180d | 24.70 | 24.43 | −0.27 |
-| 365d | 24.86 | 24.61 | −0.25 |
+| 9d | 23.77 | 22.13 | -1.64 |
+| 30d | 22.66 | 22.12 | -0.54 |
+| 90d | 23.24 | 22.93 | -0.31 |
+| 180d | 24.70 | 24.43 | -0.27 |
+| 365d | 24.86 | 24.61 | -0.25 |
 
 **VIX fit**: < 0.5 pts at 30d+ (excellent). The 9d gap (1.6 pts) comes from the coarse time grid.
 
@@ -180,10 +180,10 @@ where $L_{SPX}$ is the multi-maturity **vega-normalized price loss** (≈ IV los
 | Tenor | Market | Model | Δ |
 |:---:|:---:|:---:|:---:|
 | 1d | 17.10 | 22.76 | +5.66 |
-| 9d | 23.77 | 22.81 | −0.96 |
+| 9d | 23.77 | 22.81 | -0.96 |
 | 30d | 22.66 | 22.90 | **+0.24** |
-| 90d | 23.24 | 23.04 | **−0.20** |
-| 180d | 24.70 | 23.20 | −1.50 |
+| 90d | 23.24 | 23.04 | **-0.20** |
+| 180d | 24.70 | 23.20 | -1.50 |
 | 225d (futures) | 22.60 | 23.41 | +0.81 |
 
 30d–90d fit within ±0.3 pts. The 1d gap reflects the VIX1D intraday regime (very short-dated). The Girsanov MLP has only **1,185 trainable parameters** and trains in **94 seconds** on CPU.
@@ -307,6 +307,70 @@ The Neural SDE beats the OU baseline on MMD and perfectly matches the signature 
 
 ---
 
+## Experimental Results
+
+All results are reproducible via `python bin/experiments/paper_results.py` which generates 13 publication-quality figures and 4 JSON data files in `outputs/paper_results/`.
+
+### VRP Backtest — Regime-Adaptive Volatility Trading
+
+| Strategy | Sharpe | Return (bps) | MaxDD (bps) | Win Rate |
+|:---:|:---:|:---:|:---:|:---:|
+| always_sell | 0.77 | 4,025 | 2,989 | — |
+| bergomi | 0.76 | 3,983 | 2,989 | — |
+| neural_sde | 0.71 | 3,714 | 2,989 | — |
+| **regime_bergomi** | **0.88** | **4,622** | **1,527** | — |
+| regime_neural | 0.80 | 4,198 | 1,650 | — |
+
+The regime-adaptive rBergomi strategy improves Sharpe by **+14%** and cuts maximum drawdown by **-49%** vs the static baseline, confirming that regime conditioning adds genuine economic value.
+
+### Exotic Pricing — Neural SDE Q-Model vs Benchmarks
+
+| Product | Black-Scholes | rBergomi | Neural SDE Q | Spread (NSDE-Berg) |
+|:---:|:---:|:---:|:---:|:---:|
+| Asian (arithmetic) | $2.81 | $2.22 | $2.41 | +8.6% |
+| Cliquet | $5.05 | $3.88 | $4.24 | +9.3% |
+| Lookback (fixed) | $8.83 | $6.72 | $7.26 | +8.0% |
+| Variance swap | $1.83 | $1.46 | $1.58 | +8.2% |
+| Barrier DOC | $1.61 | $1.32 | $1.41 | +6.8% |
+| Autocallable | $7.40 | $7.17 | $7.25 | +1.1% |
+
+Neural SDE prices sit between BS and rBergomi, with a consistent +6–9% premium over Bergomi reflecting learned higher-order dynamics (skewness, kurtosis).
+
+### Stress Test — Tail Risk Comparison
+
+| Scenario | Metric | Neural SDE | rBergomi | Ratio |
+|:---:|:---:|:---:|:---:|:---:|
+| Panic (σ×3) | Kurtosis | **6.17** | 1.13 | 5.5× |
+| Panic (σ×3) | Skew | **-2.00** | -0.75 | 2.7× |
+| Crash (μ-5σ) | P(loss > 3σ) | **4.2%** | 0.3% | 14× |
+| Vol explosion | CVaR 99% | **-28.1%** | -12.4% | 2.3× |
+
+The Neural SDE produces **5× fatter tails** than rBergomi under extreme stress, capturing non-Gaussian dynamics that Gaussian-kernel rough models miss. This matters for tail-risk hedging and regulatory capital.
+
+### Regime Timeline (2007–2026)
+
+Full 18-year regime classification from 7 TradingView signals:
+
+| Regime | Days | Share | Example Periods |
+|:---:|:---:|:---:|---|
+| Normal | 2,369 | 53% | 2013–2015, 2017, 2019 |
+| Calm | 983 | 22% | 2005–2006, late 2017 |
+| Stressed | 894 | 20% | 2008, 2011, 2015Q3, 2022 |
+| Crisis | 224 | 5% | Sep 2008, Mar 2020, Aug 2024 |
+
+### Literature Comparison
+
+| Parameter | This Work | Literature | Reference |
+|:---:|:---:|:---:|---|
+| $H_P$ (P-measure) | $0.110 \pm 0.003$ | $0.10 \pm 0.01$ | Gatheral, Jaisson & Rosenbaum (2018) |
+| $\eta$ (vol-of-vol) | $1.341$ | $1.9$ | Bayer, Friz & Gatheral (2016) |
+| $\rho$ (spot-vol corr) | $-0.959$ | $-0.7$ to $-0.9$ | Bayer, Friz & Gatheral (2016) |
+| $H_Q$ (Q-measure) | $0.005$ ⚠ | $0.03$–$0.08$ | Rømer (2022) |
+
+> **Note on $H_Q$**: The joint calibration grid has lower bound $H = 0.005$. The optimizer hitting this boundary suggests the Q-measure Hurst exponent may be even rougher than the grid allows, or that $\eta$ and $\rho$ absorb some of the roughness signal. Widening the grid or using a continuous optimizer is left for future work.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -376,9 +440,24 @@ Second-order Taylor decomposition: $\Delta C \approx \Delta \cdot \delta S + \tf
 
 Also: `NeuralSDEGreeks` — model-implied Δ, Γ, Vega via **JAX autodiff through the full MC pipeline**.
 
-### Regime Detection — `quant/regime_detector.py`
+### Regime Detection — `quant/regimes/regime_detector.py`
 
-5 weighted signals (VIX 30%, VVIX 20%, term structure 20%, VRP 15%, VIX percentile 15%) → consensus regime → adaptive $(H, \eta, \rho)$.
+7 weighted signals from TradingView market data:
+
+| Signal | Weight | Calm | Normal | Stressed | Crisis |
+|---|:---:|:---:|:---:|:---:|:---:|
+| VIX level | 0.25 | <13 | <20 | <30 | ≥30 |
+| VVIX | 0.15 | <80 | <100 | <130 | ≥130 |
+| VIX term slope | 0.15 | >0.05 | >0 | >-0.05 | ≤-0.05 |
+| VRP (IV-RV) | 0.10 | <2 | <5 | <10 | ≥10 |
+| VIX 1Y percentile | 0.10 | <25 | <50 | <75 | ≥75 |
+| VIX1D/VIX ratio | 0.15 | <0.9 | <1.1 | <1.3 | ≥1.3 |
+| SKEW index | 0.10 | >135 | >125 | >115 | ≤115 |
+
+Regime → adaptive rBergomi $(H, \eta, \rho)$ mapping via `config/params.yaml`.
+
+**Historical regime distribution** (2007–2026, 4,470 trading days):
+Normal 53% · Calm 22% · Stressed 20% · Crisis 5%
 
 ---
 
@@ -501,7 +580,16 @@ python bin/apps/dashboard.py                    # -> outputs/dashboard.html
 python bin/apps/api_server.py                   # -> http://localhost:8000 (UI + API)
 ```
 
-### Step 8 — Diagnostics (optional)
+### Step 8 — Publication Results
+
+```bash
+python bin/experiments/paper_results.py         # -> outputs/paper_results/ (13 figures + 4 JSONs)
+python bin/experiments/exotic_comparison.py      # Standalone exotic pricing comparison
+python bin/experiments/stress_test_comparison.py # Standalone stress test comparison
+python bin/backtesting/pnl_backtest.py          # VRP backtest with regime strategies
+```
+
+### Step 9 — Diagnostics (optional)
 
 ```bash
 python bin/analysis/hurst_diagnostic.py         # VIX vs RV Hurst comparison
@@ -519,8 +607,18 @@ python main.py                                  # Legacy all-in-one demo
 | `outputs/advanced_calibration.json` | `calibrate.py` | H, η, ξ₀, ρ estimates |
 | `outputs/roughness_verification.json` | `verify_roughness.py` | Roughness proof |
 | `outputs/hurst_multiscale_report.json` | `hurst_multiscale.py` | Multi-scale Hurst |
+| `outputs/joint_calibration.json` | `joint_calibration.py` | Joint SPX-VIX Q-calibration |
+| `outputs/pnl_backtest.json` | `pnl_backtest.py` | VRP strategy Sharpe/DD |
 | `outputs/dashboard.html` | `dashboard.py` | Interactive dashboard |
 | `models/neural_sde_best_*.eqx` | `train_multi.py` | Trained models |
+| **`outputs/paper_results/`** | **`paper_results.py`** | **Publication data & figures** |
+| `  ├── exotic_comparison.json` | | BS vs Berg vs NSDE prices |
+| `  ├── stress_test_comparison.json` | | Tail metrics per scenario |
+| `  ├── regime_timeline.json` | | 18-year daily regime labels |
+| `  ├── calibration_summary.json` | | P & Q parameters + literature |
+| `  └── *.png (×13)` | | Publication-ready figures |
+
+The JSON files in `outputs/paper_results/` are structured data exports designed for inclusion in a future research paper or report. Each contains full numerical results with metadata (dates, parameters, model versions) for reproducibility.
 
 ---
 
@@ -552,31 +650,36 @@ DeepRoughVol/
 ├── main.py                    # Full demo pipeline
 ├── config/params.yaml         # Central config (200+ keys)
 ├── bin/                       # CLI entry points (domain-first)
-│   ├── calibration/           # Calibration pipelines (joint, neural_q, options, RN)
-│   ├── analysis/              # Diagnostics & research analyses (Hurst)
-│   ├── training/              # P/Q training entrypoints
-│   ├── apps/                  # API server + dashboard
-│   ├── data/                  # Data ingestion/regeneration tasks
-│   └── ops/                   # Operational utility scripts
-├── core/                      # Compatibility shims (legacy imports)
+│   ├── calibration/           # joint_calibration, neural_q, options, RN
+│   ├── analysis/              # hurst_multiscale, verify_roughness, diagnostics
+│   ├── training/              # train.py, train_multi.py (P/Q)
+│   ├── backtesting/           # backtest, walk_forward, pnl_backtest, model_suite
+│   ├── experiments/           # paper_results, exotic_comparison, stress_test
+│   ├── apps/                  # api_server, dashboard
+│   ├── data/                  # regenerate_data, fetch_options, refresh_all_data
+│   └── ops/                   # compare_frequencies
 ├── engine/                    # ML engine (Neural SDE, signatures, losses, trainer)
-├── quant/                     # Quant library (pricing, risk, hedging, P&L, regime)
-│   ├── models/                # Canonical stochastic models (rBergomi, fBM)
+├── quant/                     # Quant library
+│   ├── models/                # rBergomi, fBM (canonical stochastic models)
 │   ├── calibration/           # Calibration engines and data targets
 │   ├── workflows/             # Backtesting and walk-forward workflows
 │   ├── pricers/               # Vanilla and exotic pricing engines
-│   ├── hedging/               # Hedging simulator and PnL attribution
-│   ├── risk/                  # Risk engine
-│   ├── regimes/               # Regime detection
+│   ├── hedging/               # Hedging simulator and P&L attribution
+│   ├── risk/                  # Risk engine (VaR, CVaR, stress testing)
+│   ├── regimes/               # 7-signal regime detector (TradingView)
 │   ├── analysis/              # Hurst and diagnostics analysis
 │   └── data/                  # Quant-side data helpers
 ├── utils/                     # SOFR, VVIX calibration, BS, Greeks AD, data pipeline
 ├── data/                      # Market data (~115 CSVs, options cache, SOFR)
-│   ├── trading_view/          # 33+ volatility, equity, futures, rates files
+│   ├── trading_view/          # 33+ files: volatility/, equity_indices/, rates/, etc.
+│   ├── market/                # Yahoo-sourced VIX, SPX, VVIX
 │   ├── cboe_vix_futures_full/ # 25k+ rows of VIX futures
-│   └── options_cache/         # 5 SPY surface snapshots (2345 options)
-├── models/                    # Trained models (.eqx)
+│   └── options_cache/         # 5 SPY surface snapshots (2,345 options)
+├── models/                    # Trained models (.eqx) + Q-config
 ├── outputs/                   # Results, reports, plots, dashboard
+│   ├── paper_results/         # 13 figures + 4 JSONs for publication
+│   ├── plots/                 # Hurst, calibration, backtest plots
+│   └── model_suite/           # Per-use-case detailed reports
 └── research/                  # LaTeX proofs (maths_proofs.tex, proof.tex)
 ```
 
@@ -620,4 +723,4 @@ MIT License — see [LICENSE](LICENSE).
 
 ---
 
-*Last updated: March 2026 — v3.5 (Joint SPX-VIX calibration, multi-scale Hurst, README restructured → see [RESEARCH.md](RESEARCH.md) for narrative)*
+*Last updated: June 2025 — v4.0 (Regime-adaptive VRP backtest, exotic Neural SDE Q-pricing, stress test comparison, paper_results pipeline, 7-signal regime detector with TradingView data)*

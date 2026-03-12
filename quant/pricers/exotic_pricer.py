@@ -25,7 +25,6 @@ Usage:
 
 import numpy as np
 from scipy.stats import norm
-from utils.black_scholes import BlackScholes
 
 
 def _antithetic_paths(paths: np.ndarray) -> np.ndarray:
@@ -162,8 +161,6 @@ class ExoticPricer:
 
         price, std_err = self._mc_price(payoff, payoff_a)
         return {"price": price, "std_error": std_err,
-                "type": f"asian_put_{averaging}"}
-        return {"price": float(price), "std_error": float(std_err),
                 "type": f"asian_put_{averaging}"}
 
     # ------------------------------------------------------------------

@@ -12,7 +12,7 @@ Under P (physical):
     dlog V_t = μ^P(V,t) dt + σ(V,t) dW^P_t
 
 Girsanov theorem gives the Q-dynamics:
-    dlog V_t = [μ^P(V,t) − λ_φ(V,t)·σ(V,t)] dt + σ(V,t) dW^Q_t
+    dlog V_t = [μ^P(V,t) - λ_φ(V,t)·σ(V,t)] dt + σ(V,t) dW^Q_t
 
 Key insight: σ(V,t) is FROZEN from the P-model (Girsanov preserves diffusion).
 Only the drift correction λ_φ is learned — a small MLP (~163 parameters).
@@ -38,7 +38,6 @@ from __future__ import annotations
 import time
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -49,7 +48,6 @@ import jax.nn as jnn
 import equinox as eqx
 import optax
 
-from utils.black_scholes import BlackScholes
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -63,7 +61,7 @@ class GirsanovDrift(eqx.Module):
     Architecture: MLP  (2 → 32 → 32 → 1)  with tanh output.
     The tanh bounding ensures Novikov condition: |λ| ≤ λ_max.
 
-    Parameters: 2×32 + 32 + 32×32 + 32 + 32×1 + 1 = 163 params.
+    Parameters: 2*32 + 32 + 32*32 + 32 + 32*1 + 1 = 163 params.
     """
     net: eqx.nn.MLP
     lambda_max: float
@@ -95,7 +93,7 @@ class NeuralSDEQModel(eqx.Module):
     Q-measure Neural SDE = frozen P-model + Girsanov drift correction.
 
     Under Q:
-        dlog V_t = [μ^P(V,t) − λ_φ(V,t)·σ^P(V,t)] dt + σ^P(V,t) dW^Q_t
+        dlog V_t = [μ^P(V,t) - λ_φ(V,t)·σ^P(V,t)] dt + σ^P(V,t) dW^Q_t
         dS_t/S_t = r dt + √exp(log V_t) · [ρ dW^Q_t + √(1-ρ²) dW⊥_t]
 
     The P-model drift and diffusion are evaluated via stop_gradient
@@ -228,22 +226,6 @@ class NeuralSDEQModel(eqx.Module):
 # ═══════════════════════════════════════════════════════════════════
 # 3. Q-MEASURE LOSS COMPONENTS
 # ═══════════════════════════════════════════════════════════════════
-
-def _mc_call_price(spot_paths: jnp.ndarray, K: float, r: float, T: float) -> jnp.ndarray:
-    """Monte Carlo call price: E^Q[e^{-rT} (S_T - K)^+] / S_0."""
-    # spot_paths[:, -1] = S_T / S_0
-    S_T = spot_paths[:, -1]
-    payoff = jnp.maximum(S_T - K, 0.0)
-    return jnp.exp(-r * T) * jnp.mean(payoff)
-
-
-def _mc_put_price(spot_paths: jnp.ndarray, K: float, r: float, T: float) -> jnp.ndarray:
-    """Monte Carlo put price: E^Q[e^{-rT} (K - S_T)^+] / S_0."""
-    S_T = spot_paths[:, -1]
-    payoff = jnp.maximum(K - S_T, 0.0)
-    return jnp.exp(-r * T) * jnp.mean(payoff)
-
-
 def compute_spx_smile_loss(
     spot_paths: jnp.ndarray,
     spx_slices: list[dict],
@@ -251,7 +233,7 @@ def compute_spx_smile_loss(
     r: float,
 ) -> jnp.ndarray:
     """
-    L_SPX = (1/N_mat) Σ_T (1/N_K) Σ_K (1/vega²) · (C_model − C_market)²
+    L_SPX = (1/N_mat) Σ_T (1/N_K) Σ_K (1/vega²) · (C_model - C_market)²
 
     Price-space loss with vega normalization (≈ IV-space loss to first order).
     This is fully JAX-traceable, unlike IV extraction via bisection.

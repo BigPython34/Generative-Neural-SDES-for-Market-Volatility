@@ -22,7 +22,6 @@ Usage:
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
 import json
 import os
 import sys
@@ -30,7 +29,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from quant.data.options_cache import OptionsDataCache
+from utils.fetcher.options_cache import OptionsDataCache
 from quant.workflows.backtesting import HistoricalBacktester, xi0_from_history_at_date, load_vix_futures_history
 from utils.config import load_config
 
@@ -74,7 +73,7 @@ def _recalibrate_bergomi_for_fold(train_end_date, vix_futures_hist, cfg) -> dict
 
     # eta from VVIX (no look-ahead)
     try:
-        from utils.vvix_calibrator import VVIXCalibrator
+        from quant.calibration.vvix_calibrator import VVIXCalibrator
         vvix_cal = VVIXCalibrator()
         if vvix_cal.is_available:
             eta_result = vvix_cal.estimate_eta(H=bergomi_cfg.get('hurst', 0.07))
@@ -88,7 +87,7 @@ def _recalibrate_bergomi_for_fold(train_end_date, vix_futures_hist, cfg) -> dict
     # H from SPX realized vol (no look-ahead — uses full history, which is fine
     # since Hurst is a statistical property, not a forward-looking one)
     try:
-        from utils.diagnostics import estimate_hurst_from_returns
+        from quant.analysis.diagnostics import estimate_hurst_from_returns
         rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
         if os.path.exists(rv_source):
             rv_result = estimate_hurst_from_returns(rv_source)

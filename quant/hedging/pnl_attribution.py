@@ -23,8 +23,8 @@ Usage:
 
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Optional
-from utils.black_scholes import BlackScholes
+from typing import List
+from quant.models.black_scholes import BlackScholes
 
 
 @dataclass

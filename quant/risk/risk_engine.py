@@ -35,7 +35,7 @@ Usage:
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Optional
-from utils.black_scholes import BlackScholes
+from quant.models.black_scholes import BlackScholes
 
 
 @dataclass
@@ -423,6 +423,8 @@ class RiskEngine:
                 "n_paths": n_paths,
                 "expected_pnl": float(np.mean(pnl)),
                 "pnl_std": float(np.std(pnl)),
+                "pnl_skew": float(self._skewness(pnl)),
+                "pnl_kurtosis": float(self._kurtosis(pnl)),
                 "VaR_95": var_95,
                 "VaR_99": var_99,
                 "CVaR_95": cvar_95,
@@ -434,6 +436,7 @@ class RiskEngine:
                 "terminal_vol_p95": float(np.percentile(vol_terminal, 95)),
                 "prob_spot_drop_gt_10pct": float(np.mean(s_terminal < self.spot * 0.9)),
                 "prob_vol_gt_40pct": float(np.mean(vol_terminal > 0.40)),
+                "_pnl_array": pnl,
             }
 
         return results
