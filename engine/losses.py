@@ -27,7 +27,7 @@ Components:
   - p_measure_loss:              Composite P-loss (MMD + mean penalty)
   - q_measure_loss:              Composite Q-loss (smile + martingale + MMD reg)
 
-Removed (legacy components):
+Removed components:
   - feller_condition_loss:       Only for CIR/Heston variance-space (we use log-V)
   - path_regularity_loss:        Contradicts rough volatility (penalizes roughness)
   - mean_penalty_loss_logv:      Correct idea but inlined in trainer, never called
@@ -102,7 +102,7 @@ def kernel_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarray,
 @jit
 def signature_mmd_loss(fake_signatures: jnp.ndarray, real_signatures: jnp.ndarray,
                        sig_std: jnp.ndarray = None) -> jnp.ndarray:
-    """LEGACY: Mean-signature L2 distance. Use kernel_mmd_loss for new training."""
+    """Mean-signature L2 distance. Prefer kernel_mmd_loss for training."""
     mu_fake = jnp.mean(fake_signatures, axis=0)
     mu_real = jnp.mean(real_signatures, axis=0)
     if sig_std is not None:
@@ -161,6 +161,17 @@ def martingale_violation_loss(spot_paths: jnp.ndarray, dt: float,
     discounted_s = spot_paths * discount_factors
     mean_path = jnp.mean(discounted_s, axis=0)
     return jnp.mean(jnp.square(mean_path - 1.0))
+
+
+@jit
+def terminal_martingale_violation_loss(
+    spot_terminal_normalized: jnp.ndarray,
+    T: float,
+    r: float = 0.0,
+) -> jnp.ndarray:
+    """Terminal-only martingale check: $(E[e^{-rT}S_T/S_0]-1)^2$."""
+    disc_mean = jnp.mean(spot_terminal_normalized) * jnp.exp(-r * T)
+    return jnp.square(disc_mean - 1.0)
 
 
 @jit
@@ -296,22 +307,3 @@ def q_measure_loss(spot_paths, dt, r,
     return total
 
 
-def q_measure_loss_legacy(fake_sigs, real_sigs, sig_std, fake_paths, real_mean,
-                          spot_paths, dt, r=0.0,
-                          real_paths=None, lambda_mean=10.0,
-                          lambda_martingale=5.0,
-                          mean_mode="global") -> jnp.ndarray:
-    """
-    LEGACY Q-measure loss (v2.0 — kept for backward compatibility).
-
-    WARNING: This loss is theoretically incorrect for Q-measure pricing.
-    It uses MMD on P-measure historical paths as the primary objective
-    and only adds a martingale constraint on top. This learns P-dynamics
-    with a first-moment correction, NOT true Q-dynamics.
-
-    Use q_measure_loss() instead, which is IV-surface-driven.
-    """
-    base = p_measure_loss(fake_sigs, real_sigs, sig_std, fake_paths,
-                          real_mean, real_paths, lambda_mean, mean_mode)
-    mart = martingale_violation_loss(spot_paths, dt, r)
-    return base + lambda_martingale * mart

@@ -9,10 +9,10 @@ Theoretical link (rBergomi):
     VVIX ≈ 100 · η · T^H             (annualized, T=1 ⟹ VVIX ≈ 100·η)
 
 Usage:
-    from utils.vvix_calibrator import VVIXCalibrator
+    from quant.calibration.vvix_calibrator import VVIXCalibrator
     cal = VVIXCalibrator()
     result = cal.estimate_eta(H=0.1)
-    print(result['eta_current'])
+    print(result['eta_recommended'])
 """
 
 import pandas as pd
@@ -20,8 +20,8 @@ import numpy as np
 from pathlib import Path
 
 
-_TV_PATH = "data/trading_view/volatility/vvix_daily.csv"
-_MARKET_PATH = "data/market/vvix/vvix_daily.csv"
+_MARKET_PATH = "data/market/volatility/vvix_daily.csv"
+_TV_PATH = "data/trading_view/volatility/vvix_daily.csv"  # fallback only
 
 
 class VVIXCalibrator:
@@ -30,10 +30,10 @@ class VVIXCalibrator:
     def __init__(self, filepath: str = None):
         if filepath:
             self._path = Path(filepath)
-        elif Path(_TV_PATH).exists():
-            self._path = Path(_TV_PATH)
-        else:
+        elif Path(_MARKET_PATH).exists():
             self._path = Path(_MARKET_PATH)
+        else:
+            self._path = Path(_TV_PATH)
         self._df: pd.DataFrame = pd.DataFrame()
         self._load()
 

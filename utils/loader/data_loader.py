@@ -21,7 +21,7 @@ class RealizedVolatilityLoader:
     def __init__(self, file_path: str = None, config_path: str = "config/params.yaml",
                  bar_interval_min: int = None):
         self.config = load_config(config_path)
-        self.file_path = file_path or self.config['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
+        self.file_path = file_path or self.config['data'].get('rv_source', 'data/market/equity_indices/spx_5m.csv')
         self.max_gap_hours = self.config['data'].get('max_gap_hours', 4)
         self.stride_ratio = self.config['data'].get('stride_ratio', 0.5)
         self.trading_hours = self.config['data'].get('trading_hours_per_day', 6.5)
@@ -100,7 +100,7 @@ class RealizedVolatilityLoader:
         # Intraday RV alone (even 256 days) gives too few paths.
         # Historical daily data (2010-present, ~4000 points) provides the bulk.
         daily_file = self.config['data'].get('spx_daily',
-                     'data/market/spx/spx_daily_2010_latest.csv')
+                     'data/market/equity_indices/spx_daily.csv')
         historical_rv = self._compute_rv_from_daily_prices(daily_file)
         if len(historical_rv) > 0:
             daily_rv = self._merge_rv_series(historical_rv, intraday_rv)

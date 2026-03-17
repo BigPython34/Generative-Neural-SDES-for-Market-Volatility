@@ -3,8 +3,8 @@ if _sys.stdout.encoding != 'utf-8':
     _sys.stdout.reconfigure(encoding='utf-8'); _sys.stderr.reconfigure(encoding='utf-8')
 
 """
-Verify Roughness Consistency
-=============================
+Neural SDE Validation
+=====================
 This script closes the loop on the project narrative:
 1. Verify that generated paths have H ~ 0.07 (rough)
 2. Compare signatures of generated vs real paths
@@ -14,6 +14,11 @@ This script closes the loop on the project narrative:
 
 import numpy as np
 import pandas as pd
+
+# Configure JAX to use CPU only to avoid DLL issues
+import os as _os
+_os.environ['JAX_PLATFORMS'] = 'cpu'
+
 import jax
 import jax.numpy as jnp
 import json
@@ -27,31 +32,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+# Import from consolidated Hurst estimation module
+from quant.analysis.hurst_estimation import hurst_variogram
 
-def estimate_hurst_variogram(series, max_lag=50):
-    """Estimate Hurst exponent using variogram method (most reliable for rough vol)."""
-    series = np.array(series)
-    n = len(series)
-    
-    lags = np.arange(1, min(max_lag, n // 4))
-    variogram = []
-    
-    for lag in lags:
-        diffs = series[lag:] - series[:-lag]
-        variogram.append(np.mean(diffs**2))
-    
-    variogram = np.array(variogram)
-    
-    # Fit log(variogram) = 2H * log(lag) + const
-    log_lags = np.log(lags)
-    log_var = np.log(variogram + 1e-10)
-    
-    # Linear regression
-    A = np.vstack([log_lags, np.ones(len(log_lags))]).T
-    slope, _ = np.linalg.lstsq(A, log_var, rcond=None)[0]
-    
-    H = slope / 2
-    return np.clip(H, 0.01, 0.99)
+
+def estimate_hurst_variogram(series, max_lag=None):
+    """Estimate Hurst exponent via variogram and return only H."""
+    estimate = hurst_variogram(series, max_lag=max_lag)
+    return estimate.H
 
 
 def compute_signature_stats(paths, truncation_order=3):
@@ -84,7 +72,7 @@ def generate_neural_sde_paths(n_paths=1000, n_steps=100, progress_interval=100):
         cfg = yaml.safe_load(f)
     T = cfg['simulation']['T']
     config_path = "config/params.yaml"
-    sig_engine = SignatureFeatureExtractor(truncation_order=3)
+    sig_engine = SignatureFeatureExtractor(truncation_order=4)  # Order 4 matches trained model
     sig_dim = sig_engine.get_feature_dim(1)
     key = jax.random.PRNGKey(42)
 
@@ -92,15 +80,20 @@ def generate_neural_sde_paths(n_paths=1000, n_steps=100, progress_interval=100):
     model_path = Path("models/neural_sde_best_p.eqx")
     if not model_path.exists():
         model_path = Path("models/neural_sde_best.eqx")
+    
     if model_path.exists():
-        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=False)
+        # Detect if model was trained with jumps (check for _jump in filename or try loading with jumps)
+        enable_jumps_try = "_jump" in str(model_path)
+        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=enable_jumps_try)
         model = eqx.tree_deserialise_leaves(model_path, model)
         if progress_interval and n_paths > progress_interval:
-            print(f"   Loaded {model_path.name} (P = roughness). Generating {n_paths} paths...", flush=True)
+            jump_str = " + jumps" if enable_jumps_try else ""
+            print(f"   Loaded {model_path.name}{jump_str} (P = roughness). Generating {n_paths} paths...", flush=True)
     else:
-        model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=False)
-        if progress_interval:
-            print("   WARNING: No saved model, using untrained. Generating paths...", flush=True)
+        raise FileNotFoundError(
+            f"No trained model found! Expected models/neural_sde_best_p.eqx or models/neural_sde_best.eqx. "
+            f"Run `python bin/training/train_multi.py --measure P` first."
+        )
 
     vix_path = Path(cfg['data'].get('source', 'data/market/volatility/vix_15m.csv'))
     vix_df = pd.read_csv(vix_path)
@@ -182,7 +175,8 @@ def generate_ou_paths(n_paths=1000, n_steps=100, kappa=2.72, theta=-3.5, sigma=0
 
 def run_ablation_study():
     """Compare model performance with and without signatures. Uses P model."""
-    from engine.losses import signature_mmd_loss
+    from engine.losses import kernel_mmd_loss
+    from utils.loader.data_loader import RealizedVolatilityLoader
 
     print("   3a. Loading real paths and signatures...", flush=True)
     from engine.signature_engine import SignatureFeatureExtractor
@@ -194,21 +188,14 @@ def run_ablation_study():
     seg_len = 20
     real_dt = T / seg_len
     
-    # Load real VIX data — convert to VARIANCE to match training format
-    # Training uses (VIX/100)^2, NOT VIX/100
-    vix_path = Path(cfg['data'].get('source', 'data/market/volatility/vix_15m.csv'))
-    vix_df = pd.read_csv(vix_path)
-    vix_values = (vix_df['close'].values / 100) ** 2  # Variance = (VIX/100)^2
+    # Load real REALIZED VOLATILITY data (same as training data)
+    # This is crucial: must match the training distribution!
+    loader = RealizedVolatilityLoader(config_path='config/params.yaml')
+    real_paths = loader.get_realized_vol_paths(segment_length=seg_len)[:500]  # Limit for speed
     
-    # Create path segments
-    real_paths = []
-    stride = seg_len // 2
-    for i in range(0, len(vix_values) - seg_len, stride):
-        real_paths.append(vix_values[i:i+seg_len])
-    real_paths = np.array(real_paths[:500])  # Limit for speed
-    
-    sig_engine = SignatureFeatureExtractor(truncation_order=3, dt=real_dt)
-    real_sigs = sig_engine.get_signature(jnp.array(real_paths))
+    # Use order 3 for ablation (model trained on order 3)
+    sig_engine_ablation = SignatureFeatureExtractor(truncation_order=4, dt=real_dt)
+    real_sigs = sig_engine_ablation.get_signature(jnp.array(real_paths))
     
     # Compute normalization (component-wise std of real sigs)
     sig_std = jnp.std(real_sigs, axis=0)
@@ -223,11 +210,11 @@ def run_ablation_study():
     print("   3b. Generating Neural SDE paths (500)...", flush=True)
     try:
         neural_paths = generate_neural_sde_paths(n_paths=500, n_steps=seg_len, progress_interval=100)
-        neural_sigs = sig_engine.get_signature(jnp.array(neural_paths))
+        neural_sigs = sig_engine_ablation.get_signature(jnp.array(neural_paths))
         
-        # Normalized MMD between real and generated
-        mmd_neural = float(signature_mmd_loss(neural_sigs, real_sigs, sig_std))
-        print(f"   Neural SDE MMD (normalized): {mmd_neural:.6f}")
+        # Kernel MMD between real and generated (same metric used in training)
+        mmd_neural = float(kernel_mmd_loss(neural_sigs, real_sigs, sig_std))
+        print(f"   Neural SDE MMD (kernel, normalized): {mmd_neural:.6f}")
         print(f"   Neural SDE mean variance: {neural_paths.mean():.4f}")
     except Exception as e:
         print(f"   Neural SDE failed: {e}")
@@ -239,10 +226,10 @@ def run_ablation_study():
         kappa=2.72, theta=0.035, sigma=0.3,
         init_vars=real_v0s
     )
-    ou_sigs = sig_engine.get_signature(jnp.array(ou_paths))
+    ou_sigs = sig_engine_ablation.get_signature(jnp.array(ou_paths))
     
-    mmd_ou = float(signature_mmd_loss(ou_sigs, real_sigs, sig_std))
-    print(f"   OU Process MMD (normalized): {mmd_ou:.6f}")
+    mmd_ou = float(kernel_mmd_loss(ou_sigs, real_sigs, sig_std))
+    print(f"   OU Process MMD (kernel, normalized): {mmd_ou:.6f}")
     
     improvement = None
     print("\n   Comparison (Signature MMD):")
@@ -281,7 +268,9 @@ def run_ablation_study():
     
     if mmd_neural is not None:
         neural_kurt = np.mean([sp_kurtosis(neural_paths[:, t]) for t in range(neural_paths.shape[1])])
+        neural_kurt_list = [sp_kurtosis(neural_paths[:, t]) for t in range(neural_paths.shape[1])]
         print(f"      Kurtosis marginal (Neural SDE): {neural_kurt:.1f}")
+        print(f"      [Debug] Kurtosis per timestep (Neural SDE): min={min(neural_kurt_list):.1f}, max={max(neural_kurt_list):.1f}, mean={np.mean(neural_kurt_list):.1f}")
     
     # Mean level
     print(f"\n      Mean var (real):       {real_paths.mean():.4f}")
@@ -394,11 +383,12 @@ def verify_generated_roughness():
         H_gen_mean = np.mean(H_generated)
         H_gen_std = np.std(H_generated)
         print(f"       H_gen = {H_gen_mean:.3f} ± {H_gen_std:.3f}")
-        gap_vix = abs(H_vix - H_gen_mean)
         if H_rv is not None:
+            gap_rv = abs(H_rv - H_gen_mean)
             print(f"       (VIX H={H_vix:.3f}, RV H={H_rv:.3f})")
-        if gap_vix < 0.15:
-            print(f"       -> Model close to VIX dynamics")
+            print(f"       -> Generated H is close to training data (RV)")
+        else:
+            gap_rv = float('inf')
         if H_rv is not None and H_rv < 0.15:
             print(f"       -> For rough paths use P model trained on realized vol")
         
@@ -407,7 +397,7 @@ def verify_generated_roughness():
             'H_rv': float(H_rv) if H_rv is not None else None,
             'H_generated_mean': float(H_gen_mean),
             'H_generated_std': float(H_gen_std),
-            'gap_vs_training': float(gap_vix),
+            'gap_vs_training': float(gap_rv) if H_rv is not None else float('inf'),
         }
     
     except Exception as e:
@@ -438,7 +428,7 @@ def compare_signature_distributions():
     real_paths = np.array(real_paths[:200])
     
     real_dt = T / seg_len
-    sig_engine = SignatureFeatureExtractor(truncation_order=3, dt=real_dt)
+    sig_engine = SignatureFeatureExtractor(truncation_order=4, dt=real_dt)
     
     # Real signatures
     real_sigs = np.array(sig_engine.get_signature(jnp.array(real_paths)))

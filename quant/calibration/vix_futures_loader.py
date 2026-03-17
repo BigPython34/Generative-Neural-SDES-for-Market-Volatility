@@ -275,7 +275,7 @@ def load_vix_futures(
 
 
 def load_vix_spot_history(
-    vix_daily_path: str = "data/trading_view/volatility/vix_daily.csv",
+    vix_daily_path: str = "data/market/volatility/vix_daily.csv",
 ) -> pd.Series:
     """
     Load daily VIX spot (for matching with futures trade dates).
@@ -288,8 +288,8 @@ def load_vix_spot_history(
     """
     candidates = [
         Path(vix_daily_path),
+        Path("data/market/volatility/vix_daily.csv"),
         Path("data/trading_view/volatility/vix_daily.csv"),
-        Path("data/market/vix/vix_daily.csv"),
     ]
 
     path = None
@@ -478,6 +478,67 @@ def get_vix_term_snapshot(
     )
 
 
+def get_vix_term_snapshot_from_futures(
+    date: str | pd.Timestamp = None,
+    data_dir: str = "data/cboe_vix_futures_full",
+    tenors: list[int] = None,
+) -> VIXTermStructureSnapshot:
+    """
+    Get VIX term structure from CBOE futures (front, 2M, 3M contracts).
+    
+    This builds the term structure directly from futures prices instead of
+    from the stale TradingView indices. Each futures contract is treated
+    as a tenor based on its days-to-expiry.
+
+    Parameters
+    ----------
+    date : target date (finds closest available)
+    data_dir : directory with CBOE futures CSV files
+    tenors : specific tenor days to extract (if None, use all available contracts)
+
+    Returns
+    -------
+    VIXTermStructureSnapshot
+    """
+    # Load CBOE futures
+    vix_fut = load_vix_futures(data_dir)
+    
+    # Get term structure for this date
+    if date is None:
+        date = vix_fut.trade_dates[-1]
+    
+    ts = vix_fut.get_term_structure(date, min_dte=5, max_dte=365)
+    
+    if tenors is None:
+        # Use all available contracts
+        selected_idx = np.arange(len(ts.prices))
+        selected_tenors = ts.days_to_exp
+        selected_prices = ts.prices
+        selected_labels = [f"fut_{d}d" for d in ts.days_to_exp]
+    else:
+        # Filter to requested tenors (nearest match)
+        selected_idx = []
+        selected_tenors = []
+        selected_prices = []
+        selected_labels = []
+        
+        for target_tenor in tenors:
+            # Find nearest contract
+            closest_idx = np.argmin(np.abs(ts.days_to_exp - target_tenor))
+            selected_idx.append(closest_idx)
+            selected_tenors.append(ts.days_to_exp[closest_idx])
+            selected_prices.append(ts.prices[closest_idx])
+            selected_labels.append(f"fut_{ts.days_to_exp[closest_idx]}d")
+    
+    return VIXTermStructureSnapshot(
+        date=ts.trade_date,
+        tenors_days=np.array(selected_tenors),
+        tenors_years=np.array(selected_tenors) / 365.0,
+        vix_levels=np.array(selected_prices),
+        labels=selected_labels,
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 # TradingView VIX Futures (continuous contracts VX1, VX2)
 # ═══════════════════════════════════════════════════════════════════
@@ -582,6 +643,8 @@ def assemble_calibration_data(
     vix_futures_dir: str = "data/cboe_vix_futures_full",
     as_of_date: str | None = None,
     verbose: bool = True,
+    enforce_sync: bool = False,
+    max_days_skew: int = 2,
 ) -> CalibrationMarketData:
     """
     Assemble all market data needed for joint SPX-VIX calibration.
@@ -593,52 +656,71 @@ def assemble_calibration_data(
     4. VIX spot, VVIX (TradingView)
     5. SOFR risk-free rate
 
+     TEMPORAL ALIGNMENT NOTE:
+    Each data source is loaded independently and may come from different dates.
+    This is OK for a *calibration snapshot* (Q-measure) as long as no huge market
+    moves happen between dates (e.g., volatility spike), but for accuracy:
+    
+    - Set as_of_date explicitly to ensure reproducibility
+    - Pass enforce_sync=True to raise error if dates differ by >max_days_skew
+    - Check the assembled data's `timestamp` field to verify alignment
+
     Parameters
     ----------
     options_cache_dir : path to SPY options cache
     volatility_dir : path to TradingView volatility data
     vix_futures_dir : path to CBOE VIX futures
-    as_of_date : target date (None = latest)
+    as_of_date : target date (None = latest; recommend: explicit YYYY-MM-DD)
     verbose : print progress
+    enforce_sync : if True, raise error if source dates differ by >max_days_skew
+    max_days_skew : tolerance in days for temporal alignment (default: 2)
 
     Returns
     -------
     CalibrationMarketData
+        Note: Check .timestamp and individual source dates for alignment audit.
     """
+    import pandas as pd
     from utils.fetcher.options_cache import OptionsDataCache
 
     data = CalibrationMarketData()
+    
+    # Track timestamps for alignment check
+    source_timestamps = {}
 
     # 1. SPY options surface
     try:
         cache = OptionsDataCache(options_cache_dir)
         surface_df, meta = cache.load_latest("SPY")
+        
+        # CLEAN: Remove illiquid/bad data
+        n_before = len(surface_df)
+        
+        # Remove rows with bid = 0 (missing data)
+        surface_df = surface_df[surface_df['bid'] > 0].copy()
+        n_zero_bid = n_before - len(surface_df)
+        
+        # Remove rows with bid-ask spread > 50% (extremely illiquid)
+        surface_df['spread_pct'] = (surface_df['ask'] - surface_df['bid']) / surface_df['mid'].clip(lower=0.001)
+        wide_spread = (surface_df['spread_pct'] > 0.50).sum()
+        surface_df = surface_df[surface_df['spread_pct'] <= 0.50].copy()
+        
+        # Drop the helper column
+        surface_df = surface_df.drop(columns=['spread_pct'])
+        
         data.spx_surface = surface_df
         data.spx_spot = meta['spot']
         data.timestamp = meta.get('datetime', '')
+        source_timestamps['SPY_options'] = pd.to_datetime(data.timestamp)
         if verbose:
             n_mats = surface_df['dte'].nunique()
-            print(f"  SPY surface: {len(surface_df)} options, {n_mats} maturities "
-                  f"(spot=${meta['spot']:.2f})")
+            print(f"  SPY surface: {len(surface_df)} options (removed {n_zero_bid} zero-bid + {wide_spread} wide-spread), "
+                  f"{n_mats} maturities (spot=${meta['spot']:.2f})  {data.timestamp}")
     except Exception as e:
         if verbose:
             print(f"  SPY surface error: {e}")
 
-    # 2. VIX term structure (TradingView indices)
-    try:
-        vts = get_vix_term_snapshot(date=as_of_date, data_dir=volatility_dir)
-        data.vix_term_structure = vts
-        data.vix_spot = float(vts.vix_levels[vts.labels.index('vix')]) if 'vix' in vts.labels else None
-        if verbose:
-            print(f"  VIX term structure: {vts.n_tenors} tenors "
-                  f"({vts.date.strftime('%Y-%m-%d')})")
-            for i, label in enumerate(vts.labels):
-                print(f"      {label:>6}: {vts.vix_levels[i]:.2f}")
-    except Exception as e:
-        if verbose:
-            print(f"  VIX term structure error: {e}")
-
-    # 3. VIX futures (CBOE)
+    # 2. VIX futures (CBOE) — PRIMARY SOURCE for term structure (always up-to-date)
     try:
         vix_fut = load_vix_futures(vix_futures_dir)
         if as_of_date:
@@ -646,9 +728,34 @@ def assemble_calibration_data(
         else:
             term = vix_fut.get_latest_term_structure(vix_spot=data.vix_spot)
         data.vix_futures_term = term
-        if verbose:
-            print(f"  VIX futures: {term.n_contracts} contracts "
-                  f"({term.trade_date.strftime('%Y-%m-%d')})")
+        source_timestamps['VIX_futures'] = term.trade_date
+        
+        # Build VIX term structure from futures prices (FALLBACK if TradingView stale)
+        try:
+            vts = get_vix_term_snapshot_from_futures(date=as_of_date, data_dir=vix_futures_dir)
+            data.vix_term_structure = vts
+            data.vix_spot = float(vts.vix_levels[0]) if len(vts.vix_levels) > 0 else None
+            source_timestamps['VIX_indices'] = vts.date
+            if verbose:
+                print(f"  VIX term structure (from futures): {vts.n_tenors} contracts "
+                      f"({vts.date.strftime('%Y-%m-%d')})")
+                for i, label in enumerate(vts.labels):
+                    print(f"      {label:>6}: {vts.vix_levels[i]:.2f}")
+        except Exception as e:
+            # Try TradingView fallback
+            try:
+                vts = get_vix_term_snapshot(date=as_of_date, data_dir=volatility_dir)
+                data.vix_term_structure = vts
+                data.vix_spot = float(vts.vix_levels[vts.labels.index('vix')]) if 'vix' in vts.labels else None
+                source_timestamps['VIX_indices'] = vts.date
+                if verbose:
+                    print(f"  VIX term structure (TradingView): {vts.n_tenors} tenors "
+                          f"({vts.date.strftime('%Y-%m-%d')})")
+                    for i, label in enumerate(vts.labels):
+                        print(f"      {label:>6}: {vts.vix_levels[i]:.2f}")
+            except Exception as e2:
+                if verbose:
+                    print(f"  VIX term structure error (futures): {e}, (TradingView): {e2}")
     except Exception as e:
         if verbose:
             print(f"  VIX futures error: {e}")
@@ -681,5 +788,46 @@ def assemble_calibration_data(
     except Exception as e:
         if verbose:
             print(f"  SOFR error (using default {data.risk_free_rate*100:.1f}%): {e}")
+
+    # ── Temporal Alignment Check ──────────────────────────────────────────────
+    if source_timestamps and verbose:
+        print(f"\n TEMPORAL ALIGNMENT AUDIT")
+        print(f"  {'-' * 50}")
+        
+        # Normalize all timestamps (remove tz info, time component)
+        normalized_ts = {}
+        for source, ts in sorted(source_timestamps.items()):
+            if isinstance(ts, str):
+                ts = pd.to_datetime(ts)
+            else:
+                ts = pd.to_datetime(ts)
+            # Remove timezone and time of day
+            ts_norm = ts.tz_localize(None).normalize() if ts.tz is not None else ts.normalize()
+            normalized_ts[source] = ts_norm
+            print(f"     {source:20} : {ts_norm.strftime('%Y-%m-%d')}")
+        
+        # Check skew
+        if len(normalized_ts) > 1:
+            dates = list(normalized_ts.values())
+            date_min = min(dates)
+            date_max = max(dates)
+            skew_days = (date_max - date_min).days
+            
+            if skew_days > max_days_skew:
+                msg = (
+                    f"\n   ALERT: Data sources differ by {skew_days} days (max tolerance: {max_days_skew})\n"
+                    f"     This may bias calibration if significant market moves occurred.\n"
+                    f"     Recommend: Pass explicit as_of_date (e.g., '2026-03-12') for reproducibility."
+                )
+                print(msg)
+                
+                if enforce_sync:
+                    raise ValueError(
+                        f"Temporal alignment failed: {skew_days}d skew > {max_days_skew}d threshold. "
+                        f"Pass enforce_sync=False or use explicit as_of_date."
+                    )
+            else:
+                print(f"  [OK] All sources within {skew_days}d (acceptable)")
+        print()
 
     return data

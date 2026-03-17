@@ -20,9 +20,9 @@ What this tests:
   - Compares: always-sell, model-conditional-sell, BS flat-vol strategies
 
 Data needed (all available):
-  - SPX daily prices  (data/market/spx/spx_daily_2010_latest.csv)
-  - SPX 5m intraday   (data/market/spx/spx_5m.csv) for RV estimation
-  - VIX daily          (data/market/vix/vix_daily.csv)
+    - SPX daily prices  (data/market/equity_indices/spx_daily.csv)
+    - SPX 5m intraday   (data/market/equity_indices/spx_5m.csv) for RV estimation
+    - VIX daily          (data/market/volatility/vix_daily.csv)
   - SOFR rates         (data/rates/sofr_daily_nyfed.csv) optional
 
 References:
@@ -62,8 +62,7 @@ def _load_spx_daily() -> pd.DataFrame:
     Prefers TradingView (150+ years) over Yahoo."""
     paths = [
         ROOT / "data" / "trading_view" / "equity_indices" / "spx_daily.csv",
-        ROOT / "data" / "market" / "spx" / "spx_daily_2010_latest.csv",
-        ROOT / "data" / "market" / "spx" / "spx_daily.csv",
+        ROOT / "data" / "market" / "equity_indices" / "spx_daily.csv",
     ]
     for p in paths:
         if p.exists():
@@ -90,7 +89,7 @@ def _load_vix_daily() -> pd.DataFrame:
     Prefers TradingView (36 years, 1990-present) over Yahoo."""
     paths = [
         ROOT / "data" / "trading_view" / "volatility" / "vix_daily.csv",
-        ROOT / "data" / "market" / "vix" / "vix_daily.csv",
+        ROOT / "data" / "market" / "volatility" / "vix_daily.csv",
     ]
 
     for p in paths:
@@ -113,7 +112,7 @@ def _load_spx_intraday_5m() -> Optional[pd.DataFrame]:
     Prefers TradingView SPX 5m (2yr) over Yahoo."""
     paths = [
         ROOT / "data" / "trading_view" / "equity_indices" / "spx_5m.csv",
-        ROOT / "data" / "market" / "spx" / "spx_5m.csv",
+        ROOT / "data" / "market" / "equity_indices" / "spx_5m.csv",
         ROOT / "data" / "trading_view" / "equity_etfs" / "spy_5m.csv",
     ]
 

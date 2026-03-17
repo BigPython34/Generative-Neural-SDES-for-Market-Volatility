@@ -221,7 +221,7 @@ class HedgingSimulator:
         Unlike BS-delta, this uses the *local* implied vol at each step
         (from the var_paths) and computes exact delta+gamma via AD.
         """
-        from utils.greeks_ad import jax_greeks
+        from quant.hedging.greeks_ad import jax_greeks
 
         n_paths, n_total = spot_paths.shape
         n_steps = n_total - 1

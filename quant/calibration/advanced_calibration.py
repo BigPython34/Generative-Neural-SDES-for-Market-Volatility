@@ -17,11 +17,36 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.config import load_config
-from quant.calibration.hurst import (
-    estimate_hurst_variogram,
-    estimate_hurst_dma,
-    compute_realized_volatility,
+from quant.analysis.hurst_estimation import (
+    hurst_dma as _hurst_dma_core,
+    hurst_variogram as _hurst_variogram_core,
 )
+
+
+def estimate_hurst_variogram(series: np.ndarray, max_lag: int = 100):
+    """Compatibility wrapper returning (H, lags, variogram)."""
+    est = _hurst_variogram_core(np.asarray(series, dtype=float), max_lag=max_lag)
+    lags = np.array(est.lags_used, dtype=int)
+    variogram = np.exp(np.array(est.log_moments, dtype=float)) if lags.size else np.array([])
+    return float(est.H), lags, variogram
+
+
+def estimate_hurst_dma(series: np.ndarray, max_scale: int = 500):
+    """Compatibility wrapper returning (H, scales, fluctuations)."""
+    est = _hurst_dma_core(np.asarray(series, dtype=float), max_lag=max_scale)
+    scales = np.array(est.lags_used, dtype=int)
+    fluctuations = np.exp(np.array(est.log_moments, dtype=float)) if scales.size else np.array([])
+    return float(est.H), scales, fluctuations
+
+
+def compute_realized_volatility(df: pd.DataFrame, window_points: int = None) -> pd.Series:
+    """Compute realized volatility over rolling windows from `log_return`."""
+    time_diff = (df.index[1] - df.index[0]).total_seconds() / 60
+    if window_points is None:
+        window_points = max(6, int(60 / time_diff))
+    annual_factor = np.sqrt(252 * 6.5 * 60 / time_diff)
+    rv = df["log_return"].rolling(window=window_points).std() * annual_factor
+    return rv.dropna()
 
 
 class HighFrequencyAnalyzer:
@@ -310,25 +335,3 @@ class HighFrequencyAnalyzer:
         print(f"\nResults saved to: {output_path}")
         
         return optimal_params
-
-
-def compare_with_previous():
-    """Compare new calibration with previous grid search results"""
-    data_dir = Path("data")
-    
-    # Load previous calibration
-    prev_path = Path("outputs/calibration_report.json")
-    if prev_path.exists():
-        with open(prev_path) as f:
-            prev = json.load(f)
-        
-        print("\n" + "=" * 60)
-        print("COMPARISON WITH PREVIOUS CALIBRATION")
-        print("=" * 60)
-        
-        prev_bergomi = prev.get('bergomi', {})
-        print(f"\n   Previous Bergomi (grid search on options):")
-        print(f"      H = {prev_bergomi.get('H', 'N/A')}")
-        print(f"      η = {prev_bergomi.get('eta', 'N/A')}")
-        print(f"      ρ = {prev_bergomi.get('rho', 'N/A')}")
-        print(f"      RMSE = {prev_bergomi.get('rmse', 'N/A')}")

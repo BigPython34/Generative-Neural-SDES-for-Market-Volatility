@@ -18,10 +18,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils.config import load_config
 
+# Import consolidated Hurst methods
+from quant.analysis.hurst_estimation import (
+    hurst_variogram,
+    hurst_rescaled_range,
+    hurst_spectral,
+)
+
 
 class RobustHurstEstimator:
     """
-    Multiple methods for Hurst estimation with confidence intervals
+    Multiple methods for Hurst estimation with confidence intervals.
+    Now delegates to the consolidated quant.analysis.hurst_estimation module.
     """
     
     def __init__(self, data: np.ndarray):
@@ -30,134 +38,39 @@ class RobustHurstEstimator:
         
     def variogram(self, max_lag: int = None) -> dict:
         """Variogram method with proper normalization"""
-        n = len(self.data)
-        if max_lag is None:
-            max_lag = min(100, n // 5)
-        
-        if max_lag < 10:
-            return {'H': np.nan, 'std': np.nan, 'method': 'variogram'}
-        
-        lags = np.arange(2, max_lag)
-        variogram = []
-        
-        for lag in lags:
-            increments = self.data[lag:] - self.data[:-lag]
-            # Use absolute moments (more robust than squared)
-            variogram.append(np.mean(np.abs(increments)))
-        
-        variogram = np.array(variogram)
-        
-        # Log-log regression: log(m1) = H * log(lag) + const
-        log_lags = np.log(lags)
-        log_var = np.log(variogram + 1e-10)
-        
-        # Use robust regression (ignore outliers)
-        from scipy import stats
-        slope, intercept, r_value, p_value, std_err = stats.linregress(log_lags, log_var)
-        
-        H = slope  # For absolute moments, E[|X|] ~ lag^H
+        est = hurst_variogram(self.data, max_lag=max_lag)
         
         self.results['variogram'] = {
-            'H': float(np.clip(H, 0.01, 0.99)),
-            'std': float(std_err),
-            'r_squared': float(r_value**2),
+            'H': float(est.H),
+            'std': float(est.std_err),
+            'r_squared': float(est.r_squared),
             'method': 'variogram'
         }
         return self.results['variogram']
     
     def rescaled_range(self) -> dict:
         """R/S analysis (classic Hurst method)"""
-        n = len(self.data)
-        
-        # Different window sizes
-        min_window = 10
-        max_window = n // 4
-        
-        if max_window < min_window * 2:
-            return {'H': np.nan, 'std': np.nan, 'method': 'R/S'}
-        
-        window_sizes = np.logspace(np.log10(min_window), np.log10(max_window), 15).astype(int)
-        window_sizes = np.unique(window_sizes)
-        
-        rs_values = []
-        
-        for w in window_sizes:
-            # Split into windows
-            n_windows = n // w
-            rs_window = []
-            
-            for i in range(n_windows):
-                window = self.data[i*w:(i+1)*w]
-                
-                # Mean-adjusted cumulative sum
-                mean_adj = window - np.mean(window)
-                cumsum = np.cumsum(mean_adj)
-                
-                # Range
-                R = np.max(cumsum) - np.min(cumsum)
-                
-                # Standard deviation
-                S = np.std(window, ddof=1)
-                
-                if S > 1e-10:
-                    rs_window.append(R / S)
-            
-            if rs_window:
-                rs_values.append((w, np.mean(rs_window)))
-        
-        if len(rs_values) < 5:
-            return {'H': np.nan, 'std': np.nan, 'method': 'R/S'}
-        
-        windows = np.array([x[0] for x in rs_values])
-        rs = np.array([x[1] for x in rs_values])
-        
-        # Log-log regression: log(R/S) = H * log(n) + const
-        from scipy import stats
-        slope, intercept, r_value, p_value, std_err = stats.linregress(np.log(windows), np.log(rs))
+        est = hurst_rescaled_range(self.data)
         
         self.results['RS'] = {
-            'H': float(np.clip(slope, 0.01, 0.99)),
-            'std': float(std_err),
-            'r_squared': float(r_value**2),
+            'H': float(est.H) if np.isfinite(est.H) else np.nan,
+            'std': float(est.std_err),
+            'r_squared': float(est.r_squared),
             'method': 'R/S'
         }
         return self.results['RS']
     
     def periodogram(self) -> dict:
         """Spectral method using periodogram"""
-        n = len(self.data)
+        est = hurst_spectral(self.data)
         
-        # Compute periodogram
-        from scipy import signal
-        freqs, psd = signal.periodogram(self.data, fs=1.0)
-        
-        # Remove zero frequency
-        freqs = freqs[1:]
-        psd = psd[1:]
-        
-        # Use only low frequencies (where scaling should hold)
-        n_use = len(freqs) // 4
-        if n_use < 5:
-            return {'H': np.nan, 'std': np.nan, 'method': 'periodogram'}
-        
-        freqs = freqs[:n_use]
-        psd = psd[:n_use]
-        
-        # Log-log regression: log(PSD) = -(2H+1) * log(f) + const
-        from scipy import stats
-        slope, intercept, r_value, p_value, std_err = stats.linregress(
-            np.log(freqs + 1e-10), np.log(psd + 1e-10)
-        )
-        
-        H = (-slope - 1) / 2
-        
-        self.results['periodogram'] = {
-            'H': float(np.clip(H, 0.01, 0.99)),
-            'std': float(std_err / 2),  # Approximate
-            'r_squared': float(r_value**2),
-            'method': 'periodogram'
+        self.results['spectral'] = {
+            'H': float(est.H) if np.isfinite(est.H) else np.nan,
+            'std': float(est.std_err),
+            'r_squared': float(est.r_squared),
+            'method': 'spectral'
         }
-        return self.results['periodogram']
+        return self.results['spectral']
     
     def estimate_all(self) -> dict:
         """Run all methods and return consensus"""
@@ -204,6 +117,7 @@ class RobustHurstEstimator:
             'confidence': confidence,
             'is_rough': H_consensus < 0.5
         }
+
 
 
 def calibrate_correlation(spot_returns: np.ndarray, vol_changes: np.ndarray) -> dict:
@@ -267,7 +181,7 @@ def run_robustness_check():
     
     # Load SPX 30min data (longest history)
     cfg = load_config()
-    spx_path = Path(cfg['data'].get('spx_files', {}).get(30, "data/market/spx/spx_30m.csv"))
+    spx_path = Path(cfg['data'].get('spx_files', {}).get(30, "data/market/equity_indices/spx_30m.csv"))
     if spx_path.exists():
         df = pd.read_csv(spx_path)
         df['datetime'] = pd.to_datetime(df['time'], unit='s')

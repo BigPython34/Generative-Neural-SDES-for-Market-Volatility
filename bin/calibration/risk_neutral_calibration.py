@@ -23,9 +23,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from engine.neural_sde import NeuralRoughSimulator
-from engine.signature_engine import SignatureFeatureExtractor
-from quant.models.black_scholes import BlackScholes
 import yaml
 
 
@@ -40,6 +37,11 @@ class RiskNeutralNeuralSDE:
     """
     
     def __init__(self, n_steps: int = 20, sig_depth: int = 3, use_trained: bool = True):
+        # Deferred imports to avoid JAX DLL issues on Windows
+        from engine.neural_sde import NeuralRoughSimulator
+        from engine.signature_engine import SignatureFeatureExtractor
+        from quant.models.black_scholes import BlackScholes
+        
         self.n_steps = n_steps
         self.sig_depth = sig_depth
         

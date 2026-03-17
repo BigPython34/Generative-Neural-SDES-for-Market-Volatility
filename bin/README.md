@@ -33,7 +33,4 @@ The `bin/` folder is now organized by domain.
 - `bin/ops/`
   - `compare_frequencies.py`
 
-## Backward Compatibility
 
-Domain scripts are now the source of truth.
-Use domain paths directly.

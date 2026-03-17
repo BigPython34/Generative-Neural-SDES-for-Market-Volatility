@@ -17,111 +17,21 @@ import numpy as np
 import pandas as pd
 import sys
 from pathlib import Path
-from scipy.stats import linregress
 import os
-
+from scipy.stats import linregress
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils.config import load_config
 
-
-# ---------------------------------------------------------
-# 1. Hurst Estimators
-# ---------------------------------------------------------
-
-def hurst_variogram(series, max_lag=None):
-    """
-    Variogram-based Hurst estimator (most reliable for rough vol).
-    
-    E[|X_{t+τ} - X_t|^2] ~ τ^{2H}
-    
-    => log(variogram) = 2H * log(τ) + const
-    """
-    series = np.asarray(series, dtype=float)
-    n = len(series)
-    if max_lag is None:
-        max_lag = min(50, n // 4)
-    
-    lags = np.arange(1, max_lag + 1)
-    variogram = np.zeros(len(lags))
-    
-    for i, lag in enumerate(lags):
-        diffs = series[lag:] - series[:-lag]
-        variogram[i] = np.mean(diffs ** 2)
-    
-    # Log-log regression
-    log_lags = np.log(lags)
-    log_var = np.log(variogram + 1e-30)
-    
-    slope, _, r_value, _, _ = linregress(log_lags, log_var)
-    H = slope / 2.0
-    
-    return H, r_value**2
-
-
-def hurst_structure_function(series, order=1, max_lag=None):
-    """
-    Structure function (order q) Hurst estimator.
-    
-    E[|X_{t+τ} - X_t|^q] ~ τ^{qH}
-    
-    Order 1 is more robust to outliers than order 2 (variogram).
-    """
-    series = np.asarray(series, dtype=float)
-    n = len(series)
-    if max_lag is None:
-        max_lag = min(50, n // 4)
-    
-    lags = np.arange(1, max_lag + 1)
-    moments = np.zeros(len(lags))
-    
-    for i, lag in enumerate(lags):
-        diffs = np.abs(series[lag:] - series[:-lag])
-        moments[i] = np.mean(diffs ** order)
-    
-    log_lags = np.log(lags)
-    log_mom = np.log(moments + 1e-30)
-    
-    slope, _, r_value, _, _ = linregress(log_lags, log_mom)
-    H = slope / order
-    
-    return H, r_value**2
-
-
-def hurst_dma(series, max_lag=None):
-    """
-    Detrended Moving Average (DMA) Hurst estimator.
-    More robust to trends than variogram.
-    """
-    series = np.asarray(series, dtype=float)
-    n = len(series)
-    if max_lag is None:
-        max_lag = min(50, n // 4)
-    
-    lags = np.arange(2, max_lag + 1)
-    sigma_dma = np.zeros(len(lags))
-    
-    cumsum = np.cumsum(series)
-    
-    for i, lag in enumerate(lags):
-        # Moving average of cumulative sum
-        ma = np.convolve(cumsum, np.ones(lag) / lag, mode='valid')
-        # DMA variance
-        overlap = min(len(cumsum), len(ma))
-        diffs = cumsum[lag-1:lag-1+len(ma)] - ma
-        sigma_dma[i] = np.sqrt(np.mean(diffs ** 2))
-    
-    log_lags = np.log(lags)
-    log_sigma = np.log(sigma_dma + 1e-30)
-    
-    slope, intercept, r_value, _, _ = linregress(log_lags, log_sigma)
-    H = slope - 0.5  # DMA correction
-    
-    return H, r_value**2
+# Import consolidated Hurst estimators
+from quant.analysis.hurst_estimation import (
+    hurst_variogram,
+    hurst_structure_function,
+)
 
 
 # ---------------------------------------------------------
-# 2. Daily Realized Variance from High-Frequency Returns
+# 1. Daily Realized Variance from High-Frequency Returns
 # ---------------------------------------------------------
 
 def compute_daily_rv(df):
@@ -165,7 +75,7 @@ def compute_daily_rv(df):
 
 
 # ---------------------------------------------------------
-# 3. Main Diagnostic
+# 2. Main Diagnostic
 # ---------------------------------------------------------
 
 def run_diagnostic():
@@ -184,9 +94,9 @@ def run_diagnostic():
     print("-" * 60)
     
     for freq, fname in [
-        ("5min", vix_files_cfg.get(5, "data/market/vix/vix_5m.csv")),
-        ("15min", vix_files_cfg.get(15, "data/market/vix/vix_15m.csv")),
-        ("30min", vix_files_cfg.get(30, "data/market/vix/vix_30m.csv")),
+        ("5min", vix_files_cfg.get(5, "data/market/volatility/vix_5m.csv")),
+        ("15min", vix_files_cfg.get(15, "data/market/volatility/vix_15m.csv")),
+        ("30min", vix_files_cfg.get(30, "data/market/volatility/vix_30m.csv")),
     ]:
         if not Path(fname).exists():
             print(f"   [{freq}] File not found: {fname}")
@@ -194,9 +104,12 @@ def run_diagnostic():
         df = pd.read_csv(fname)
         vix_close = pd.to_numeric(df['close'], errors='coerce').dropna().values
         log_vix = np.log(vix_close)
-        h_var, r2_var = hurst_variogram(log_vix)
-        h_sf1, r2_sf1 = hurst_structure_function(log_vix, order=1)
-        h_sf2, r2_sf2 = hurst_structure_function(log_vix, order=2)
+        h_var_est = hurst_variogram(log_vix)
+        h_sf1_est = hurst_structure_function(log_vix, q=1)
+        h_sf2_est = hurst_structure_function(log_vix, q=2)
+        h_var, r2_var = h_var_est.H, h_var_est.r_squared
+        h_sf1, r2_sf1 = h_sf1_est.H, h_sf1_est.r_squared
+        h_sf2, r2_sf2 = h_sf2_est.H, h_sf2_est.r_squared
         
         print(f"   [{freq}] VIX — {len(vix_close)} points")
         print(f"   Variogram H     = {h_var:.4f}  (R² = {r2_var:.3f})")
@@ -211,8 +124,8 @@ def run_diagnostic():
     print("-" * 60)
     
     for freq, fname in [
-        ("5min", spx_files_cfg.get(5, "data/market/spx/spx_5m.csv")),
-        ("30min", spx_files_cfg.get(30, "data/market/spx/spx_30m.csv")),
+        ("5min", spx_files_cfg.get(5, "data/market/equity_indices/spx_5m.csv")),
+        ("30min", spx_files_cfg.get(30, "data/market/equity_indices/spx_30m.csv")),
     ]:
         if not Path(fname).exists():
             print(f"   [{freq}] File not found: {fname}")
@@ -228,9 +141,12 @@ def run_diagnostic():
         # Hurst on log(RV) — this is where roughness lives
         log_rv = np.log(rv_series)
         
-        h_var, r2_var = hurst_variogram(log_rv)
-        h_sf1, r2_sf1 = hurst_structure_function(log_rv, order=1)
-        h_sf2, r2_sf2 = hurst_structure_function(log_rv, order=2)
+        h_var_est = hurst_variogram(log_rv)
+        h_sf1_est = hurst_structure_function(log_rv, q=1)
+        h_sf2_est = hurst_structure_function(log_rv, q=2)
+        h_var, r2_var = h_var_est.H, h_var_est.r_squared
+        h_sf1, r2_sf1 = h_sf1_est.H, h_sf1_est.r_squared
+        h_sf2, r2_sf2 = h_sf2_est.H, h_sf2_est.r_squared
         
         print(f"\n   [{freq}] Daily RV — {len(rv_series)} trading days")
         print(f"   Variogram H     = {h_var:.4f}  (R² = {r2_var:.3f})")
@@ -254,7 +170,7 @@ def run_diagnostic():
     print("-" * 60)
     
     # Use 30-min SPX data (most points)
-    fname_30m = spx_files_cfg.get(30, "data/market/spx/spx_30m.csv")
+    fname_30m = spx_files_cfg.get(30, "data/market/equity_indices/spx_30m.csv")
     if Path(fname_30m).exists():
         df30 = pd.read_csv(fname_30m)
         rv_daily = compute_daily_rv(df30)
@@ -263,8 +179,10 @@ def run_diagnostic():
         for max_lag in [10, 20, 30, 50]:
             if max_lag >= len(log_rv) // 4:
                 continue
-            h_var, r2 = hurst_variogram(log_rv, max_lag=max_lag)
-            h_sf1, _ = hurst_structure_function(log_rv, order=1, max_lag=max_lag)
+            h_var_est = hurst_variogram(log_rv, max_lag=max_lag)
+            h_sf1_est = hurst_structure_function(log_rv, q=1, max_lag=max_lag)
+            h_var, r2 = h_var_est.H, h_var_est.r_squared
+            h_sf1 = h_sf1_est.H
             print(f"   max_lag={max_lag:>3d}: H_var={h_var:.4f}, H_sf1={h_sf1:.4f}  (R²={r2:.3f})")
     
     # -- D. Comparison with Neural SDE output ------------------
@@ -289,15 +207,11 @@ def run_diagnostic():
             model_path = models_dir / "neural_sde_best.eqx"
         if model_path.exists():
             print(f"   Model: {model_path.name} (P = risk/roughness, not Q = pricing)", flush=True)
-            sig_dim = SignatureFeatureExtractor(truncation_order=3).get_feature_dim(1)
+            sig_dim = SignatureFeatureExtractor(truncation_order=4).get_feature_dim(1)
             key = jax.random.PRNGKey(42)
             config_path = "config/params.yaml"
             model = NeuralRoughSimulator(sig_dim=sig_dim, key=key, config_path=config_path, enable_jumps=False)
-            try:
-                model = eqx.tree_deserialise_leaves(model_path, model)
-            except Exception:
-                from engine._legacy_loader import load_legacy_model
-                model = load_legacy_model(model_path, sig_dim, config_path)
+            model = eqx.tree_deserialise_leaves(model_path, model)
             
             T = cfg['simulation']['T']
             n_steps = cfg['simulation']['n_steps']

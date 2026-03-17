@@ -123,73 +123,17 @@ References
 import numpy as np
 import jax
 import jax.numpy as jnp
-from dataclasses import dataclass
 import time
 from scipy.optimize import minimize as scipy_minimize
 from quant.models.black_scholes import BlackScholes
+from quant.calibration.results import JointCalibrationResult
+from engine.losses import terminal_martingale_violation_loss
+from engine.volterra import get_cached_volterra_kernel
 
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. JAX-ACCELERATED KERNELS
 # ═══════════════════════════════════════════════════════════════════
-
-def build_volterra_kernel(n_steps: int, H: float, dt: float):
-    """
-    Vectorized Volterra RL-fBM kernel — pure JAX, no Python loops.
-
-    A[j,k] = √(2H) · dtᴴ / (H+½) · [(j-k+1)^{H+½} - (j-k)^{H+½}]
-
-    for k ≤ j  (lower triangular).
-
-    Complexity: O(N²) memory, O(1) Python ops (all vectorized in XLA).
-    For N=252 this builds a 252×252 matrix in ~1ms (vs ~1s with loops).
-
-    Parameters
-    ----------
-    n_steps : number of time steps
-    H : Hurst exponent ∈ (0, 0.5)
-    dt : time step Δt
-
-    Returns
-    -------
-    (A, var_wh) : kernel (n,n) and variance Var[Ŵᴴ(tⱼ)] array (n,)
-    """
-    alpha = H + 0.5
-    C = jnp.sqrt(2.0 * H) * dt ** H / alpha
-
-    j_idx = jnp.arange(n_steps, dtype=jnp.float32)[:, None]  # (n, 1)
-    k_idx = jnp.arange(n_steps, dtype=jnp.float32)[None, :]  # (1, n)
-    lag = jnp.maximum(j_idx - k_idx, 0.0)                     # (n, n)
-
-    A_raw = C * ((lag + 1.0) ** alpha - lag ** alpha)
-
-    # Lower triangular mask: A[j,k] = 0 for k > j
-    mask = k_idx <= j_idx
-    A = jnp.where(mask, A_raw, 0.0)
-
-    # Var[Ŵᴴ(tⱼ)] = Σ_k A[j,k]²
-    var_wh = jnp.sum(A ** 2, axis=1)
-
-    return A, var_wh
-
-
-# Global kernel cache: avoids rebuilding for same (H, n_steps, dt).
-# During grid search over H ∈ {h₁,...,h_k}, each kernel is built once
-# and reused for all (η, ρ) combinations → k builds instead of k×m×n.
-_KERNEL_CACHE: dict = {}
-
-
-def get_cached_kernel(n_steps: int, H: float, dt: float):
-    """Get Volterra kernel from cache, building if needed."""
-    cache_key = (n_steps, round(H, 5), round(dt, 10))
-    if cache_key not in _KERNEL_CACHE:
-        _KERNEL_CACHE[cache_key] = build_volterra_kernel(n_steps, H, dt)
-    return _KERNEL_CACHE[cache_key]
-
-
-def clear_kernel_cache():
-    """Clear kernel cache (useful for tests or memory management)."""
-    _KERNEL_CACHE.clear()
 
 
 # ─────────────────────────────────────────────────────────
@@ -342,7 +286,7 @@ class ExtendedRoughBergomi:
                 self._xi0 = jnp.array(padded)
 
         # Volterra kernel — cached per (H, n_steps, dt)
-        self._A, self._var_wh = get_cached_kernel(n_steps, H, self.dt)
+        self._A, self._var_wh = get_cached_volterra_kernel(n_steps, H, self.dt)
 
     def simulate(self, n_paths, s0=100.0, key=None, antithetic=True):
         """
@@ -486,91 +430,8 @@ def martingale_loss(spot_paths, r, T, s0):
 
     Returns squared violation of the discounted spot martingale.
     """
-    S_T = spot_paths[:, -1]
-    disc_mean = float(jnp.mean(S_T)) * np.exp(-r * T) / s0
-    return (disc_mean - 1.0) ** 2
-
-
-# ═══════════════════════════════════════════════════════════════════
-# 4. RESULT DATACLASS
-# ═══════════════════════════════════════════════════════════════════
-
-@dataclass
-class JointCalibrationResult:
-    """Results of joint SPX-VIX calibration."""
-    # Calibrated parameters
-    H: float
-    eta: float
-    rho: float
-    xi0_maturities: np.ndarray
-    xi0_values: np.ndarray
-
-    # Losses
-    total_loss: float
-    spx_loss: float
-    vix_loss: float
-    martingale_loss: float
-
-    # Model outputs
-    model_vix_ts: dict         # {tau_days: model_vix}
-    market_vix_ts: dict        # {tau_days: market_vix}
-    model_ivs: dict            # {T: (strikes, model_ivs, market_ivs)}
-    spx_rmse_bps: float        # IV RMSE in basis points (total)
-    spx_shape_rmse_bps: float  # IV RMSE after removing ATM bias (shape only)
-    spx_atm_bias_bps: float    # Mean ATM level bias in bps
-
-    # Diagnostics
-    n_mc_paths: int
-    n_iterations: int
-    elapsed_seconds: float
-    grid_evaluated: int
-    method: str
-
-    def summary(self) -> str:
-        lines = []
-        lines.append("=" * 65)
-        lines.append("  JOINT SPX-VIX CALIBRATION RESULTS")
-        lines.append("=" * 65)
-        lines.append(f"  Method:     {self.method}")
-        lines.append(f"  MC paths:   {self.n_mc_paths:,}")
-        lines.append(f"  Grid pts:   {self.grid_evaluated}")
-        lines.append(f"  Time:       {self.elapsed_seconds:.1f}s")
-        lines.append("")
-        lines.append("  Calibrated Parameters:")
-        lines.append(f"    H (Hurst)    = {self.H:.4f}  {'← ROUGH' if self.H < 0.25 else ''}")
-        lines.append(f"    η (vol-vol)  = {self.eta:.3f}")
-        lines.append(f"    ρ (correl)   = {self.rho:.3f}")
-        lines.append(f"    ξ₀ pillars   = {len(self.xi0_maturities)}")
-        lines.append("")
-        lines.append("  Loss Decomposition:")
-        lines.append(f"    L_total      = {self.total_loss:.6f}")
-        lines.append(f"    L_SPX        = {self.spx_loss:.6f}  "
-                     f"(IV RMSE = {self.spx_rmse_bps:.1f} bps)")
-        lines.append(f"    L_VIX        = {self.vix_loss:.6f}")
-        lines.append(f"    L_martingale = {self.martingale_loss:.6f}")
-        lines.append("")
-        lines.append("  SPX Smile Diagnostics:")
-        lines.append(f"    Total RMSE    = {self.spx_rmse_bps:.0f} bps")
-        lines.append(f"    ATM bias      = {self.spx_atm_bias_bps:+.0f} bps "
-                     f"(SPX-VIX joint calibration tension)")
-        lines.append(f"    Shape RMSE    = {self.spx_shape_rmse_bps:.0f} bps "
-                     f"(smile shape only, de-meaned)")
-        lines.append("")
-
-        # VIX term structure comparison
-        lines.append("  VIX Term Structure:")
-        lines.append(f"    {'Tenor':>8} {'Market':>8} {'Model':>8} {'Diff':>8}")
-        lines.append("    " + "─" * 36)
-        for tau in sorted(set(list(self.model_vix_ts.keys()) + list(self.market_vix_ts.keys()))):
-            mkt = self.market_vix_ts.get(tau, None)
-            mdl = self.model_vix_ts.get(tau, None)
-            if mkt is not None and mdl is not None:
-                lines.append(f"    {tau:>6}d {mkt:>8.2f} {mdl:>8.2f} {mdl - mkt:>+8.2f}")
-            elif mdl is not None:
-                lines.append(f"    {tau:>6}d {'N/A':>8} {mdl:>8.2f}")
-
-        lines.append("=" * 65)
-        return "\n".join(lines)
+    s_t_norm = spot_paths[:, -1] / s0
+    return float(terminal_martingale_violation_loss(s_t_norm, T, r))
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -597,9 +458,9 @@ class JointCalibrator:
         lambda_reg: float = 0.01,
         n_mc_paths: int = 8_000,
         n_steps_per_year: int = 252,
-        H_prior: float = 0.11,
+        H_prior: float = 0.07,  # UPDATED: was 0.11 (too high), now 0.07 (literature: 0.04-0.08)
         eta_prior: float = 1.9,
-        moneyness_range: tuple = (-0.15, 0.15),
+        moneyness_range: tuple = (-0.25, 0.25),  # WIDENED from (-0.15, 0.15) to capture OTM puts with high skew
         min_dte: int = 7,
         max_dte: int = 180,
         max_strikes_per_maturity: int = 12,
@@ -651,7 +512,18 @@ class JointCalibrator:
         min_tau_days = max(5, int(3 * dt * 365))
         targets = {}
         for i, label in enumerate(vix_ts.labels):
-            tau_days = VIX_INDEX_TENORS[label]["tau_days"]
+            # Handle both TradingView labels (vix1d, vix9d, etc.) and futures labels (fut_XXd)
+            if label in VIX_INDEX_TENORS:
+                tau_days = VIX_INDEX_TENORS[label]["tau_days"]
+            elif label.startswith("fut_"):
+                # Extract days from "fut_XXd" label
+                try:
+                    tau_days = int(label.replace("fut_", "").replace("d", ""))
+                except ValueError:
+                    tau_days = int(vix_ts.tenors_days[i])
+            else:
+                tau_days = int(vix_ts.tenors_days[i])
+            
             if tau_days >= min_tau_days:
                 targets[tau_days] = float(vix_ts.vix_levels[i])
 
@@ -815,7 +687,20 @@ class JointCalibrator:
                 from quant.calibration.vix_futures_loader import VIX_INDEX_TENORS
                 vix_targets_for_xi0 = {}
                 for i, label in enumerate(vix_ts.labels):
-                    tau_days = VIX_INDEX_TENORS[label]["tau_days"]
+                    # Handle both TradingView labels (vix1d, vix9d, etc.) and futures labels (fut_XXd)
+                    if label in VIX_INDEX_TENORS:
+                        tau_days = VIX_INDEX_TENORS[label]["tau_days"]
+                    elif label.startswith("fut_"):
+                        # Extract days from "fut_XXd" label
+                        try:
+                            tau_days = int(label.replace("fut_", "").replace("d", ""))
+                        except ValueError:
+                            # Fallback to tenor_days from snapshot
+                            tau_days = int(vix_ts.tenors_days[i])
+                    else:
+                        # Fallback to tenor_days from snapshot
+                        tau_days = int(vix_ts.tenors_days[i])
+                    
                     vix_targets_for_xi0[tau_days] = float(vix_ts.vix_levels[i])
 
                 xi0_curve = bootstrap_xi0_from_vix(vix_targets_for_xi0)

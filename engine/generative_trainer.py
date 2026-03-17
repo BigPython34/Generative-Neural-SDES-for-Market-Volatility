@@ -14,7 +14,7 @@ Trains Neural SDE models under different probability measures:
       → PRIMARY: match observed option prices (Bayer & Stemper 2018)
       → CONSTRAINT: E[e^{-rT}S_T] = S_0 (no-arbitrage)
       → REGULARIZER: MMD on signatures (path realism, small weight)
-    - Fallback (no options data): P-loss + martingale (legacy, weaker)
+    - Fallback (no options data): P-loss + martingale (weaker)
     - Use for: Option pricing, delta hedging, calibration
 
   Theoretical justification (v3.0):
@@ -83,6 +83,8 @@ class GenerativeTrainer:
 
         self.sig_extractor = SignatureFeatureExtractor(truncation_order=sig_order, dt=self.dt)
         self.input_sig_dim = self.sig_extractor.get_feature_dim(1)
+        
+        print(f"[Config] Signature order={sig_order}, sig_dim={self.input_sig_dim}")
 
         # Data loading depends on measure
         if self.measure == 'P':
@@ -143,9 +145,9 @@ class GenerativeTrainer:
         if self.measure == 'Q':
             self._smile_target = self._load_smile_target(q_cfg)
             if self._smile_target is None:
-                print(f"   [Q-measure] No options data -> falling back to legacy "
+                print(f"   [Q-measure] No options data -> falling back to "
                       f"P+martingale loss. This is theoretically weaker.")
-                print(f"     Run `python bin/fetch_options.py` to cache SPY options.")
+                print(f"     Run `python bin/data/fetch_options.py` to cache SPY options.")
             else:
                 print(f"   [Q-measure] IV surface loaded -> smile_fit is PRIMARY loss")
 
@@ -281,8 +283,8 @@ class GenerativeTrainer:
                             model_prices, market_prices, target.get('vega_weights')
                         )
 
-                # When we have smile data: smile is primary, MMD is regularizer
-                # When no smile data (fallback): use legacy P+martingale approach
+                # When we have smile data: smile is primary, MMD is regularizer.
+                # When no smile data: fallback to P+martingale.
                 if self._smile_target is not None:
                     lambda_mmd_reg = self.yaml_config.get('training', {}).get(
                         'q_measure', {}
@@ -294,7 +296,7 @@ class GenerativeTrainer:
                         + 0.1 * mean_pen  # light mean regularizer
                     )
                 else:
-                    # Fallback: no smile data → legacy P+martingale
+                    # Fallback: no smile data → P+martingale
                     # (with warning logged at init time)
                     total = (
                         mmd + self.lambda_mean * mean_pen
@@ -589,14 +591,13 @@ class GenerativeTrainer:
         model_path = models_dir / f"neural_sde_best{suffix}.eqx"
         eqx.tree_serialise_leaves(model_path, model)
 
-        # Also save as generic "best" for backward compatibility
-        generic_path = models_dir / "neural_sde_best.eqx"
-        eqx.tree_serialise_leaves(generic_path, model)
-
     def load_model(self, model_path=None, enable_jumps=False):
         from pathlib import Path
         if model_path is None:
-            model_path = Path("models/neural_sde_best.eqx")
+            suffix = f"_{self.measure.lower()}"
+            if enable_jumps:
+                suffix += "_jump"
+            model_path = Path(f"models/neural_sde_best{suffix}.eqx")
         else:
             model_path = Path(model_path)
 
@@ -605,7 +606,6 @@ class GenerativeTrainer:
 
         key = jax.random.PRNGKey(0)
 
-        # Try loading with requested architecture first
         try:
             model = NeuralRoughSimulator(
                 self.input_sig_dim, key,
@@ -613,16 +613,6 @@ class GenerativeTrainer:
                 enable_jumps=enable_jumps,
             )
             return eqx.tree_deserialise_leaves(model_path, model)
-        except Exception:
-            pass
-
-        # Backward compatibility: model saved with old architecture (no jumps).
-        # Load into a jump-disabled skeleton, then wrap into the new structure.
-        try:
-            from engine._legacy_loader import load_legacy_model
-            return load_legacy_model(
-                model_path, self.input_sig_dim, self.config_path
-            )
         except Exception:
             pass
 

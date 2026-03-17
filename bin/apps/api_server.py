@@ -651,7 +651,7 @@ def animate_vol_surface():
     cache_dir = PROJECT_ROOT / "data" / "options_cache"
     files = sorted(cache_dir.glob("SPY_surface_*.csv"))
     if not files:
-        raise HTTPException(404, "No options surface cached. Run: python bin/fetch_options.py")
+        raise HTTPException(404, "No options surface cached. Run: python bin/data/fetch_options.py")
 
     import pandas as pd
     df = pd.read_csv(files[-1])
@@ -828,7 +828,7 @@ def get_reports():
 
 ALLOWED_SCRIPTS = {
     "regenerate_data": "bin/regenerate_data.py",
-    "fetch_options": "bin/fetch_options.py",
+    "fetch_options": "bin/data/fetch_options.py",
     "calibrate": "bin/calibrate.py",
     "train": "bin/train_multi.py",
     "backtest": "bin/backtest.py",

@@ -23,11 +23,15 @@ import numpy as np
 from utils.config import load_config
 from utils.loader.data_loader import MarketDataLoader
 from quant.analysis.diagnostics import compute_acf, estimate_hurst, estimate_hurst_from_returns
-from engine.signature_engine import SignatureFeatureExtractor
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 CFG = load_config()
+
+# Deferred import to avoid JAX DLL issues on Windows
+def get_signature_extractor(*args, **kwargs):
+    from engine.signature_engine import SignatureFeatureExtractor
+    return SignatureFeatureExtractor(*args, **kwargs)
 
 # VIX data files at different frequencies
 VIX_FILES = {
@@ -110,7 +114,7 @@ def quick_train_test(paths: np.ndarray, freq_name: str, n_epochs: int = 50):
     }
     
     # Create signature engine with real dt
-    sig_extractor = SignatureFeatureExtractor(truncation_order=3, dt=dt)
+    sig_extractor = get_signature_extractor(truncation_order=3, dt=dt)
     
     # Compute signatures for real data
     paths_jax = jnp.array(paths)

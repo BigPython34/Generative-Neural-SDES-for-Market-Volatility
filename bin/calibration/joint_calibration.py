@@ -34,8 +34,6 @@ sys.path.insert(0, str(ROOT))
 import argparse
 import json
 import numpy as np
-import time
-
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -43,6 +41,10 @@ def parse_args():
     )
     p.add_argument('--quick', action='store_true',
                    help='Reduced grid for faster calibration')
+    p.add_argument('--date', type=str, default=None,
+                   help='Calibration date (YYYY-MM-DD); None = latest (not recommended)')
+    p.add_argument('--enforce-sync', action='store_true',
+                   help='Require source data dates to align (within 2 days)')
     p.add_argument('--mc-paths', type=int, default=10000,
                    help='Number of MC paths (default: 10000)')
     p.add_argument('--data-only', action='store_true',
@@ -212,7 +214,12 @@ def main():
     # ── Load market data ──
     print("\n  Loading market data...")
     from quant.calibration.vix_futures_loader import assemble_calibration_data
-    market_data = assemble_calibration_data(verbose=True)
+    market_data = assemble_calibration_data(
+        as_of_date=args.date,
+        verbose=True,
+        enforce_sync=args.enforce_sync,
+        max_days_skew=2,
+    )
 
     if args.data_only:
         print("\n" + market_data.summary())

@@ -27,7 +27,6 @@ References:
 import numpy as np
 import pandas as pd
 import os
-from pathlib import Path
 from utils.config import load_config
 
 
@@ -233,7 +232,7 @@ class OptionsVarianceLoader:
 
         This is a first-order approximation; proper options-based extraction is preferred.
         """
-        from utils.data_loader import MarketDataLoader
+        from data_loader import MarketDataLoader
 
         print("   [OPTIONS FALLBACK] Using VIX with instantaneous correction")
         loader = MarketDataLoader()

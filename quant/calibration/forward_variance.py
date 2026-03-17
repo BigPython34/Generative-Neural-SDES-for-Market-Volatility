@@ -44,6 +44,36 @@ import pandas as pd
 from dataclasses import dataclass
 
 
+def _enforce_monotone_total_variance(total_var: np.ndarray, eps: float = 1e-8) -> np.ndarray:
+    """In-place monotonicity projection for total variance term structure."""
+    out = np.array(total_var, dtype=float, copy=True)
+    for i in range(1, len(out)):
+        if out[i] < out[i - 1]:
+            out[i] = out[i - 1] + eps
+    return out
+
+
+def _bootstrap_piecewise_forward_variance(tenors_years: np.ndarray,
+                                          total_var: np.ndarray,
+                                          min_xi: float = 1e-6) -> np.ndarray:
+    """Bootstrap piecewise-constant forward variances from total variance pillars."""
+    T = np.array(tenors_years, dtype=float)
+    tv = np.array(total_var, dtype=float)
+
+    n = len(T)
+    xi = np.zeros(n)
+    xi[0] = tv[0] / T[0]
+
+    for i in range(1, n):
+        dT = T[i] - T[i - 1]
+        if dT < 1e-10:
+            xi[i] = xi[i - 1]
+        else:
+            xi[i] = (tv[i] - tv[i - 1]) / dT
+
+    return np.maximum(xi, min_xi)
+
+
 @dataclass
 class ForwardVarianceCurve:
     """
@@ -211,30 +241,11 @@ def bootstrap_forward_variance(
     total_var = iv ** 2 * T  # σ²(T) · T
 
     if monotone_smooth:
-        # Enforce monotonicity of total variance (calendar arbitrage free)
-        for i in range(1, len(total_var)):
-            if total_var[i] < total_var[i - 1]:
-                total_var[i] = total_var[i - 1] + 1e-8
+        total_var = _enforce_monotone_total_variance(total_var)
         # Recompute consistent ATM IVs
         iv = np.sqrt(total_var / T)
 
-    # Bootstrap forward variances
-    n = len(T)
-    xi = np.zeros(n)
-
-    # First interval [0, T_0]
-    xi[0] = total_var[0] / T[0]
-
-    # Subsequent intervals [T_{i-1}, T_i]
-    for i in range(1, n):
-        dT = T[i] - T[i - 1]
-        if dT < 1e-10:
-            xi[i] = xi[i - 1]
-        else:
-            xi[i] = (total_var[i] - total_var[i - 1]) / dT
-
-    # Floor negative forward variances
-    xi = np.maximum(xi, min_xi)
+    xi = _bootstrap_piecewise_forward_variance(T, total_var, min_xi=min_xi)
 
     return ForwardVarianceCurve(
         maturities=T,
@@ -326,24 +337,8 @@ def bootstrap_xi0_from_vix(
     # Total variance: TV(τ) = VIX²(τ) · τ
     total_var = impl_var * tenors_years
 
-    # Enforce monotonicity (calendar-arbitrage-free)
-    for i in range(1, len(total_var)):
-        if total_var[i] < total_var[i - 1]:
-            total_var[i] = total_var[i - 1] + 1e-8
-
-    # Bootstrap forward variance
-    n = len(tenors_years)
-    xi = np.zeros(n)
-    xi[0] = total_var[0] / tenors_years[0]  # = impl_var[0]
-
-    for i in range(1, n):
-        dT = tenors_years[i] - tenors_years[i - 1]
-        if dT < 1e-10:
-            xi[i] = xi[i - 1]
-        else:
-            xi[i] = (total_var[i] - total_var[i - 1]) / dT
-
-    xi = np.maximum(xi, min_xi)
+    total_var = _enforce_monotone_total_variance(total_var)
+    xi = _bootstrap_piecewise_forward_variance(tenors_years, total_var, min_xi=min_xi)
 
     # Recompute consistent "IVs" (actually VIX-implied vols)
     consistent_iv = np.sqrt(np.maximum(total_var / tenors_years, min_xi))

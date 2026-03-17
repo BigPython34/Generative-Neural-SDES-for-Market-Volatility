@@ -4,7 +4,6 @@ Unified data regeneration pipeline.
 Goals:
 - Rebuild datasets under data/ from Yahoo + CBOE
 - Keep canonical organized files under data/market and data/rates
-- Optionally maintain legacy root aliases for backward compatibility
 """
 
 from __future__ import annotations
@@ -24,9 +23,9 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
+today=datetime.now().strftime("%Y-%m-%d")
 NYFED_SOFR_URL = (
-    "https://markets.newyorkfed.org/read?startDt=2016-03-01&endDt=2026-02-19"
+    "https://markets.newyorkfed.org/read?startDt=2016-03-01&endDt=" + today +
     "&eventCodes=520&productCode=50&sort=postDt:-1,eventCode:1&format=xlsx"
 )
 
@@ -39,7 +38,7 @@ class PipelineResult:
 
 
 class DataRegenerator:
-    """Regenerate market datasets into data/ with compatibility aliases."""
+    """Regenerate market datasets into canonical data/ locations."""
 
     def __init__(self, root: str | Path = ".", force_download: bool = False):
         self.root = Path(root).resolve()
@@ -47,9 +46,10 @@ class DataRegenerator:
         self.force_download = bool(force_download)
 
         self.market_dir = self.data_dir / "market"
-        self.vix_dir = self.market_dir / "vix"
-        self.vvix_dir = self.market_dir / "vvix"
-        self.spx_dir = self.market_dir / "spx"
+        # Market must mirror trading_view categories
+        self.vix_dir = self.market_dir / "volatility"
+        self.vvix_dir = self.market_dir / "volatility"
+        self.spx_dir = self.market_dir / "equity_indices"
         self.rates_dir = self.data_dir / "rates"
         self.vix_fut_dir = self.data_dir / "cboe_vix_futures_full"
 
@@ -66,7 +66,6 @@ class DataRegenerator:
 
         # TradingView organized directory (by category)
         self.tv_dir = self.data_dir / "trading_view"
-        # Legacy flat directories (backward compat)
         self.tv_input_dir = self.data_dir / "tradingview"
         self.tv_input_dir_alt = self.tv_dir
 
@@ -85,7 +84,6 @@ class DataRegenerator:
         self.skipped: Dict[str, str] = {}
         self.metadata: Dict[str, str] = {}
 
-        self.keep_legacy_aliases = False
         self.cleanup_redundant = True
 
         self.market_targets = {
@@ -95,7 +93,7 @@ class DataRegenerator:
             "vix_30m": self.vix_dir / "vix_30m.csv",
             "spx_5m": self.spx_dir / "spx_5m.csv",
             "spx_30m": self.spx_dir / "spx_30m.csv",
-            "spx_daily": self.spx_dir / "spx_daily_2010_latest.csv",
+            "spx_daily": self.spx_dir / "spx_daily.csv",
             "vvix_daily": self.vvix_dir / "vvix_daily.csv",
         }
 
@@ -122,18 +120,6 @@ class DataRegenerator:
             "spy_daily": self.tv_equity_etfs / "spy_daily.csv",
         }
 
-        self.legacy_aliases = {
-            "vix_5m": self.data_dir / "TVC_VIX, 5.csv",
-            "vix_10m": self.data_dir / "TVC_VIX, 10.csv",
-            "vix_15m": self.data_dir / "TVC_VIX, 15.csv",
-            "vix_30m": self.data_dir / "TVC_VIX, 30.csv",
-            "spx_5m": self.data_dir / "SP_SPX, 5.csv",
-            "spx_30m": self.data_dir / "SP_SPX, 30.csv",
-            "spx_daily": self.data_dir / "data_^GSPC_2010-01-01_2023-01-01.csv",
-            "vvix_5": self.data_dir / "CBOE_DLY_VVIX, 5.csv",
-            "vvix_15": self.data_dir / "CBOE_DLY_VVIX, 15.csv",
-        }
-
     # ------------------------------------------------------------------
     # Generic I/O
     # ------------------------------------------------------------------
@@ -143,7 +129,7 @@ class DataRegenerator:
     def _register_skip(self, label: str, reason: str):
         self.skipped[label] = reason
 
-    def _to_legacy_ohlc(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _to_canonical_ohlc(self, df: pd.DataFrame) -> pd.DataFrame:
         out = df.copy()
 
         # Already in canonical format — pass through
@@ -197,8 +183,8 @@ class DataRegenerator:
         out = out[["time", "open", "high", "low", "close"]].dropna()
         return out.sort_values("time").drop_duplicates("time")
 
-    def _save_csv(self, df: pd.DataFrame, path: Path, label: str):
-        if path.exists() and not self.force_download:
+    def _save_csv(self, df: pd.DataFrame, path: Path, label: str, force_overwrite: bool = False):
+        if path.exists() and not self.force_download and not force_overwrite:
             self._register_skip(label, f"exists: {path.relative_to(self.root)}")
             return
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,8 +220,7 @@ class DataRegenerator:
     def _save_market_series(self,
                             df: pd.DataFrame,
                             organized_path: Path,
-                            label_prefix: str,
-                            legacy_alias: Optional[Path] = None):
+                            label_prefix: str):
         if organized_path.exists() and not self.force_download:
             self._register_skip(label_prefix, f"exists: {organized_path.relative_to(self.root)}")
             return
@@ -244,17 +229,12 @@ class DataRegenerator:
             self._register_skip(label_prefix, "empty dataframe")
             return
 
-        legacy = self._to_legacy_ohlc(df)
-        if len(legacy) == 0:
+        canonical = self._to_canonical_ohlc(df)
+        if len(canonical) == 0:
             self._register_skip(label_prefix, "no valid OHLC rows")
             return
 
-        # Canonical format across the project: legacy OHLC schema
-        self._save_csv(legacy, organized_path, f"{label_prefix}:canonical")
-
-        # Optional backward-compatible alias at data root
-        if self.keep_legacy_aliases and legacy_alias is not None:
-            self._save_csv(legacy, legacy_alias, f"{label_prefix}:legacy_alias")
+        self._save_csv(canonical, organized_path, f"{label_prefix}:canonical")
 
     def _has_market_series(self, organized_path: Path) -> bool:
         return organized_path.exists() and (not self.force_download)
@@ -304,7 +284,7 @@ class DataRegenerator:
             needed = {"time", "open", "high", "low", "close"}
             if needed.issubset(df.columns):
                 return
-            normalized = self._to_legacy_ohlc(df)
+            normalized = self._to_canonical_ohlc(df)
             if len(normalized) == 0:
                 self._register_skip(f"normalize:{label}", "failed: no valid rows")
                 return
@@ -435,7 +415,7 @@ class DataRegenerator:
         return None
 
     def _ingest_tv_file(self, input_name: str, output_path: Path, label: str,
-                        alias_key: Optional[str] = None, alt_names: Optional[List[str]] = None):
+                        alt_names: Optional[List[str]] = None):
         base_dir = self.tv_input_dir if self.tv_input_dir.exists() else self.tv_input_dir_alt
         candidates = [input_name] + (alt_names or [])
         in_path = self._find_tv_file(base_dir, *candidates)
@@ -443,8 +423,7 @@ class DataRegenerator:
             self._register_skip(label, f"missing tradingview input (tried: {', '.join(candidates)})")
             return
         df = pd.read_csv(in_path)
-        legacy_alias = self.legacy_aliases.get(alias_key) if alias_key else None
-        self._save_market_series(df, output_path, label, legacy_alias=legacy_alias)
+        self._save_market_series(df, output_path, label)
 
     def ingest_tradingview_exports(self):
         """
@@ -453,7 +432,7 @@ class DataRegenerator:
         Supports organized structure (primary):
           data/trading_view/volatility/vix_5m.csv
           data/trading_view/equity_indices/spx_5m.csv
-        And legacy flat naming:
+                Also accepts historical flat naming:
           "TVC_VIX, 5.csv", "TVC_VIX,5min.csv"
         
         Searches in data/trading_view/<category>/ first, then flat.
@@ -461,33 +440,27 @@ class DataRegenerator:
         # VIX intraday
         self._ingest_tv_file(
             "vix_5m.csv", self.market_targets["vix_5m"], "vix_5m_tv",
-            alias_key="vix_5m",
             alt_names=["TVC_VIX, 5.csv", "TVC_VIX,5min.csv", "CBOE_DLY_VIX, 5.csv"],
         )
         self._ingest_tv_file(
             "vix_10m.csv", self.market_targets["vix_10m"], "vix_10m_tv_direct",
-            alias_key="vix_10m",
             alt_names=["TVC_VIX, 10.csv", "TVC_VIX,10min.csv", "CBOE_DLY_VIX, 10.csv"],
         )
         self._ingest_tv_file(
             "vix_15m.csv", self.market_targets["vix_15m"], "vix_15m_tv",
-            alias_key="vix_15m",
             alt_names=["TVC_VIX, 15.csv", "TVC_VIX,15min.csv", "CBOE_DLY_VIX, 15.csv"],
         )
         self._ingest_tv_file(
             "vix_30m.csv", self.market_targets["vix_30m"], "vix_30m_tv",
-            alias_key="vix_30m",
             alt_names=["TVC_VIX, 30.csv", "TVC_VIX,30min.csv", "CBOE_DLY_VIX, 30.csv"],
         )
         # SPX intraday
         self._ingest_tv_file(
             "spx_5m.csv", self.market_targets["spx_5m"], "spx_5m_tv",
-            alias_key="spx_5m",
             alt_names=["SP_SPX, 5.csv", "SP_SPX,5min.csv", "TVC_SPX, 5.csv"],
         )
         self._ingest_tv_file(
             "spx_30m.csv", self.market_targets["spx_30m"], "spx_30m_tv",
-            alias_key="spx_30m",
             alt_names=["SP_SPX, 30.csv", "SP_SPX,30min.csv", "TVC_SPX, 30.csv"],
         )
 
@@ -521,21 +494,9 @@ class DataRegenerator:
             ).dropna()
             self._save_market_series(
                 vix10, p10, "vix_10m_tv_resampled",
-                legacy_alias=self.legacy_aliases["vix_10m"],
             )
         elif not p5.exists() and not p10.exists():
             self._register_skip("vix_10m_tv", "missing VIX 5m source for resampling")
-
-    def cleanup_redundant_legacy_files(self):
-        if self.keep_legacy_aliases or not self.cleanup_redundant:
-            return
-        for label, p in self.legacy_aliases.items():
-            if p.exists():
-                try:
-                    p.unlink()
-                    self._register(f"cleanup:{label}", p)
-                except Exception as e:
-                    self._register_skip(f"cleanup:{label}", str(e))
 
     # ------------------------------------------------------------------
     # VIX / VVIX / SPX
@@ -557,7 +518,6 @@ class DataRegenerator:
                 vix_5,
                 self.market_targets["vix_5m"],
                 "vix_5m",
-                legacy_alias=self.legacy_aliases["vix_5m"],
             )
 
         if self._has_market_series(self.market_targets["vix_15m"]):
@@ -568,7 +528,6 @@ class DataRegenerator:
                 vix_15,
                 self.market_targets["vix_15m"],
                 "vix_15m",
-                legacy_alias=self.legacy_aliases["vix_15m"],
             )
 
         if self._has_market_series(self.market_targets["vix_30m"]):
@@ -579,7 +538,6 @@ class DataRegenerator:
                 vix_30,
                 self.market_targets["vix_30m"],
                 "vix_30m",
-                legacy_alias=self.legacy_aliases["vix_30m"],
             )
 
         if self._has_market_series(self.market_targets["vix_10m"]):
@@ -604,7 +562,6 @@ class DataRegenerator:
                         vix10,
                         self.market_targets["vix_10m"],
                         "vix_10m",
-                        legacy_alias=self.legacy_aliases["vix_10m"],
                     )
                 else:
                     self._register_skip("vix_10m", "missing source 5m data")
@@ -616,7 +573,6 @@ class DataRegenerator:
                     vix10,
                     self.market_targets["vix_10m"],
                     "vix_10m",
-                    legacy_alias=self.legacy_aliases["vix_10m"],
                 )
             else:
                 self._register_skip("vix_10m", "5m VIX not available for resampling")
@@ -630,7 +586,6 @@ class DataRegenerator:
                 spx_5,
                 self.market_targets["spx_5m"],
                 "spx_5m",
-                legacy_alias=self.legacy_aliases["spx_5m"],
             )
 
         if self._has_market_series(self.market_targets["spx_30m"]):
@@ -641,10 +596,8 @@ class DataRegenerator:
                 spx_30,
                 self.market_targets["spx_30m"],
                 "spx_30m",
-                legacy_alias=self.legacy_aliases["spx_30m"],
             )
 
-        legacy_daily = self.legacy_aliases["spx_daily"]
         fresh_daily = self.market_targets["spx_daily"]
         if fresh_daily.exists() and not self.force_download:
             self._register_skip("spx_daily", "exists")
@@ -653,14 +606,10 @@ class DataRegenerator:
             if spx_daily is not None and len(spx_daily) > 0:
                 out_daily = spx_daily.reset_index()
                 self._save_csv(out_daily, fresh_daily, "spx_daily:canonical")
-                if self.keep_legacy_aliases:
-                    self._save_csv(out_daily, legacy_daily, "spx_daily:legacy_alias")
             else:
                 self._register_skip("spx_daily", "Yahoo download returned empty")
 
-        # VVIX daily from Yahoo, then upsample to 5m/15m legacy shape if intraday unavailable
-        p5 = self.legacy_aliases["vvix_5"]
-        p15 = self.legacy_aliases["vvix_15"]
+        # VVIX daily from Yahoo
         pod = self.market_targets["vvix_daily"]
         if pod.exists() and not self.force_download:
             self._register_skip("vvix", "exists")
@@ -668,15 +617,11 @@ class DataRegenerator:
             vvix_d = self._download_yahoo("^VVIX", interval="1d", start="2013-01-01", end=datetime.now().strftime("%Y-%m-%d"))
             if vvix_d is not None and len(vvix_d) > 0:
                 self._save_csv(vvix_d.reset_index(), pod, "vvix_daily")
-                if self.keep_legacy_aliases:
-                    vvix_legacy = self._to_legacy_ohlc(vvix_d)
-                    self._save_csv(vvix_legacy, p5, "vvix_legacy_5")
-                    self._save_csv(vvix_legacy, p15, "vvix_legacy_15")
             else:
                 self._register_skip("vvix", "Yahoo ^VVIX unavailable")
 
     def build_combined_panels(self):
-        """Create joined market panels from legacy files for easier downstream use."""
+        """Create joined market panels from canonical files for easier downstream use."""
         panel_specs = [
             ("vix", [5, 10, 15, 30], self.vix_dir / "vix_combined.csv"),
             ("spx", [5, 30], self.spx_dir / "spx_combined.csv"),
@@ -824,15 +769,6 @@ class DataRegenerator:
         self.metadata["sofr_symbol"] = used
         self.metadata["sofr_source"] = "yahoo"
 
-    def cleanup_legacy_sofr_alias(self):
-        alias = self.data_dir / "SOFR_daily.csv"
-        if alias.exists():
-            try:
-                alias.unlink()
-                self._register("sofr_alias_removed", alias)
-            except Exception as e:
-                self._register_skip("sofr_alias_removed", str(e))
-
     # ------------------------------------------------------------------
     # CBOE VIX futures history
     # ------------------------------------------------------------------
@@ -850,52 +786,93 @@ class DataRegenerator:
         return expiries
 
     def fetch_vix_futures_cboe(self):
-        """Rebuild vix_futures_all.csv and front/2M/3M files from CBOE endpoint."""
+        """Rebuild vix_futures_all.csv and front/2M/3M files from CBOE endpoint.
+        
+        Only downloads missing trade dates (optimized for incremental updates).
+        """
         full = self.vix_fut_dir / "vix_futures_all.csv"
         p_front = self.vix_fut_dir / "vix_futures_front_month.csv"
         p_2m = self.vix_fut_dir / "vix_futures_2M.csv"
         p_3m = self.vix_fut_dir / "vix_futures_3M.csv"
-        if all(p.exists() for p in [full, p_front, p_2m, p_3m]) and not self.force_download:
-            self._register_skip("vix_futures_cboe", f"exists: {full.relative_to(self.root)}")
-            return
+        
+        # Get existing trade dates to avoid re-downloading
+        existing_dates = set()
+        df_existing = None
+        if full.exists() and not self.force_download:
+            try:
+                df_existing = pd.read_csv(full)
+                if "Trade Date" in df_existing.columns:
+                    existing_dates = set(pd.to_datetime(df_existing["Trade Date"]).dt.strftime("%Y-%m-%d"))
+            except Exception:
+                pass
 
         expiries = self._month_expiries("2013-01-01", months_forward=12)
         all_rows = []
+        downloaded_count = 0
 
         for exp in expiries:
             ds = exp.strftime("%Y-%m-%d")
+            
+            # Skip if already have this date
+            if ds in existing_dates and not self.force_download:
+                continue
+            
             url = f"https://cdn.cboe.com/data/us/futures/market_statistics/historical_data/VX/VX_{ds}.csv"
             try:
-                r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-                if r.status_code != 200 or not r.text.strip():
-                    continue
-                df = pd.read_csv(io.StringIO(r.text))
-                if "Futures" in df.columns and "expiration_date" not in df.columns:
-                    df["expiration_date"] = pd.to_datetime(
-                        df["Futures"].astype(str).str.extract(r"\((.*?)\)")[0],
-                        format="%b %Y",
-                        errors="coerce",
-                    )
-                all_rows.append(df)
+                r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200 and r.text.strip():
+                    df = pd.read_csv(io.StringIO(r.text))
+                    if "Futures" in df.columns and "expiration_date" not in df.columns:
+                        df["expiration_date"] = pd.to_datetime(
+                            df["Futures"].astype(str).str.extract(r"\((.*?)\)")[0],
+                            format="%b %Y",
+                            errors="coerce",
+                        )
+                    all_rows.append(df)
+                    downloaded_count += 1
             except Exception:
                 continue
 
-        if not all_rows:
+        if not all_rows and not df_existing:
+            # No new data and no existing file
             self._register_skip("vix_futures_cboe", "No CSV downloaded from CBOE")
             return
+        
+        if not all_rows and df_existing is not None:
+            # No new data, but have existing file
+            self._register_skip("vix_futures_cboe", f"No new dates (have {len(existing_dates)} existing)")
+            return
 
-        df_all = pd.concat(all_rows, ignore_index=True)
-        self._save_csv(df_all, full, "vix_futures_all")
+        # Merge with existing
+        if df_existing is not None and not self.force_download:
+            all_rows.insert(0, df_existing)
+        
+        df_all = pd.concat(all_rows, ignore_index=True).drop_duplicates()
+        
+        # Sort by Trade Date to maintain chronological order
+        df_all["Trade Date"] = pd.to_datetime(df_all["Trade Date"])
+        df_all = df_all.sort_values("Trade Date").reset_index(drop=True)
+        df_all["Trade Date"] = df_all["Trade Date"].dt.strftime("%Y-%m-%d")
+        
+        # For incremental updates, force overwrite the vix_futures_all.csv
+        self._save_csv(df_all, full, "vix_futures_all", force_overwrite=True)
+        
+        if downloaded_count > 0:
+            print(f"  → Downloaded {downloaded_count} new trade dates from CBOE")
 
         # Build front/2M/3M
         if "Trade Date" not in df_all.columns:
             self._register_skip("vix_futures_front_curves", "Trade Date column missing")
             return
 
+        # Ensure expiration_date is consistently datetime
         if "expiration_date" not in df_all.columns and "Futures" in df_all.columns:
             df_all["expiration_date"] = pd.to_datetime(
                 df_all["Futures"].astype(str).str.extract(r"\((.*?)\)")[0], format="%b %Y", errors="coerce"
             )
+        else:
+            # Convert any existing expiration_date to datetime (might be mixed types)
+            df_all["expiration_date"] = pd.to_datetime(df_all["expiration_date"], errors="coerce")
 
         df_sorted = df_all.dropna(subset=["expiration_date"]).copy()
         df_sorted = df_sorted.groupby("Trade Date", group_keys=False).apply(lambda g: g.sort_values("expiration_date"))
@@ -904,9 +881,10 @@ class DataRegenerator:
         sec = df_sorted.groupby("Trade Date", group_keys=False).nth(1).reset_index()
         third = df_sorted.groupby("Trade Date", group_keys=False).nth(2).reset_index()
 
-        self._save_csv(front, p_front, "vix_futures_front_month")
-        self._save_csv(sec, p_2m, "vix_futures_2m")
-        self._save_csv(third, p_3m, "vix_futures_3m")
+        # For incremental updates, force overwrite the curve files
+        self._save_csv(front, p_front, "vix_futures_front_month", force_overwrite=True)
+        self._save_csv(sec, p_2m, "vix_futures_2m", force_overwrite=True)
+        self._save_csv(third, p_3m, "vix_futures_3m", force_overwrite=True)
 
     # ------------------------------------------------------------------
     # Daily supplements (for tradingview mode)
@@ -947,9 +925,7 @@ class DataRegenerator:
     def run(self,
             sofr_url: Optional[str] = None,
             mode: str = "yahoo",
-            keep_legacy_aliases: bool = False,
             cleanup_redundant: bool = True) -> PipelineResult:
-        self.keep_legacy_aliases = bool(keep_legacy_aliases)
         self.cleanup_redundant = bool(cleanup_redundant)
 
         # Migrate previous file layout to canonical intraday schema when needed
@@ -969,18 +945,15 @@ class DataRegenerator:
             self.fetch_vix_and_spx()
 
         self.fetch_sofr_nyfed(nyfed_url=sofr_url)
-        self.cleanup_legacy_sofr_alias()
         self.build_combined_panels()
 
         # Rebuild CBOE futures every run (deterministic self-regeneration)
         self.fetch_vix_futures_cboe()
-        self.cleanup_redundant_legacy_files()
         self._write_data_ranges_manifest()
 
         report = {
             "timestamp": datetime.now().isoformat(),
             "mode": mode,
-            "keep_legacy_aliases": self.keep_legacy_aliases,
             "generated": self.generated,
             "skipped": self.skipped,
             "metadata": self.metadata,

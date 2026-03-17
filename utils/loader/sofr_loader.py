@@ -33,8 +33,12 @@ class SOFRRateLoader:
         if not self._path.exists():
             return
         raw = pd.read_csv(self._path)
-        raw["date"] = pd.to_datetime(raw["Date"])
-        raw["rate"] = pd.to_numeric(raw["Close"], errors="coerce") / 100.0
+        # Handle both 'date' (lowercase) and 'Date' (capitalized) column names
+        date_col = 'date' if 'date' in raw.columns else 'Date'
+        rate_col = 'rate' if 'rate' in raw.columns else 'Close'
+        
+        raw["date"] = pd.to_datetime(raw[date_col])
+        raw["rate"] = pd.to_numeric(raw[rate_col], errors="coerce") / 100.0
         self._df = (
             raw[["date", "rate"]]
             .dropna()

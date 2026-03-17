@@ -88,7 +88,7 @@ def _recalibrate_bergomi_for_fold(train_end_date, vix_futures_hist, cfg) -> dict
     # since Hurst is a statistical property, not a forward-looking one)
     try:
         from quant.analysis.diagnostics import estimate_hurst_from_returns
-        rv_source = cfg['data'].get('rv_source', 'data/market/spx/spx_5m.csv')
+        rv_source = cfg['data'].get('rv_source', 'data/market/equity_indices/spx_5m.csv')
         if os.path.exists(rv_source):
             rv_result = estimate_hurst_from_returns(rv_source)
             H_est = rv_result.get('H_variogram', float('nan'))
@@ -137,7 +137,7 @@ class WalkForwardBacktester:
             self.cache.reindex_from_disk()
         snapshots_df = self.cache.list_snapshots("SPY")
         if snapshots_df.empty:
-            print("[WARN] No cached options. Run fetch_options.py first.")
+            print("[WARN] No cached options. Run: python bin/data/fetch_options.py")
             print(f"       Cache path: {os.path.abspath(self.cache.cache_dir)}")
             return []
 

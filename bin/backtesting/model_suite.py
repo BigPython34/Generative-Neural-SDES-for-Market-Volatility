@@ -31,11 +31,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from utils.config import load_config
-from engine.generative_trainer import GenerativeTrainer
-from engine.signature_engine import SignatureFeatureExtractor
-from engine.neural_sde import NeuralRoughSimulator
-from quant.data.options_cache import OptionsDataCache
-from quant.workflows.backtesting import HistoricalBacktester
 
 
 def _deep_update(base: dict, updates: dict) -> dict:
@@ -55,6 +50,9 @@ def _write_yaml(path: Path, data: dict):
 
 
 def _train_profile(profile_name: str, overrides: dict) -> dict:
+    # Deferred imports to avoid JAX DLL issues on Windows
+    from engine.generative_trainer import GenerativeTrainer
+    
     base_cfg = load_config()
     cfg = _deep_update(base_cfg, overrides)
 
@@ -172,6 +170,8 @@ def train_suite(profiles: list[str]) -> dict:
 
 
 def _load_profile_model(entry: dict):
+    from engine.signature_engine import SignatureFeatureExtractor
+    from engine.neural_sde import NeuralRoughSimulator
     cfg_path = entry["config_path"]
     model_path = Path(entry["model_path"])
 
@@ -186,23 +186,12 @@ def _load_profile_model(entry: dict):
 
     key = jax.random.PRNGKey(0)
 
-    # Try current architecture, then legacy fallback
     try:
         model_template = NeuralRoughSimulator(input_sig_dim, key, config_path=cfg_path)
         model = eqx.tree_deserialise_leaves(model_path, model_template)
         return model, cfg
-    except Exception:
-        pass
-
-    try:
-        from engine._legacy_loader import load_legacy_model
-        model = load_legacy_model(model_path, input_sig_dim, cfg_path)
-        if model is not None:
-            return model, cfg
-    except Exception:
-        pass
-
-    raise RuntimeError(f"Cannot load model: {model_path}")
+    except Exception as e:
+        raise RuntimeError(f"Cannot load model: {model_path} ({e})") from e
 
 
 def _simulate_risk_metrics(model, cfg: dict, n_paths: int = 5000, seed: int = 123) -> dict:
@@ -322,6 +311,8 @@ def _neural_stress_scenarios(model, cfg: dict, n_paths: int = 5000, seed: int = 
 
 
 def _pricing_prior_recalibration(model, cfg: dict) -> dict:
+    from utils.fetcher.options_cache import OptionsDataCache
+    from quant.workflows.backtesting import HistoricalBacktester
     n_paths = 4000
     n_steps = int(cfg["simulation"]["n_steps"])
     T_model = float(cfg["simulation"]["T"])

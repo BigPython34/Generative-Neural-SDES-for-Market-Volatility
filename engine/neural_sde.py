@@ -33,8 +33,8 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 import jax.nn as jnn
-import numpy as np
 import yaml
+from engine.volterra import build_volterra_kernel_jax
 
 
 def _load_neural_sde_config(config_path: str = "config/params.yaml") -> dict:
@@ -150,37 +150,6 @@ class FractionalParams(eqx.Module):
         return jnp.exp(self.log_eta)
 
 
-def _build_volterra_kernel_jax(n_steps: int, dt: float, H: jnp.ndarray):
-    """
-    Build Volterra kernel for RL-fBM — differentiable w.r.t. H.
-
-    A[j,k] = sqrt(2H) · dt^H / (H + 0.5) · [(j-k+1)^{H+0.5} - (j-k)^{H+0.5}]
-
-    Returns (A, var_wh) where var_wh[j] = Σ_k A[j,k]².
-
-    Note: This is O(N²) in memory. For training with n_steps=120 this is fine.
-    """
-    C = jnp.sqrt(2 * H) * dt ** H / (H + 0.5)
-    alpha = H + 0.5
-
-    # Build indices: j from 0..n-1, k from 0..n-1
-    j_idx = jnp.arange(n_steps)[:, None]  # (n, 1)
-    k_idx = jnp.arange(n_steps)[None, :]  # (1, n)
-    lag = j_idx - k_idx  # (n, n)
-
-    # Lower-triangular mask: A[j,k] = 0 for k > j
-    mask = (lag >= 0).astype(jnp.float32)
-
-    # Kernel values (safe: use max(lag, 0) to avoid negative lags)
-    safe_lag = jnp.maximum(lag, 0)
-    A = C * ((safe_lag + 1) ** alpha - safe_lag ** alpha) * mask
-
-    # Variance of W^H at each step
-    var_wh = jnp.sum(A ** 2, axis=1)
-
-    return A, var_wh
-
-
 class NeuralRoughSimulator(eqx.Module):
     """
     Neural SDE with running path signature conditioning.
@@ -211,6 +180,9 @@ class NeuralRoughSimulator(eqx.Module):
 
     # Backbone selection
     backbone: str
+    
+    # Signature order for dynamic initialization
+    sig_order: int
 
     # Fractional backbone params
     fractional_params: FractionalParams
@@ -225,6 +197,7 @@ class NeuralRoughSimulator(eqx.Module):
         cfg = _load_neural_sde_config(config_path)
 
         self.backbone = cfg.get('backbone', 'ou')
+        self.sig_order = cfg.get('sig_truncation_order', 3)
 
         kappa_init = cfg.get('kappa', 2.72)
         theta_init = cfg.get('theta', -3.5)
@@ -280,6 +253,21 @@ class NeuralRoughSimulator(eqx.Module):
             return self._generate_fractional_path(init_var, brownian_increments, dt, init_sig_state)
         return self._generate_ou_path(init_var, brownian_increments, dt, init_sig_state)
 
+    def _init_signature_state(self, d: int, init_sig_state=None):
+        """Initialize signature state components based on sig_order.
+        
+        Returns a tuple of (s1, s2, s3, s4) where each is zero-initialized to the correct shape.
+        With order=3, s4 is empty. With order=4, all are present.
+        """
+        if init_sig_state is not None:
+            return init_sig_state
+        
+        s1 = jnp.zeros(d)
+        s2 = jnp.zeros(d ** 2)
+        s3 = jnp.zeros(d ** 3)
+        s4 = jnp.zeros(d ** 4) if self.sig_order >= 4 else jnp.zeros(0)
+        return (s1, s2, s3, s4)
+
     def _generate_fractional_path(self, init_var, brownian_increments, dt,
                                    init_sig_state=None):
         """
@@ -296,7 +284,7 @@ class NeuralRoughSimulator(eqx.Module):
         eta = self.fractional_params.eta
 
         # Build differentiable Volterra kernel
-        A, var_wh = _build_volterra_kernel_jax(n_steps, dt, H)
+        A, var_wh = build_volterra_kernel_jax(n_steps, dt, H)
 
         # Compute RL-fBM from the SAME Brownian increments
         # dW = brownian_increments (already scaled by sqrt(dt))
@@ -308,24 +296,20 @@ class NeuralRoughSimulator(eqx.Module):
 
         # Neural corrections via scan (captures non-Markovian effects beyond fBM)
         d = 2
-        if init_sig_state is not None:
-            s1_init, s2_init, s3_init = init_sig_state
-        else:
-            s1_init = jnp.zeros(d)
-            s2_init = jnp.zeros(d ** 2)
-            s3_init = jnp.zeros(d ** 3)
+        s1_init, s2_init, s3_init, s4_init = self._init_signature_state(d, init_sig_state)
 
         log_v_lo = self.log_v_min
         log_v_hi = self.log_v_max
 
         def scan_fn(carry, inputs):
-            correction_accum, s1, s2, s3 = carry
+            correction_accum, s1, s2, s3, s4 = carry
             dw_t, log_v_base = inputs
 
             # Current log-V = base (Bergomi) + accumulated neural correction
             log_v_current = jnp.clip(log_v_base + correction_accum, log_v_lo, log_v_hi)
 
-            sig_t = jnp.concatenate([s1, s2, s3])
+            # Concatenate signature components (s4 is empty if order < 4)
+            sig_t = jnp.concatenate([s1, s2, s3, s4]) if self.sig_order >= 4 else jnp.concatenate([s1, s2, s3])
             drift_nn, diff_nn = self.func(sig_t, log_v_current)
             drift_nn = jnp.squeeze(drift_nn)
             diff_nn = jnp.squeeze(diff_nn)
@@ -345,10 +329,16 @@ class NeuralRoughSimulator(eqx.Module):
                       + jnp.kron(s2, dx)
                       + jnp.kron(s1, 0.5 * jnp.outer(dx, dx).flatten())
                       + (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+            new_s4 = (s4
+                      + jnp.kron(s3, dx)
+                      + jnp.kron(s2, 0.5 * jnp.outer(dx, dx).flatten())
+                      + jnp.kron(s1, (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+                      + (1.0 / 24.0) * jnp.kron(dx, jnp.kron(dx, jnp.kron(dx, dx)))
+                      ) if self.sig_order >= 4 else jnp.zeros(0)
 
-            return (new_correction, new_s1, new_s2, new_s3), log_v_next
+            return (new_correction, new_s1, new_s2, new_s3, new_s4), log_v_next
 
-        init_carry = (jnp.float32(0.0), s1_init, s2_init, s3_init)
+        init_carry = (jnp.float32(0.0), s1_init, s2_init, s3_init, s4_init)
         _, log_variance_path = jax.lax.scan(
             scan_fn, init_carry, (brownian_increments, log_v_bergomi)
         )
@@ -361,19 +351,14 @@ class NeuralRoughSimulator(eqx.Module):
         init_log_var = jnp.log(safe_init)
 
         d = 2
-        if init_sig_state is not None:
-            s1_init, s2_init, s3_init = init_sig_state
-        else:
-            s1_init = jnp.zeros(d)
-            s2_init = jnp.zeros(d ** 2)
-            s3_init = jnp.zeros(d ** 3)
+        s1_init, s2_init, s3_init, s4_init = self._init_signature_state(d, init_sig_state)
 
         log_v_lo = self.log_v_min
         log_v_hi = self.log_v_max
 
         def scan_fn(carry, dw_t):
-            log_v_prev, s1, s2, s3 = carry
-            sig_t = jnp.concatenate([s1, s2, s3])
+            log_v_prev, s1, s2, s3, s4 = carry
+            sig_t = jnp.concatenate([s1, s2, s3, s4]) if self.sig_order >= 4 else jnp.concatenate([s1, s2, s3])
 
             drift_nn, diff_nn = self.func(sig_t, log_v_prev)
             drift_nn = jnp.squeeze(drift_nn)
@@ -393,10 +378,16 @@ class NeuralRoughSimulator(eqx.Module):
                       + jnp.kron(s2, dx)
                       + jnp.kron(s1, 0.5 * jnp.outer(dx, dx).flatten())
                       + (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+            new_s4 = (s4
+                      + jnp.kron(s3, dx)
+                      + jnp.kron(s2, 0.5 * jnp.outer(dx, dx).flatten())
+                      + jnp.kron(s1, (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+                      + (1.0 / 24.0) * jnp.kron(dx, jnp.kron(dx, jnp.kron(dx, dx)))
+                      ) if self.sig_order >= 4 else jnp.zeros(0)
 
-            return (log_v_next, new_s1, new_s2, new_s3), log_v_next
+            return (log_v_next, new_s1, new_s2, new_s3, new_s4), log_v_next
 
-        init_carry = (init_log_var, s1_init, s2_init, s3_init)
+        init_carry = (init_log_var, s1_init, s2_init, s3_init, s4_init)
         _, log_variance_path = jax.lax.scan(scan_fn, init_carry, brownian_increments)
 
         return jnp.exp(log_variance_path)
@@ -418,12 +409,7 @@ class NeuralRoughSimulator(eqx.Module):
         init_log_var = jnp.log(safe_init)
 
         d = 2
-        if init_sig_state is not None:
-            s1_init, s2_init, s3_init = init_sig_state
-        else:
-            s1_init = jnp.zeros(d)
-            s2_init = jnp.zeros(d ** 2)
-            s3_init = jnp.zeros(d ** 3)
+        s1_init, s2_init, s3_init, s4_init = self._init_signature_state(d, init_sig_state)
 
         n_steps = brownian_increments.shape[0]
         lam = self.jump_params.intensity
@@ -440,10 +426,10 @@ class NeuralRoughSimulator(eqx.Module):
         log_v_hi = self.log_v_max
 
         def scan_fn(carry, inputs):
-            log_v_prev, s1, s2, s3 = carry
+            log_v_prev, s1, s2, s3, s4 = carry
             dw_t, j_occur, j_size = inputs
 
-            sig_t = jnp.concatenate([s1, s2, s3])
+            sig_t = jnp.concatenate([s1, s2, s3, s4]) if self.sig_order >= 4 else jnp.concatenate([s1, s2, s3])
             drift_nn, diff_nn = self.func(sig_t, log_v_prev)
             drift_nn = jnp.squeeze(drift_nn)
             diff_nn = jnp.squeeze(diff_nn)
@@ -463,10 +449,16 @@ class NeuralRoughSimulator(eqx.Module):
                       + jnp.kron(s2, dx)
                       + jnp.kron(s1, 0.5 * jnp.outer(dx, dx).flatten())
                       + (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+            new_s4 = (s4
+                      + jnp.kron(s3, dx)
+                      + jnp.kron(s2, 0.5 * jnp.outer(dx, dx).flatten())
+                      + jnp.kron(s1, (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+                      + (1.0 / 24.0) * jnp.kron(dx, jnp.kron(dx, jnp.kron(dx, dx)))
+                      ) if self.sig_order >= 4 else jnp.zeros(0)
 
-            return (log_v_next, new_s1, new_s2, new_s3), log_v_next
+            return (log_v_next, new_s1, new_s2, new_s3, new_s4), log_v_next
 
-        init_carry = (init_log_var, s1_init, s2_init, s3_init)
+        init_carry = (init_log_var, s1_init, s2_init, s3_init, s4_init)
         inputs = (brownian_increments, jump_occurs, jump_sizes)
         _, log_variance_path = jax.lax.scan(scan_fn, init_carry, inputs)
 
@@ -492,27 +484,22 @@ class NeuralRoughSimulator(eqx.Module):
         H = self.fractional_params.H
         eta = self.fractional_params.eta
 
-        A, var_wh = _build_volterra_kernel_jax(n_steps, dt, H)
+        A, var_wh = build_volterra_kernel_jax(n_steps, dt, H)
         Z = brownian_increments / jnp.sqrt(dt)
         Wh = A @ Z
         log_v_bergomi = jnp.log(jnp.maximum(init_var, 1e-10)) + eta * Wh - 0.5 * eta ** 2 * var_wh
 
         d = 2
-        if init_sig_state is not None:
-            s1_init, s2_init, s3_init = init_sig_state
-        else:
-            s1_init = jnp.zeros(d)
-            s2_init = jnp.zeros(d ** 2)
-            s3_init = jnp.zeros(d ** 3)
+        s1_init, s2_init, s3_init, s4_init = self._init_signature_state(d, init_sig_state)
 
         log_v_lo = self.log_v_min
         log_v_hi = self.log_v_max
 
         def scan_fn(carry, inputs):
-            correction_accum, s1, s2, s3 = carry
+            correction_accum, s1, s2, s3, s4 = carry
             dw_t, log_v_base = inputs
             log_v_current = jnp.clip(log_v_base + correction_accum, log_v_lo, log_v_hi)
-            sig_t = jnp.concatenate([s1, s2, s3])
+            sig_t = jnp.concatenate([s1, s2, s3, s4]) if self.sig_order >= 4 else jnp.concatenate([s1, s2, s3])
             drift_nn, diff_nn = self.func(sig_t, log_v_current)
             drift_nn = jnp.squeeze(drift_nn)
             diff_nn = jnp.squeeze(diff_nn)
@@ -527,14 +514,20 @@ class NeuralRoughSimulator(eqx.Module):
                       + jnp.kron(s2, dx)
                       + jnp.kron(s1, 0.5 * jnp.outer(dx, dx).flatten())
                       + (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
-            return (new_correction, new_s1, new_s2, new_s3), log_v_next
+            new_s4 = (s4
+                      + jnp.kron(s3, dx)
+                      + jnp.kron(s2, 0.5 * jnp.outer(dx, dx).flatten())
+                      + jnp.kron(s1, (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+                      + (1.0 / 24.0) * jnp.kron(dx, jnp.kron(dx, jnp.kron(dx, dx)))
+                      ) if self.sig_order >= 4 else jnp.zeros(0)
+            return (new_correction, new_s1, new_s2, new_s3, new_s4), log_v_next
 
-        init_carry = (jnp.float32(0.0), s1_init, s2_init, s3_init)
+        init_carry = (jnp.float32(0.0), s1_init, s2_init, s3_init, s4_init)
         final_carry, log_variance_path = jax.lax.scan(
             scan_fn, init_carry, (brownian_increments, log_v_bergomi)
         )
-        _, final_s1, final_s2, final_s3 = final_carry
-        return jnp.exp(log_variance_path), (final_s1, final_s2, final_s3)
+        _, final_s1, final_s2, final_s3, final_s4 = final_carry
+        return jnp.exp(log_variance_path), (final_s1, final_s2, final_s3, final_s4) if self.sig_order >= 4 else (final_s1, final_s2, final_s3)
 
     def _generate_ou_path_with_state(self, init_var, brownian_increments, dt,
                                       init_sig_state=None):
@@ -542,19 +535,14 @@ class NeuralRoughSimulator(eqx.Module):
         init_log_var = jnp.log(safe_init)
 
         d = 2
-        if init_sig_state is not None:
-            s1_init, s2_init, s3_init = init_sig_state
-        else:
-            s1_init = jnp.zeros(d)
-            s2_init = jnp.zeros(d ** 2)
-            s3_init = jnp.zeros(d ** 3)
+        s1_init, s2_init, s3_init, s4_init = self._init_signature_state(d, init_sig_state)
 
         log_v_lo = self.log_v_min
         log_v_hi = self.log_v_max
 
         def scan_fn(carry, dw_t):
-            log_v_prev, s1, s2, s3 = carry
-            sig_t = jnp.concatenate([s1, s2, s3])
+            log_v_prev, s1, s2, s3, s4 = carry
+            sig_t = jnp.concatenate([s1, s2, s3, s4]) if self.sig_order >= 4 else jnp.concatenate([s1, s2, s3])
             drift_nn, diff_nn = self.func(sig_t, log_v_prev)
             drift_nn = jnp.squeeze(drift_nn)
             diff_nn = jnp.squeeze(diff_nn)
@@ -570,10 +558,16 @@ class NeuralRoughSimulator(eqx.Module):
                       + jnp.kron(s2, dx)
                       + jnp.kron(s1, 0.5 * jnp.outer(dx, dx).flatten())
                       + (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
-            return (log_v_next, new_s1, new_s2, new_s3), log_v_next
+            new_s4 = (s4
+                      + jnp.kron(s3, dx)
+                      + jnp.kron(s2, 0.5 * jnp.outer(dx, dx).flatten())
+                      + jnp.kron(s1, (1.0 / 6.0) * jnp.kron(dx, jnp.kron(dx, dx)))
+                      + (1.0 / 24.0) * jnp.kron(dx, jnp.kron(dx, jnp.kron(dx, dx)))
+                      ) if self.sig_order >= 4 else jnp.zeros(0)
+            return (log_v_next, new_s1, new_s2, new_s3, new_s4), log_v_next
 
-        init_carry = (init_log_var, s1_init, s2_init, s3_init)
+        init_carry = (init_log_var, s1_init, s2_init, s3_init, s4_init)
         final_carry, log_variance_path = jax.lax.scan(scan_fn, init_carry, brownian_increments)
 
-        _, final_s1, final_s2, final_s3 = final_carry
-        return jnp.exp(log_variance_path), (final_s1, final_s2, final_s3)
+        _, final_s1, final_s2, final_s3, final_s4 = final_carry
+        return jnp.exp(log_variance_path), (final_s1, final_s2, final_s3, final_s4) if self.sig_order >= 4 else (final_s1, final_s2, final_s3)

@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import time
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -47,6 +47,8 @@ import jax.numpy as jnp
 import jax.nn as jnn
 import equinox as eqx
 import optax
+from quant.calibration.results import NeuralSDEQResult
+from engine.losses import terminal_martingale_violation_loss
 
 
 
@@ -363,9 +365,7 @@ def compute_martingale_loss(
     T: float,
 ) -> jnp.ndarray:
     """L_mart = (E[e^{-rT} S_T / S_0] - 1)²."""
-    S_T = spot_paths[:, -1]
-    disc_mean = jnp.mean(S_T) * jnp.exp(-r * T)
-    return (disc_mean - 1.0) ** 2
+    return terminal_martingale_violation_loss(spot_paths[:, -1], T, r)
 
 
 def compute_calendar_loss(
@@ -467,69 +467,6 @@ def compute_q_loss(
 
     loss_dict['total'] = total
     return total, loss_dict
-
-
-# ═══════════════════════════════════════════════════════════════════
-# 5. RESULT DATACLASS
-# ═══════════════════════════════════════════════════════════════════
-
-@dataclass
-class NeuralSDEQResult:
-    """Results from Neural SDE Q-calibration."""
-    # Parameters
-    rho: float
-    H_bergomi: float       # from rBergomi seed
-    eta_bergomi: float     # from rBergomi seed
-
-    # Loss history
-    final_loss: float
-    loss_components: dict
-    loss_history: list
-
-    # Model info
-    n_girsanov_params: int
-    n_epochs: int
-    n_paths: int
-    elapsed_seconds: float
-
-    # Diagnostics
-    model_vix_ts: dict = field(default_factory=dict)
-    market_vix_ts: dict = field(default_factory=dict)
-    martingale_error: float = 0.0
-
-    def summary(self) -> str:
-        lines = []
-        lines.append("=" * 65)
-        lines.append("  NEURAL SDE Q-CALIBRATION RESULTS (Girsanov)")
-        lines.append("=" * 65)
-        lines.append(f"  Girsanov params:  {self.n_girsanov_params}")
-        lines.append(f"  Epochs:           {self.n_epochs}")
-        lines.append(f"  MC paths/epoch:   {self.n_paths:,}")
-        lines.append(f"  Time:             {self.elapsed_seconds:.1f}s")
-        lines.append("")
-        lines.append("  Seed Parameters (from rBergomi):")
-        lines.append(f"    H_Q   = {self.H_bergomi:.4f}")
-        lines.append(f"    η     = {self.eta_bergomi:.3f}")
-        lines.append(f"    ρ     = {self.rho:.3f}")
-        lines.append("")
-        lines.append("  Loss Components:")
-        for k, v in self.loss_components.items():
-            lines.append(f"    {k:>15} = {v:.6f}")
-        lines.append("")
-
-        if self.model_vix_ts and self.market_vix_ts:
-            lines.append("  VIX Term Structure (Q-model):")
-            lines.append(f"    {'Tenor':>8} {'Market':>8} {'Model':>8} {'Diff':>8}")
-            lines.append("    " + "─" * 36)
-            for tau in sorted(self.market_vix_ts.keys()):
-                mkt = self.market_vix_ts.get(tau, None)
-                mdl = self.model_vix_ts.get(tau, None)
-                if mkt is not None and mdl is not None:
-                    lines.append(f"    {tau:>6}d {mkt:>8.2f} {mdl:>8.2f} {mdl - mkt:>+8.2f}")
-
-        lines.append(f"\n  Martingale error: {self.martingale_error:.6f}")
-        lines.append("=" * 65)
-        return "\n".join(lines)
 
 
 # ═══════════════════════════════════════════════════════════════════

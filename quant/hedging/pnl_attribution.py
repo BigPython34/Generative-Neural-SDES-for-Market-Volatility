@@ -372,7 +372,7 @@ class NeuralSDEGreeks:
 
         Uses sigma = sqrt(v0) as the BS-equivalent flat vol for comparison.
         """
-        from utils.greeks_ad import jax_greeks
+        from quant.hedging.greeks_ad import jax_greeks
 
         model_greeks = self.compute(S0, v0, K, T, r, opt_type, seed)
         sigma_equiv = float(np.sqrt(max(v0, 1e-8)))

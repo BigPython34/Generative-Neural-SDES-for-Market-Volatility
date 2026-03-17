@@ -82,20 +82,20 @@ class RegimeDetector:
         return df
 
     def _load_data(self):
-        # VIX daily — prefer TradingView (36 years) over Yahoo (limited)
+        # VIX daily — prefer market (merged: TradingView + Yahoo) over flat historical files
         for p in [
+            Path("data/market/volatility/vix_daily.csv"),
             Path("data/trading_view/volatility/vix_daily.csv"),
             Path(self.cfg["data"]["source"]),
-            Path("data/market/vix/vix_daily.csv"),
         ]:
             self._vix_data = self._read_ts_csv(p)
             if self._vix_data is not None:
                 break
 
-        # VVIX daily — TradingView first (20 years)
+        # VVIX daily — market first (merged: TradingView + Yahoo)
         for p in [
+            Path("data/market/volatility/vvix_daily.csv"),
             Path("data/trading_view/volatility/vvix_daily.csv"),
-            Path("data/market/vvix/vvix_daily.csv"),
         ]:
             df = self._read_ts_csv(p)
             if df is not None:
@@ -104,13 +104,13 @@ class RegimeDetector:
                 self._vvix_data = df
                 break
 
-        # VIX term structure — TradingView VIX9D / VIX3M / VIX6M daily
+        # VIX term structure — market VIX9D / VIX3M / VIX6M daily (synced from TradingView)
         self._vix9d_data = self._read_ts_csv(
-            Path("data/trading_view/volatility/vix9d_daily.csv"))
+            Path("data/market/volatility/vix9d_daily.csv"))
         self._vix3m_data = self._read_ts_csv(
-            Path("data/trading_view/volatility/vix3m_daily.csv"))
+            Path("data/market/volatility/vix3m_daily.csv"))
         self._vix6m_data = self._read_ts_csv(
-            Path("data/trading_view/volatility/vix6m_daily.csv"))
+            Path("data/market/volatility/vix6m_daily.csv"))
 
         # CBOE VIX futures (fallback for term structure)
         futures_path = Path("data/cboe_vix_futures_full/vix_futures_all.csv")
@@ -123,7 +123,7 @@ class RegimeDetector:
         # SPX intraday for RV
         for p in [
             Path("data/trading_view/equity_indices/spx_5m.csv"),
-            Path(self.cfg["data"].get("rv_source", "data/market/spx/spx_5m.csv")),
+            Path(self.cfg["data"].get("rv_source", "data/market/equity_indices/spx_5m.csv")),
         ]:
             self._spx_data = self._read_ts_csv(p)
             if self._spx_data is not None:

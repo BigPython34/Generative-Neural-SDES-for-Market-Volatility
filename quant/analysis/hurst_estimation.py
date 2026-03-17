@@ -81,6 +81,7 @@ class HurstEstimate:
 @dataclass
 class HurstBootstrapResult:
     """Hurst estimate with bootstrap confidence intervals."""
+    n_obs: int                    # Number of observations in the (log RV) series
     H_point: float                 # Point estimate (full sample)
     H_mean: float                  # Bootstrap mean
     H_std: float                   # Bootstrap standard deviation
@@ -145,7 +146,7 @@ def _segment_trading_days(df: pd.DataFrame,
     return segments
 
 
-def compute_rv_from_segments(segments: list[pd.DataFrame]) -> np.ndarray:
+def compute_rv_from_segments(segments: list[pd.DataFrame]) -> tuple[np.ndarray, list[pd.Timestamp]]:
     """
     Compute daily Realized Variance from pre-segmented intraday data.
 
@@ -159,18 +160,22 @@ def compute_rv_from_segments(segments: list[pd.DataFrame]) -> np.ndarray:
     -------
     1-D array of daily RV values.
     """
-    rv = []
+    rv: list[float] = []
+    dates: list[pd.Timestamp] = []
     for seg in segments:
         prices = seg['close'].values.astype(float)
         log_returns = np.diff(np.log(prices))
         rv_day = np.sum(log_returns ** 2)
         if rv_day > 1e-16:
             rv.append(rv_day)
-    return np.array(rv)
+            dates.append(pd.Timestamp(seg['datetime'].iloc[-1]))
+    return np.array(rv), dates
 
 
-def compute_tsrv_from_segments(segments: list[pd.DataFrame],
-                               K: Optional[int] = None) -> np.ndarray:
+def compute_tsrv_from_segments(
+    segments: list[pd.DataFrame],
+    K: Optional[int] = None,
+) -> tuple[np.ndarray, list[pd.Timestamp]]:
     """
     Two-Scale Realized Variance (TSRV) for microstructure noise correction.
 
@@ -193,7 +198,8 @@ def compute_tsrv_from_segments(segments: list[pd.DataFrame],
     -------
     1-D array of daily TSRV values (bias-corrected).
     """
-    tsrv = []
+    tsrv: list[float] = []
+    dates: list[pd.Timestamp] = []
     for seg in segments:
         prices = seg['close'].values.astype(float)
         log_prices = np.log(prices)
@@ -236,8 +242,9 @@ def compute_tsrv_from_segments(segments: list[pd.DataFrame],
         # TSRV can be negative due to noise; floor at a small positive value
         tsrv_day = max(tsrv_day, 1e-16)
         tsrv.append(tsrv_day)
+        dates.append(pd.Timestamp(seg['datetime'].iloc[-1]))
 
-    return np.array(tsrv)
+    return np.array(tsrv), dates
 
 
 def compute_daily_rv_multiscale(
@@ -265,16 +272,13 @@ def compute_daily_rv_multiscale(
     df = pd.read_csv(file_path)
     segments = _segment_trading_days(df, max_gap_hours, min_bars_per_day)
 
-    dates_list = [seg['datetime'].iloc[-1] for seg in segments if len(seg) > 0]
-    
     if use_tsrv:
-        rv = compute_tsrv_from_segments(segments, K=tsrv_K)
+        rv, dates = compute_tsrv_from_segments(segments, K=tsrv_K)
     else:
-        rv = compute_rv_from_segments(segments)
+        rv, dates = compute_rv_from_segments(segments)
 
-    # Match dates to rv (some segments might not have valid RV)
-    valid_dates = dates_list[:len(rv)]
-    return rv, valid_dates
+    # IMPORTANT: dates are filtered in sync with rv.
+    return rv, dates
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -543,6 +547,171 @@ def hurst_ratio_estimator(
     )
 
 
+def hurst_rescaled_range(
+    series: np.ndarray,
+    min_window: int = 10,
+    max_window: Optional[int] = None,
+) -> HurstEstimate:
+    """
+    Rescaled Range (R/S) Analysis — Classic Hurst estimator.
+    
+    For each window size w, divide the series into non-overlapping windows,
+    compute the range R and standard deviation S, then fit:
+        log(R/S) = H * log(w) + c
+    
+    Parameters
+    ----------
+    series : 1-D array (typically log returns or log RV)
+    min_window : minimum window size
+    max_window : maximum window size (default: n/4)
+    
+    Returns
+    -------
+    HurstEstimate
+    """
+    series = _validate_series(series, "R/S")
+    n = len(series)
+    
+    if max_window is None:
+        max_window = n // 4
+    
+    if max_window < min_window * 2:
+        return HurstEstimate(H=np.nan, r_squared=0, method="rescaled_range", n_points=n)
+    
+    # Log-spaced window sizes
+    window_sizes = np.logspace(
+        np.log10(min_window), np.log10(max_window), 15
+    ).astype(int)
+    window_sizes = np.unique(window_sizes)
+    
+    rs_values = []
+    
+    for w in window_sizes:
+        if w >= n:
+            continue
+        
+        n_windows = n // w
+        if n_windows < 1:
+            continue
+        
+        rs_window = []
+        
+        for i in range(n_windows):
+            window = series[i*w:(i+1)*w]
+            
+            # Mean-adjusted cumulative sum
+            mean_adj = window - np.mean(window)
+            cumsum = np.cumsum(mean_adj)
+            
+            # Range
+            R = np.max(cumsum) - np.min(cumsum)
+            
+            # Standard deviation
+            S = np.std(window, ddof=1)
+            
+            if S > 1e-10:
+                rs_window.append(R / S)
+        
+        if rs_window:
+            rs_values.append((w, np.mean(rs_window)))
+    
+    if len(rs_values) < 5:
+        return HurstEstimate(H=np.nan, r_squared=0, method="rescaled_range", n_points=n)
+    
+    windows = np.array([x[0] for x in rs_values])
+    rs = np.array([x[1] for x in rs_values])
+    
+    # Log-log regression: log(R/S) = H * log(w) + c
+    log_w = np.log(windows.astype(float))
+    log_rs = np.log(rs)
+    
+    slope, intercept, r_value, _, std_err = linregress(log_w, log_rs)
+    
+    return HurstEstimate(
+        H=np.clip(slope, 0.01, 0.99),  # R/S H should be in (0,1)
+        r_squared=r_value ** 2,
+        method="rescaled_range",
+        lags_used=windows,
+        log_moments=log_rs,
+        slope=slope,
+        intercept=intercept,
+        std_err=std_err,
+        n_points=n,
+    )
+
+
+def hurst_spectral(
+    series: np.ndarray,
+    freq_range: Optional[tuple[float, float]] = None,
+) -> HurstEstimate:
+    """
+    Spectral (Periodogram-based) Hurst estimator.
+    
+    Computes the power spectral density and fits:
+        log(PSD) = -(2H + 1) * log(f) + c
+    
+    This works because for a fractional Brownian motion with Hurst H:
+        S(f) ~ f^{-(2H+1)}
+    
+    Parameters
+    ----------
+    series : 1-D array (log returns or log RV)
+    freq_range : tuple (lower_frac, upper_frac) of frequencies to use for fitting
+                 (default: use lowest 1/4 of frequencies)
+    
+    Returns
+    -------
+    HurstEstimate
+    """
+    from scipy import signal
+    
+    series = _validate_series(series, "spectral")
+    n = len(series)
+    
+    # Compute periodogram
+    freqs, psd = signal.periodogram(series, fs=1.0)
+    
+    # Remove zero frequency
+    freqs = freqs[1:]
+    psd = psd[1:]
+    
+    if freq_range is None:
+        # Use only lowest frequencies (where scaling assumption holds best)
+        n_use = max(5, len(freqs) // 4)
+        freqs = freqs[:n_use]
+        psd = psd[:n_use]
+    else:
+        lower_frac, upper_frac = freq_range
+        mask = (freqs >= lower_frac) & (freqs <= upper_frac)
+        freqs = freqs[mask]
+        psd = psd[mask]
+        
+        if len(freqs) < 5:
+            return HurstEstimate(H=np.nan, r_squared=0, method="spectral", n_points=n)
+    
+    # Log-log regression: log(PSD) = -(2H+1) * log(f) + c
+    log_f = np.log(freqs + 1e-10)
+    log_psd = np.log(psd + 1e-10)
+    
+    slope, intercept, r_value, _, std_err = linregress(log_f, log_psd)
+    
+    # From log(PSD) = -(2H+1) * log(f) + c, we get:
+    #   slope = -(2H+1)  =>  H = -(slope + 1) / 2
+    H = -(slope + 1.0) / 2.0
+    
+    return HurstEstimate(
+        H=np.clip(H, 0.01, 0.99),
+        r_squared=r_value ** 2,
+        method="spectral",
+        lags_used=freqs,
+        log_moments=log_psd,
+        slope=slope,
+        intercept=intercept,
+        std_err=std_err / 2.0,  # Account for the -1/2 factor
+        n_points=n,
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 3. BOOTSTRAP CONFIDENCE INTERVALS
 # ═══════════════════════════════════════════════════════════════════
@@ -551,14 +720,21 @@ def _block_bootstrap_indices(n: int, block_size: int, rng: np.random.Generator) 
     """
     Generate one block-bootstrap sample of indices.
 
-    Circular block bootstrap (Politis & Romano 1994): draw blocks of
-    length `block_size` uniformly at random (with wrap-around) until
+    Moving block bootstrap (non-wrapping): draw contiguous blocks of
+    length `block_size` uniformly at random (without wrap-around) until
     we have at least n indices.
+
+    Note: the circular variant can create artificial end-to-start jumps
+    in non-stationary series (e.g. volatility regimes), which can heavily
+    bias variogram-based H estimates.
     """
     indices = []
     while len(indices) < n:
-        start = rng.integers(0, n)
-        block = np.arange(start, start + block_size) % n
+        if block_size >= n:
+            start = 0
+        else:
+            start = rng.integers(0, n - block_size + 1)
+        block = np.arange(start, start + min(block_size, n - start))
         indices.extend(block.tolist())
     return np.array(indices[:n])
 
@@ -572,6 +748,7 @@ def hurst_bootstrap(
     max_lag: Optional[int] = None,
     fit_range: Optional[tuple[int, int]] = None,
     seed: int = 42,
+    ci_method: str = "percentile",
 ) -> HurstBootstrapResult:
     """
     Block-bootstrap confidence intervals for the Hurst exponent.
@@ -589,6 +766,10 @@ def hurst_bootstrap(
     max_lag : max lag for estimators
     fit_range : optional fitting range for estimators
     seed : random seed
+    ci_method : 'percentile' (simple), 'basic', or 't' (studentized bootstrap; more robust)
+                - 'percentile': direct percentiles of bootstrap distribution
+                - 'basic': inverted CI using reflection
+                - 't': studentized (bootstrap-t): uses per-resample standard errors
 
     Returns
     -------
@@ -608,9 +789,30 @@ def hurst_bootstrap(
         kwargs["fit_range"] = fit_range
     point_est = est_func(series, **{k: v for k, v in kwargs.items() if v is not None})
 
+    def _se_of_H(est: HurstEstimate) -> float:
+        """Approximate standard error of H from the estimator's regression SE."""
+        if not np.isfinite(est.std_err):
+            return np.nan
+
+        if est.method == "variogram":
+            return est.std_err / 2.0
+
+        if est.method.startswith("structure_q"):
+            # method looks like 'structure_q1.0' or 'structure_q2.0'
+            try:
+                q = float(est.method.split("structure_q", 1)[1])
+            except Exception:
+                q = 1.0
+            q = q if (np.isfinite(q) and q != 0.0) else 1.0
+            return est.std_err / q
+
+        # For DMA / spectral / rescaled_range / ratio: std_err already corresponds to SE(H)
+        return est.std_err
+
     # Bootstrap
     rng = np.random.default_rng(seed)
-    h_boot = np.zeros(n_bootstrap)
+    h_boot = np.full(n_bootstrap, np.nan, dtype=float)
+    se_boot = np.full(n_bootstrap, np.nan, dtype=float)
 
     for b in range(n_bootstrap):
         idx = _block_bootstrap_indices(n, block_size, rng)
@@ -618,33 +820,64 @@ def hurst_bootstrap(
         try:
             boot_est = est_func(boot_series, **{k: v for k, v in kwargs.items() if v is not None})
             h_boot[b] = boot_est.H
+            se_boot[b] = _se_of_H(boot_est)
         except Exception:
             h_boot[b] = np.nan
+            se_boot[b] = np.nan
 
-    h_boot = h_boot[np.isfinite(h_boot)]
-    if len(h_boot) < 10:
+    h_boot_valid = h_boot[np.isfinite(h_boot)]
+    if len(h_boot_valid) < 10:
         return HurstBootstrapResult(
+            n_obs=n,
             H_point=point_est.H, H_mean=point_est.H, H_std=0,
             ci_lower=point_est.H, ci_upper=point_est.H,
             alpha=alpha, method=method, n_bootstrap=0,
-            r_squared=point_est.r_squared, all_H=h_boot,
+            r_squared=point_est.r_squared, all_H=h_boot_valid,
         )
 
-    # Percentile CI (bias-corrected percentile method)
-    ci_lower = np.percentile(h_boot, 100 * alpha / 2)
-    ci_upper = np.percentile(h_boot, 100 * (1 - alpha / 2))
+    # Compute CI based on method
+    if ci_method == "t":
+        # Studentized (bootstrap-t) CI.
+        # We approximate SE(H) from the regression SE returned by each estimator.
+        point_se = _se_of_H(point_est)
+        valid = np.isfinite(h_boot) & np.isfinite(se_boot) & (se_boot > 1e-12)
+        if np.isfinite(point_se) and point_se > 1e-12 and np.sum(valid) >= 20:
+            t_boot = (h_boot[valid] - point_est.H) / se_boot[valid]
+            q_lo = np.percentile(t_boot, 100 * (alpha / 2))
+            q_hi = np.percentile(t_boot, 100 * (1 - alpha / 2))
+
+            # Inversion: [H_hat - q_hi*SE_hat, H_hat - q_lo*SE_hat]
+            ci_lower = point_est.H - q_hi * point_se
+            ci_upper = point_est.H - q_lo * point_se
+        else:
+            # Fallback when SE is not available/reliable
+            ci_lower = np.percentile(h_boot_valid, 100 * alpha / 2)
+            ci_upper = np.percentile(h_boot_valid, 100 * (1 - alpha / 2))
+        
+    elif ci_method == "basic":
+        # Basic (inverted) percentile method
+        ci_lower = 2 * point_est.H - np.percentile(h_boot_valid, 100 * (1 - alpha / 2))
+        ci_upper = 2 * point_est.H - np.percentile(h_boot_valid, 100 * (alpha / 2))
+        
+    else:  # "percentile" (default, simple)
+        ci_lower = np.percentile(h_boot_valid, 100 * alpha / 2)
+        ci_upper = np.percentile(h_boot_valid, 100 * (1 - alpha / 2))
+
+    if ci_lower > ci_upper:
+        ci_lower, ci_upper = ci_upper, ci_lower
 
     return HurstBootstrapResult(
+        n_obs=n,
         H_point=point_est.H,
-        H_mean=np.mean(h_boot),
-        H_std=np.std(h_boot),
+        H_mean=np.mean(h_boot_valid),
+        H_std=np.std(h_boot_valid),
         ci_lower=ci_lower,
         ci_upper=ci_upper,
         alpha=alpha,
         method=method,
-        n_bootstrap=len(h_boot),
+        n_bootstrap=len(h_boot_valid),
         r_squared=point_est.r_squared,
-        all_H=h_boot,
+        all_H=h_boot_valid,
     )
 
 
@@ -656,6 +889,8 @@ def _get_estimator(method: str):
         "structure_q2": lambda s, **kw: hurst_structure_function(s, q=2.0, **kw),
         "dma": hurst_dma,
         "ratio": hurst_ratio_estimator,
+        "rescaled_range": hurst_rescaled_range,
+        "spectral": hurst_spectral,
     }
     if method not in dispatch:
         raise ValueError(f"Unknown method: {method}. Choose from {list(dispatch.keys())}")
@@ -668,16 +903,16 @@ def _get_estimator(method: str):
 
 # Default TradingView data paths (relative to project root)
 DEFAULT_SPX_PATHS: dict[str, str] = {
-    "5s":    "data/trading_view/equity_indices/spx_5s.csv",
-    "5m":    "data/trading_view/equity_indices/spx_5m.csv",
-    "15m":   "data/trading_view/equity_indices/spx_15m.csv",
-    "30m":   "data/trading_view/equity_indices/spx_30m.csv",
-    "1h":    "data/trading_view/equity_indices/spx_1h.csv",
-    "daily": "data/trading_view/equity_indices/spx_daily.csv",
+    "5s":    "data/market/equity_indices/spx_5s.csv",
+    "5m":    "data/market/equity_indices/spx_5m.csv",
+    "15m":   "data/market/equity_indices/spx_15m.csv",
+    "30m":   "data/market/equity_indices/spx_30m.csv",
+    "1h":    "data/market/equity_indices/spx_1h.csv",
+    "daily": "data/market/equity_indices/spx_daily.csv",
 }
 
 DEFAULT_CROSS_ASSETS: dict[str, str] = {
-    "SPY_5m":    "data/trading_view/equity_etfs/spy_5m.csv",
+    "SPY_5m":    "data/market/equity_etfs/spy_5m.csv",
     "CAC40_5m":  "data/trading_view/equity_indices/cac40_5m.csv",
 }
 
@@ -988,17 +1223,18 @@ def format_results_table(result: MultiScaleResult) -> str:
     freq_labels = list(result.rv_series.keys())
     methods = list(result.estimates.keys())
 
-    lines.append(f"\n{'Method':<18s} {'Freq':<8s} {'H':>7s}  {'95% CI':>20s}  {'R²':>6s}  {'n_days':>6s}")
+    lines.append(f"\n{'Method':<18s} {'Freq':<8s} {'H':>7s}  {'95% CI':>20s}  {'R²':>6s}  {'n_obs':>6s}  {'n_boot':>6s}")
     lines.append("─" * 75)
 
     for method in methods:
         for i, est in enumerate(result.estimates[method]):
             freq = freq_labels[i] if i < len(freq_labels) else "?"
-            n_pts = est.n_bootstrap
+            n_obs = est.n_obs
+            n_boot = est.n_bootstrap
             ci_str = f"[{est.ci_lower:+.4f}, {est.ci_upper:+.4f}]"
             lines.append(
                 f"{method:<18s} {freq:<8s} {est.H_point:+7.4f}  {ci_str:>20s}  "
-                f"{est.r_squared:6.3f}  {n_pts:>6d}"
+                f"{est.r_squared:6.3f}  {n_obs:>6d}  {n_boot:>6d}"
             )
         lines.append("")
 
@@ -1047,6 +1283,7 @@ def save_results_json(result: MultiScaleResult, output_path: str | Path) -> None
             data["scales"][key] = {
                 "method": method,
                 "frequency": freq,
+                "n_obs": int(est.n_obs),
                 "H_point": float(est.H_point),
                 "H_mean": float(est.H_mean),
                 "H_std": float(est.H_std),

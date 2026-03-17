@@ -22,11 +22,17 @@ if sys.stdout.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8')
 
 from utils.config import load_config
-from engine.generative_trainer import GenerativeTrainer
 
 
 def train_model(measure: str, enable_jumps: bool = False):
-    """Train a single model under the specified measure."""
+    """Train a single model under the specified measure.
+    
+    Note: GenerativeTrainer import is deferred to avoid JAX DLL issues
+    on Windows systems with strict security policies.
+    """
+    # Deferred import to avoid JAX DLL blocking at module load time
+    from engine.generative_trainer import GenerativeTrainer
+    
     cfg = load_config()
     config = {
         'n_steps': cfg['simulation']['n_steps'],
