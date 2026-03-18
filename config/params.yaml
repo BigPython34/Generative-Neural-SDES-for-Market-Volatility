@@ -1,26 +1,86 @@
 data:
+  # Files & sources (used by utils/loader/data_loader.py + several workflows)
   source: data/market/volatility/vix_15m.csv
+
   vix_files:
     5: data/market/volatility/vix_5m.csv
     10: data/market/volatility/vix_10m.csv
     15: data/market/volatility/vix_15m.csv
     30: data/market/volatility/vix_30m.csv
+
   rv_source: data/market/equity_indices/spx_5m.csv
+
   spx_files:
     5: data/market/equity_indices/spx_5m.csv
+    15: data/market/equity_indices/spx_15m.csv
     30: data/market/equity_indices/spx_30m.csv
-  spx_daily: data/market/equity_indices/spx_daily.csv
+    daily: data/market/equity_indices/spx_daily.csv
+    
+  cac40_files:
+    5: data/market/equity_indices/cac40_5m.csv
+    15: data/market/equity_indices/cac40_15m.csv
+    30: data/market/equity_indices/cac40_30m.csv
+
+  spx_daily: 
+
   vvix_source: data/market/volatility/vvix_daily.csv
   sofr_source: data/rates/sofr_daily_nyfed.csv
+  options_cache_dir: data/options_cache
+
+  # Dataset construction (used by loaders)
   data_type: vix
+
   segment_length: 120
   stride_ratio: 0.5
-  rv_window: 78
-  rv_bar_interval_min: 5
+
   max_gap_hours: 4
-  max_overnight_jump: 0.5
+
+  # Calendar assumptions (used for annualization)
   trading_hours_per_day: 6.5
-  options_cache_dir: data/options_cache
+  trading_days_per_year: 252
+
+  # RV computation (used by RealizedVolatilityLoader)
+  rv_bar_interval_min: 5
+
+  rv_training_window_bars: 4
+
+  daily_min_year: 2000
+  daily_rv_window: 5
+
+  rv_filter:
+    min: 0.001
+    max: 5.0
+
+  # Backwards-compat / legacy
+  rv_window: 78
+
+  # VIX bridging filter (used by MarketDataLoader._segment_bridged)
+  max_overnight_jump: 0.5
+
+  # Hurst estimation defaults (used by quant/analysis/hurst_estimation.py)
+  hurst_estimation:
+    tsrv_frequencies: ["5s"]
+    daily_window_days: 5
+    daily_min_year: 1990
+    min_bars_per_day:
+      5s: 200
+      5m: 20
+      15m: 10
+      30m: 6
+      1h: 4
+      daily: 1
+
+  # Default asset path template for Hurst (used when asset_paths is None)
+  hurst_assets:
+    spx:
+      base_dir: data/market/equity_indices
+      pattern: spx_{freq}.csv
+      frequencies: ["5s", "5m", "15m", "30m", "1h", "daily"]
+
+  # =====================
+  # Multi-Scale Training Mix
+  # =====================
+  # Used by training workflows when mixing multiple sampling scales
   multi_scale:
     enabled: false
     scales:
@@ -33,6 +93,7 @@ data:
     - freq_min: 60
       segment_length: 120
       weight: 0.3
+# Used by training loops (bin/training/train_multi.py, engine/generative_trainer.py)
 training:
   n_epochs: 100
   batch_size: 256
@@ -53,6 +114,7 @@ training:
     lambda_mmd_regularizer: 0.1
     lambda_jump_reg: 0.1
     options_data_source: data/options_cache
+# Used by model definition / training (engine/neural_sde.py, engine/generative_trainer.py)
 neural_sde:
   backbone: fractional
   sig_truncation_order: 4
@@ -72,10 +134,11 @@ neural_sde:
     sigma_j_init: 0.5
     prior_target: 3.0
   fractional:
-    hurst_init: 0.0089
+    hurst_init: 0.0830
     eta_init: 1.451
     learn_hurst: true
     learn_eta: true
+# Used by simulation + dataset alignment (engine/neural_sde.py, utils/loader/data_loader.py)
 simulation:
   n_steps: 120
   T: 0.01832
@@ -91,13 +154,15 @@ simulation:
     - 30
     tolerance_mean: 0.15
     tolerance_std: 0.3
+# Used by Bergomi baseline / comparisons (engine/volterra.py, experiments/*)
 bergomi:
-  hurst: 0.0089
+  hurst: 0.0830
   eta: 1.451
   eta_source: config
   rho: -0.995
   xi0: 0.053546
   fBm_method: volterra
+# Used by pricers and exotic pricing scripts (quant/pricers/*, bin/experiments/*)
 pricing:
   strike: 100.0
   barrier: 90.0
@@ -106,15 +171,17 @@ pricing:
   maturity: 0.01832
   n_mc_paths: 5000
   use_sofr: true
+# Used by backtesting workflows (bin/backtesting/*)
 backtesting:
   n_days: 30
   n_mc_paths: 10000
-  rv_source: data/trading_view/equity_indices/spx_30m.csv
+  rv_source: data/market/equity_indices/spx_30m.csv
   maturity_days: 30
   moneyness_range:
   - -0.15
   - 0.15
   n_strikes: 11
+# Used by risk metrics / stress testing (quant/risk/*, bin/experiments/stress_test_comparison.py)
 risk:
   confidence_levels:
   - 0.95
@@ -138,10 +205,12 @@ risk:
     volmageddon:
       spot_shock: -0.04
       vol_shock: 1.0
+# Used by hedging workflows (quant/hedging/*, bin/experiments/deep_hedging_backtest.py)
 hedging:
   transaction_cost_bps: 2.0
   default_hedge_freq: daily
   rebalance_threshold_delta: 0.01
+# Used by regime detection (quant/regimes/*)
 regime:
   signals:
     vix_level:
@@ -179,6 +248,7 @@ regime:
       H: 0.03
       eta: 3.5
       rho: -0.9
+# Used by exotic product configs (quant/pricers/*)
 exotics:
   asian:
     averaging: arithmetic
@@ -190,10 +260,12 @@ exotics:
     local_cap: 0.05
     local_floor: -0.03
     global_floor: 0.0
+# Used by API server (bin/apps/api_server.py)
 api:
   host: 0.0.0.0
   port: 8000
   workers: 1
+# Used by output paths in multiple scripts (bin/*, engine/*)
 outputs:
   dir: outputs
   model_dir: outputs/models

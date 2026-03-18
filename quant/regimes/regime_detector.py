@@ -85,7 +85,7 @@ class RegimeDetector:
         # VIX daily — prefer market (merged: TradingView + Yahoo) over flat historical files
         for p in [
             Path("data/market/volatility/vix_daily.csv"),
-            Path("data/trading_view/volatility/vix_daily.csv"),
+            Path("data/market/volatility/vix_daily.csv"),
             Path(self.cfg["data"]["source"]),
         ]:
             self._vix_data = self._read_ts_csv(p)
@@ -95,7 +95,7 @@ class RegimeDetector:
         # VVIX daily — market first (merged: TradingView + Yahoo)
         for p in [
             Path("data/market/volatility/vvix_daily.csv"),
-            Path("data/trading_view/volatility/vvix_daily.csv"),
+            Path("data/market/volatility/vvix_daily.csv"),
         ]:
             df = self._read_ts_csv(p)
             if df is not None:
@@ -122,7 +122,7 @@ class RegimeDetector:
 
         # SPX intraday for RV
         for p in [
-            Path("data/trading_view/equity_indices/spx_5m.csv"),
+            Path("data/market/equity_indices/spx_5m.csv"),
             Path(self.cfg["data"].get("rv_source", "data/market/equity_indices/spx_5m.csv")),
         ]:
             self._spx_data = self._read_ts_csv(p)
@@ -131,12 +131,12 @@ class RegimeDetector:
 
         # SKEW — TradingView (36 years)
         self._skew_data = self._read_ts_csv(
-            Path("data/trading_view/sentiment/skew_daily.csv"))
+            Path("data/market/sentiment/skew_daily.csv"))
 
         # Put-Call Ratio — TradingView SPX PCR (20 years)
         for p in [
-            Path("data/trading_view/sentiment/pcspx_daily.csv"),
-            Path("data/trading_view/sentiment/pc_daily.csv"),
+            Path("data/market/sentiment/pcspx_daily.csv"),
+            Path("data/market/sentiment/pc_daily.csv"),
         ]:
             self._pcr_data = self._read_ts_csv(p)
             if self._pcr_data is not None:

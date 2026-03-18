@@ -206,11 +206,11 @@ def run_regime_timeline():
 
     # Load all signals
     signal_files = {
-        "VIX": ROOT / "data" / "trading_view" / "volatility" / "vix_daily.csv",
-        "VVIX": ROOT / "data" / "trading_view" / "volatility" / "vvix_daily.csv",
-        "VIX3M": ROOT / "data" / "trading_view" / "volatility" / "vix3m_daily.csv",
-        "SKEW": ROOT / "data" / "trading_view" / "sentiment" / "skew_daily.csv",
-        "PCR": ROOT / "data" / "trading_view" / "sentiment" / "pcspx_daily.csv",
+        "VIX": ROOT / "data" / "market" / "volatility" / "vix_daily.csv",
+        "VVIX": ROOT / "data" / "market" / "volatility" / "vvix_daily.csv",
+        "VIX3M": ROOT / "data" / "market" / "volatility" / "vix3m_daily.csv",
+        "SKEW": ROOT / "data" / "market" / "sentiment" / "skew_daily.csv",
+        "PCR": ROOT / "data" / "market" / "sentiment" / "pcspx_daily.csv",
     }
 
     signals = {}

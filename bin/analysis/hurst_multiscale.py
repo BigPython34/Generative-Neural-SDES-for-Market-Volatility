@@ -43,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from quant.analysis.hurst_estimation import (
     DEFAULT_CROSS_ASSETS,
-    DEFAULT_SPX_PATHS,
+DEFAULT_SPX_PATHS,
     MultiScaleResult,
     format_results_table,
     hurst_variogram,

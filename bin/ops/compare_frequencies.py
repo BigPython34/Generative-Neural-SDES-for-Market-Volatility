@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from utils.config import load_config
-from utils.loader.data_loader import MarketDataLoader
+from utils.loader.RealizedVariance import RealizedVolatilityLoader
 from quant.analysis.diagnostics import compute_acf, estimate_hurst, estimate_hurst_from_returns
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -57,7 +57,7 @@ def analyze_frequency(file_path: str, freq_name: str, segment_length: int = 13):
         return None
     
     # Load data with custom file path
-    loader = MarketDataLoader(file_path=file_path)
+    loader = RealizedVolatilityLoader(file_path=file_path)
     
     try:
         paths = loader.get_realized_vol_paths(segment_length=segment_length)

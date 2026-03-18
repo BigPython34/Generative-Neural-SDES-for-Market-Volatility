@@ -1,0 +1,7299 @@
+{
+  "started_at": "2026-03-18T22:48:10",
+  "dry_run": false,
+  "no_yahoo": false,
+  "include_legacy": false,
+  "tv_dir": "data/trading_view",
+  "market_dir": "data/market",
+  "created_dirs": [],
+  "legacy_backup": null,
+  "files": [
+    {
+      "rel": "equity_etfs/spy_15m.csv",
+      "dest": "data/market/equity_etfs/spy_15m.csv",
+      "tv": {
+        "rows": 40151,
+        "cols": 5,
+        "time_min": 1577975400,
+        "time_max": 1772563500,
+        "span_sec": 194588100,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SPY",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1548,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863100,
+          "span_sec": 7708500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40419,
+          "rows_incoming": 40151,
+          "rows_merged": 40445,
+          "rows_added_net": 26,
+          "n_dupes_dropped": 40125,
+          "time_min": 1577975400,
+          "time_max": 1773863100
+        },
+        "final": {
+          "rows": 40445,
+          "cols": 7,
+          "time_min": 1577975400,
+          "time_max": 1773863100,
+          "span_sec": 195887700,
+          "missing_frac": 0.16018049202620843,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_etfs/spy_1m.csv",
+      "dest": "data/market/equity_etfs/spy_1m.csv",
+      "tv": {
+        "rows": 41244,
+        "cols": 5,
+        "time_min": 1759152600,
+        "time_max": 1772563980,
+        "span_sec": 13411380,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SPY",
+        "interval": "1m",
+        "status": "ok",
+        "stats": {
+          "rows": 2730,
+          "cols": 6,
+          "time_min": 1773149400,
+          "time_max": 1773863940,
+          "span_sec": 714540,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 43974,
+          "rows_incoming": 41244,
+          "rows_merged": 44364,
+          "rows_added_net": 390,
+          "n_dupes_dropped": 40854,
+          "time_min": 1759152600,
+          "time_max": 1773863940
+        },
+        "final": {
+          "rows": 44364,
+          "cols": 7,
+          "time_min": 1759152600,
+          "time_max": 1773863940,
+          "span_sec": 14711340,
+          "missing_frac": 0.1549454512667929,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_etfs/spy_30m.csv",
+      "dest": "data/market/equity_etfs/spy_30m.csv",
+      "tv": {
+        "rows": 42900,
+        "cols": 5,
+        "time_min": 1357137000,
+        "time_max": 1772562600,
+        "span_sec": 415425600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SPY",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 774,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773862200,
+          "span_sec": 7707600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 43034,
+          "rows_incoming": 42900,
+          "rows_merged": 43047,
+          "rows_added_net": 13,
+          "n_dupes_dropped": 42887,
+          "time_min": 1357137000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 43047,
+          "cols": 7,
+          "time_min": 1357137000,
+          "time_max": 1773862200,
+          "span_sec": 416725200,
+          "missing_frac": 0.1636196095740315,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_etfs/spy_45m.csv",
+      "dest": "data/market/equity_etfs/spy_45m.csv",
+      "tv": {
+        "rows": 41004,
+        "cols": 5,
+        "time_min": 1199284200,
+        "time_max": 1772561700,
+        "span_sec": 573277500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SPY",
+        "interval": "45m",
+        "status": "unsupported interval: 45m",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41004,
+          "rows_incoming": 41004,
+          "rows_merged": 41004,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 41004,
+          "time_min": 1199284200,
+          "time_max": 1772561700
+        },
+        "final": {
+          "rows": 41004,
+          "cols": 6,
+          "time_min": 1199284200,
+          "time_max": 1772561700,
+          "span_sec": 573277500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_etfs/spy_5m.csv",
+      "dest": "data/market/equity_etfs/spy_5m.csv",
+      "tv": {
+        "rows": 40318,
+        "cols": 5,
+        "time_min": 1707143400,
+        "time_max": 1772563500,
+        "span_sec": 65420100,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SPY",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4642,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863700,
+          "span_sec": 7709100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41124,
+          "rows_incoming": 40318,
+          "rows_merged": 41202,
+          "rows_added_net": 78,
+          "n_dupes_dropped": 40240,
+          "time_min": 1707143400,
+          "time_max": 1773863700
+        },
+        "final": {
+          "rows": 41202,
+          "cols": 7,
+          "time_min": 1707143400,
+          "time_max": 1773863700,
+          "span_sec": 66720300,
+          "missing_frac": 0.14757374237496562,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_etfs/spy_daily.csv",
+      "dest": "data/market/equity_etfs/spy_daily.csv",
+      "tv": {
+        "rows": 8329,
+        "cols": 5,
+        "time_min": 728317800,
+        "time_max": 1772548200,
+        "span_sec": 1044230400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SPY",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 8340,
+          "cols": 6,
+          "time_min": 728283600,
+          "time_max": 1773806400,
+          "span_sec": 1045522800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 16668,
+          "rows_incoming": 8329,
+          "rows_merged": 16669,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 8328,
+          "time_min": 728283600,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 16669,
+          "cols": 7,
+          "time_min": 728283600,
+          "time_max": 1773806400,
+          "span_sec": 1045522800,
+          "missing_frac": 0.08327834103225548,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/cac40_15m.csv",
+      "dest": "data/market/equity_indices/cac40_15m.csv",
+      "tv": {
+        "rows": 40646,
+        "cols": 5,
+        "time_min": 1625122800,
+        "time_max": 1772554500,
+        "span_sec": 147431700,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FCHI",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 2014,
+          "cols": 6,
+          "time_min": 1766390400,
+          "time_max": 1773850500,
+          "span_sec": 7460100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40988,
+          "rows_incoming": 40646,
+          "rows_merged": 41022,
+          "rows_added_net": 34,
+          "n_dupes_dropped": 40612,
+          "time_min": 1625122800,
+          "time_max": 1773850500
+        },
+        "final": {
+          "rows": 41022,
+          "cols": 7,
+          "time_min": 1625122800,
+          "time_max": 1773850500,
+          "span_sec": 148727700,
+          "missing_frac": 0.15834592820112783,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/cac40_30m.csv",
+      "dest": "data/market/equity_indices/cac40_30m.csv",
+      "tv": {
+        "rows": 44161,
+        "cols": 5,
+        "time_min": 1451894400,
+        "time_max": 1772553600,
+        "span_sec": 320659200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FCHI",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 1008,
+          "cols": 6,
+          "time_min": 1766390400,
+          "time_max": 1773849600,
+          "span_sec": 7459200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44333,
+          "rows_incoming": 44161,
+          "rows_merged": 44350,
+          "rows_added_net": 17,
+          "n_dupes_dropped": 44144,
+          "time_min": 1451894400,
+          "time_max": 1773849600
+        },
+        "final": {
+          "rows": 44350,
+          "cols": 7,
+          "time_min": 1451894400,
+          "time_max": 1773849600,
+          "span_sec": 321955200,
+          "missing_frac": 0.16281473130402105,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/cac40_5m.csv",
+      "dest": "data/market/equity_indices/cac40_5m.csv",
+      "tv": {
+        "rows": 40407,
+        "cols": 5,
+        "time_min": 1723446000,
+        "time_max": 1772555100,
+        "span_sec": 49109100,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FCHI",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 6035,
+          "cols": 6,
+          "time_min": 1766390400,
+          "time_max": 1773851100,
+          "span_sec": 7460700,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41431,
+          "rows_incoming": 40407,
+          "rows_merged": 41533,
+          "rows_added_net": 102,
+          "n_dupes_dropped": 40305,
+          "time_min": 1723446000,
+          "time_max": 1773851100
+        },
+        "final": {
+          "rows": 41533,
+          "cols": 7,
+          "time_min": 1723446000,
+          "time_max": 1773851100,
+          "span_sec": 50405100,
+          "missing_frac": 0.14203966323967288,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/spx_15m.csv",
+      "dest": "data/market/equity_indices/spx_15m.csv",
+      "tv": {
+        "rows": 40589,
+        "cols": 5,
+        "time_min": 1583159400,
+        "time_max": 1772562600,
+        "span_sec": 189403200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^GSPC",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1548,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863100,
+          "span_sec": 7708500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40858,
+          "rows_incoming": 40589,
+          "rows_merged": 40884,
+          "rows_added_net": 26,
+          "n_dupes_dropped": 40563,
+          "time_min": 1583159400,
+          "time_max": 1773863100
+        },
+        "final": {
+          "rows": 40884,
+          "cols": 7,
+          "time_min": 1583159400,
+          "time_max": 1773863100,
+          "span_sec": 190703700,
+          "missing_frac": 0.16025013860352869,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/spx_1h.csv",
+      "dest": "data/market/equity_indices/spx_1h.csv",
+      "tv": {
+        "rows": 20751,
+        "cols": 5,
+        "time_min": 1399383000,
+        "time_max": 1772562600,
+        "span_sec": 373179600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^GSPC",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 5078,
+          "cols": 6,
+          "time_min": 1681997400,
+          "time_max": 1773862200,
+          "span_sec": 91864800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 20823,
+          "rows_incoming": 20751,
+          "rows_merged": 20830,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 20744,
+          "time_min": 1399383000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 20830,
+          "cols": 7,
+          "time_min": 1399383000,
+          "time_max": 1773862200,
+          "span_sec": 374479200,
+          "missing_frac": 0.12598015682509203,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/spx_30m.csv",
+      "dest": "data/market/equity_indices/spx_30m.csv",
+      "tv": {
+        "rows": 41472,
+        "cols": 5,
+        "time_min": 1399383000,
+        "time_max": 1772562600,
+        "span_sec": 373179600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^GSPC",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 774,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773862200,
+          "span_sec": 7707600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41606,
+          "rows_incoming": 41472,
+          "rows_merged": 41619,
+          "rows_added_net": 13,
+          "n_dupes_dropped": 41459,
+          "time_min": 1399383000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 41619,
+          "cols": 7,
+          "time_min": 1399383000,
+          "time_max": 1773862200,
+          "span_sec": 374479200,
+          "missing_frac": 0.16351506123004717,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/spx_5m.csv",
+      "dest": "data/market/equity_indices/spx_5m.csv",
+      "tv": {
+        "rows": 40041,
+        "cols": 5,
+        "time_min": 1708439400,
+        "time_max": 1772562600,
+        "span_sec": 64123200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^GSPC",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4643,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863700,
+          "span_sec": 7709100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40850,
+          "rows_incoming": 40041,
+          "rows_merged": 40928,
+          "rows_added_net": 78,
+          "n_dupes_dropped": 39963,
+          "time_min": 1708439400,
+          "time_max": 1773863700
+        },
+        "final": {
+          "rows": 40928,
+          "cols": 7,
+          "time_min": 1708439400,
+          "time_max": 1773863700,
+          "span_sec": 65424300,
+          "missing_frac": 0.14744184910086003,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/spx_5s.csv",
+      "dest": "data/market/equity_indices/spx_5s.csv",
+      "tv": {
+        "rows": 40520,
+        "cols": 5,
+        "time_min": 1771511405,
+        "time_max": 1772563430,
+        "span_sec": 1052025,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": null,
+        "status": "no interval/symbol",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40520,
+          "rows_incoming": 40520,
+          "rows_merged": 40520,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40520,
+          "time_min": 1771511405,
+          "time_max": 1772563430
+        },
+        "final": {
+          "rows": 40520,
+          "cols": 6,
+          "time_min": 1771511405,
+          "time_max": 1772563430,
+          "span_sec": 1052025,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "equity_indices/spx_daily.csv",
+      "dest": "data/market/equity_indices/spx_daily.csv",
+      "tv": {
+        "rows": 19872,
+        "cols": 5,
+        "time_min": -3121407238,
+        "time_max": 1772548200,
+        "span_sec": 4893955438,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^GSPC",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 24669,
+          "cols": 6,
+          "time_min": -1325617200,
+          "time_max": 1773806400,
+          "span_sec": 3099423600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44540,
+          "rows_incoming": 19872,
+          "rows_merged": 44541,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 19871,
+          "time_min": -3121407238,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 44541,
+          "cols": 7,
+          "time_min": -3121407238,
+          "time_max": 1773806400,
+          "span_sec": 4895213638,
+          "missing_frac": 0.07435845625378865,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "fx/dxy_15m.csv",
+      "dest": "data/market/fx/dxy_15m.csv",
+      "tv": {
+        "rows": 40993,
+        "cols": 5,
+        "time_min": 1717362000,
+        "time_max": 1772573400,
+        "span_sec": 55211400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "DX-Y.NYB",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 4498,
+          "cols": 6,
+          "time_min": 1767675600,
+          "time_max": 1773869400,
+          "span_sec": 6193800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41677,
+          "rows_incoming": 40993,
+          "rows_merged": 41995,
+          "rows_added_net": 318,
+          "n_dupes_dropped": 40675,
+          "time_min": 1717362000,
+          "time_max": 1773869400
+        },
+        "final": {
+          "rows": 41995,
+          "cols": 7,
+          "time_min": 1717362000,
+          "time_max": 1773869400,
+          "span_sec": 56507400,
+          "missing_frac": 0.14880739770607612,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "fx/dxy_1h.csv",
+      "dest": "data/market/fx/dxy_1h.csv",
+      "tv": {
+        "rows": 43827,
+        "cols": 5,
+        "time_min": 1546387200,
+        "time_max": 1772571600,
+        "span_sec": 226184400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "DX-Y.NYB",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 14324,
+          "cols": 6,
+          "time_min": 1698206400,
+          "time_max": 1773867600,
+          "span_sec": 75661200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44032,
+          "rows_incoming": 43827,
+          "rows_merged": 44156,
+          "rows_added_net": 124,
+          "n_dupes_dropped": 43703,
+          "time_min": 1546387200,
+          "time_max": 1773867600
+        },
+        "final": {
+          "rows": 44156,
+          "cols": 7,
+          "time_min": 1546387200,
+          "time_max": 1773867600,
+          "span_sec": 227480400,
+          "missing_frac": 0.11249509315457318,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "fx/dxy_30m.csv",
+      "dest": "data/market/fx/dxy_30m.csv",
+      "tv": {
+        "rows": 49250,
+        "cols": 5,
+        "time_min": 1641160800,
+        "time_max": 1772573400,
+        "span_sec": 131412600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "DX-Y.NYB",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 2286,
+          "cols": 6,
+          "time_min": 1767675600,
+          "time_max": 1773869400,
+          "span_sec": 6193800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 49594,
+          "rows_incoming": 49250,
+          "rows_merged": 49759,
+          "rows_added_net": 165,
+          "n_dupes_dropped": 49085,
+          "time_min": 1641160800,
+          "time_max": 1773869400
+        },
+        "final": {
+          "rows": 49759,
+          "cols": 7,
+          "time_min": 1641160800,
+          "time_max": 1773869400,
+          "span_sec": 132708600,
+          "missing_frac": 0.159009760378357,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "fx/dxy_5m.csv",
+      "dest": "data/market/fx/dxy_5m.csv",
+      "tv": {
+        "rows": 40422,
+        "cols": 5,
+        "time_min": 1754258400,
+        "time_max": 1772574000,
+        "span_sec": 18315600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "DX-Y.NYB",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 13386,
+          "cols": 6,
+          "time_min": 1767675600,
+          "time_max": 1773869700,
+          "span_sec": 6194100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42408,
+          "rows_incoming": 40422,
+          "rows_merged": 43401,
+          "rows_added_net": 993,
+          "n_dupes_dropped": 39429,
+          "time_min": 1754258400,
+          "time_max": 1773869700
+        },
+        "final": {
+          "rows": 43401,
+          "cols": 7,
+          "time_min": 1754258400,
+          "time_max": 1773869700,
+          "span_sec": 19611300,
+          "missing_frac": 0.11523159988633135,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "fx/dxy_daily.csv",
+      "dest": "data/market/fx/dxy_daily.csv",
+      "tv": {
+        "rows": 13976,
+        "cols": 5,
+        "time_min": -92102400,
+        "time_max": 1772496000,
+        "span_sec": 1864598400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "DX-Y.NYB",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 14019,
+          "cols": 6,
+          "time_min": 31813200,
+          "time_max": 1773806400,
+          "span_sec": 1741993200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 20474,
+          "rows_incoming": 13976,
+          "rows_merged": 28008,
+          "rows_added_net": 7534,
+          "n_dupes_dropped": 6442,
+          "time_min": -92102400,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 28008,
+          "cols": 7,
+          "time_min": -92102400,
+          "time_max": 1773806400,
+          "span_sec": 1865908800,
+          "missing_frac": 0.08316671427211274,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us02y_15m.csv",
+      "dest": "data/market/rates/us02y_15m.csv",
+      "tv": {
+        "rows": 41112,
+        "cols": 5,
+        "time_min": 1709252100,
+        "time_max": 1772572500,
+        "span_sec": 63320400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^IRX",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1431,
+          "cols": 6,
+          "time_min": 1767187200,
+          "time_max": 1773859800,
+          "span_sec": 6672600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42516,
+          "rows_incoming": 41112,
+          "rows_merged": 42543,
+          "rows_added_net": 27,
+          "n_dupes_dropped": 41085,
+          "time_min": 1709252100,
+          "time_max": 1773859800
+        },
+        "final": {
+          "rows": 42543,
+          "cols": 7,
+          "time_min": 1709252100,
+          "time_max": 1773859800,
+          "span_sec": 64607700,
+          "missing_frac": 0.16106057400747478,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us02y_1h.csv",
+      "dest": "data/market/rates/us02y_1h.csv",
+      "tv": {
+        "rows": 43898,
+        "cols": 5,
+        "time_min": 1514876400,
+        "time_max": 1772571600,
+        "span_sec": 257695200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^IRX",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 4221,
+          "cols": 6,
+          "time_min": 1697804400,
+          "time_max": 1773858000,
+          "span_sec": 76053600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 48112,
+          "rows_incoming": 43898,
+          "rows_merged": 48119,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 43891,
+          "time_min": 1514876400,
+          "time_max": 1773858000
+        },
+        "final": {
+          "rows": 48119,
+          "cols": 7,
+          "time_min": 1514876400,
+          "time_max": 1773858000,
+          "span_sec": 258981600,
+          "missing_frac": 0.15204666209466808,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us02y_30m.csv",
+      "dest": "data/market/rates/us02y_30m.csv",
+      "tv": {
+        "rows": 44239,
+        "cols": 5,
+        "time_min": 1641207600,
+        "time_max": 1772571600,
+        "span_sec": 131364000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^IRX",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 742,
+          "cols": 6,
+          "time_min": 1767186000,
+          "time_max": 1773858600,
+          "span_sec": 6672600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44381,
+          "rows_incoming": 44239,
+          "rows_merged": 44395,
+          "rows_added_net": 14,
+          "n_dupes_dropped": 44225,
+          "time_min": 1641207600,
+          "time_max": 1773858600
+        },
+        "final": {
+          "rows": 44395,
+          "cols": 7,
+          "time_min": 1641207600,
+          "time_max": 1773858600,
+          "span_sec": 132651000,
+          "missing_frac": 0.16388106768780267,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us02y_5m.csv",
+      "dest": "data/market/rates/us02y_5m.csv",
+      "tv": {
+        "rows": 40655,
+        "cols": 5,
+        "time_min": 1747613400,
+        "time_max": 1772572800,
+        "span_sec": 24959400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^IRX",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4239,
+          "cols": 6,
+          "time_min": 1767187200,
+          "time_max": 1773860100,
+          "span_sec": 6672900,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41833,
+          "rows_incoming": 40655,
+          "rows_merged": 41913,
+          "rows_added_net": 80,
+          "n_dupes_dropped": 40575,
+          "time_min": 1747613400,
+          "time_max": 1773860100
+        },
+        "final": {
+          "rows": 41913,
+          "cols": 7,
+          "time_min": 1747613400,
+          "time_max": 1773860100,
+          "span_sec": 26246700,
+          "missing_frac": 0.14981032138000142,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us02y_daily.csv",
+      "dest": "data/market/rates/us02y_daily.csv",
+      "tv": {
+        "rows": 8418,
+        "cols": 5,
+        "time_min": 572832000,
+        "time_max": 1772496000,
+        "span_sec": 1199664000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^IRX",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 16566,
+          "cols": 6,
+          "time_min": -315338400,
+          "time_max": 1773810000,
+          "span_sec": 2089148400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "incoming",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 24983,
+          "rows_incoming": 8418,
+          "rows_merged": 24984,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 8417,
+          "time_min": -315338400,
+          "time_max": 1773810000
+        },
+        "final": {
+          "rows": 24984,
+          "cols": 7,
+          "time_min": -315338400,
+          "time_max": 1773810000,
+          "span_sec": 2089148400,
+          "missing_frac": 0.05615593980147294,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us05y_15m.csv",
+      "dest": "data/market/rates/us05y_15m.csv",
+      "tv": {
+        "rows": 41538,
+        "cols": 5,
+        "time_min": 1709252100,
+        "time_max": 1772572500,
+        "span_sec": 63320400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FVX",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1431,
+          "cols": 6,
+          "time_min": 1767187200,
+          "time_max": 1773859800,
+          "span_sec": 6672600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42942,
+          "rows_incoming": 41538,
+          "rows_merged": 42969,
+          "rows_added_net": 27,
+          "n_dupes_dropped": 41511,
+          "time_min": 1709252100,
+          "time_max": 1773859800
+        },
+        "final": {
+          "rows": 42969,
+          "cols": 7,
+          "time_min": 1709252100,
+          "time_max": 1773859800,
+          "span_sec": 64607700,
+          "missing_frac": 0.16111615350601596,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us05y_1h.csv",
+      "dest": "data/market/rates/us05y_1h.csv",
+      "tv": {
+        "rows": 44826,
+        "cols": 5,
+        "time_min": 1514876400,
+        "time_max": 1772571600,
+        "span_sec": 257695200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FVX",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 4221,
+          "cols": 6,
+          "time_min": 1697804400,
+          "time_max": 1773858000,
+          "span_sec": 76053600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 49040,
+          "rows_incoming": 44826,
+          "rows_merged": 49047,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 44819,
+          "time_min": 1514876400,
+          "time_max": 1773858000
+        },
+        "final": {
+          "rows": 49047,
+          "cols": 7,
+          "time_min": 1514876400,
+          "time_max": 1773858000,
+          "span_sec": 258981600,
+          "missing_frac": 0.152323281750158,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us05y_30m.csv",
+      "dest": "data/market/rates/us05y_30m.csv",
+      "tv": {
+        "rows": 44326,
+        "cols": 5,
+        "time_min": 1641198600,
+        "time_max": 1772571600,
+        "span_sec": 131373000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FVX",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 742,
+          "cols": 6,
+          "time_min": 1767186000,
+          "time_max": 1773858600,
+          "span_sec": 6672600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44467,
+          "rows_incoming": 44326,
+          "rows_merged": 44481,
+          "rows_added_net": 14,
+          "n_dupes_dropped": 44312,
+          "time_min": 1641198600,
+          "time_max": 1773858600
+        },
+        "final": {
+          "rows": 44481,
+          "cols": 7,
+          "time_min": 1641198600,
+          "time_max": 1773858600,
+          "span_sec": 132660000,
+          "missing_frac": 0.16388645339208502,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us05y_5m.csv",
+      "dest": "data/market/rates/us05y_5m.csv",
+      "tv": {
+        "rows": 40021,
+        "cols": 5,
+        "time_min": 1749427800,
+        "time_max": 1772572800,
+        "span_sec": 23145000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FVX",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4240,
+          "cols": 6,
+          "time_min": 1767187200,
+          "time_max": 1773860100,
+          "span_sec": 6672900,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40987,
+          "rows_incoming": 40021,
+          "rows_merged": 41067,
+          "rows_added_net": 80,
+          "n_dupes_dropped": 39941,
+          "time_min": 1749427800,
+          "time_max": 1773860100
+        },
+        "final": {
+          "rows": 41067,
+          "cols": 7,
+          "time_min": 1749427800,
+          "time_max": 1773860100,
+          "span_sec": 24432300,
+          "missing_frac": 0.1494590141313788,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us05y_daily.csv",
+      "dest": "data/market/rates/us05y_daily.csv",
+      "tv": {
+        "rows": 8449,
+        "cols": 5,
+        "time_min": 556412400,
+        "time_max": 1772496000,
+        "span_sec": 1216083600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^FVX",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 16067,
+          "cols": 6,
+          "time_min": -252352800,
+          "time_max": 1773810000,
+          "span_sec": 2026162800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "incoming",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 24515,
+          "rows_incoming": 8449,
+          "rows_merged": 24516,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 8448,
+          "time_min": -252352800,
+          "time_max": 1773810000
+        },
+        "final": {
+          "rows": 24516,
+          "cols": 7,
+          "time_min": -252352800,
+          "time_max": 1773810000,
+          "span_sec": 2026162800,
+          "missing_frac": 0.05743867950182194,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us10y_15m.csv",
+      "dest": "data/market/rates/us10y_15m.csv",
+      "tv": {
+        "rows": 41535,
+        "cols": 5,
+        "time_min": 1709252100,
+        "time_max": 1772573400,
+        "span_sec": 63321300,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^TNX",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1431,
+          "cols": 6,
+          "time_min": 1767187200,
+          "time_max": 1773859800,
+          "span_sec": 6672600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42939,
+          "rows_incoming": 41535,
+          "rows_merged": 42966,
+          "rows_added_net": 27,
+          "n_dupes_dropped": 41508,
+          "time_min": 1709252100,
+          "time_max": 1773859800
+        },
+        "final": {
+          "rows": 42966,
+          "cols": 7,
+          "time_min": 1709252100,
+          "time_max": 1773859800,
+          "span_sec": 64607700,
+          "missing_frac": 0.16111576595447563,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us10y_1h.csv",
+      "dest": "data/market/rates/us10y_1h.csv",
+      "tv": {
+        "rows": 44912,
+        "cols": 5,
+        "time_min": 1514876400,
+        "time_max": 1772571600,
+        "span_sec": 257695200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^TNX",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 4221,
+          "cols": 6,
+          "time_min": 1697804400,
+          "time_max": 1773858000,
+          "span_sec": 76053600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 49126,
+          "rows_incoming": 44912,
+          "rows_merged": 49133,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 44905,
+          "time_min": 1514876400,
+          "time_max": 1773858000
+        },
+        "final": {
+          "rows": 49133,
+          "cols": 7,
+          "time_min": 1514876400,
+          "time_max": 1773858000,
+          "span_sec": 258981600,
+          "missing_frac": 0.15234838770955025,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us10y_30m.csv",
+      "dest": "data/market/rates/us10y_30m.csv",
+      "tv": {
+        "rows": 44422,
+        "cols": 5,
+        "time_min": 1641207600,
+        "time_max": 1772573400,
+        "span_sec": 131365800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^TNX",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 742,
+          "cols": 6,
+          "time_min": 1767186000,
+          "time_max": 1773858600,
+          "span_sec": 6672600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44563,
+          "rows_incoming": 44422,
+          "rows_merged": 44577,
+          "rows_added_net": 14,
+          "n_dupes_dropped": 44408,
+          "time_min": 1641207600,
+          "time_max": 1773858600
+        },
+        "final": {
+          "rows": 44577,
+          "cols": 7,
+          "time_min": 1641207600,
+          "time_max": 1773858600,
+          "span_sec": 132651000,
+          "missing_frac": 0.16389244079532794,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us10y_5m.csv",
+      "dest": "data/market/rates/us10y_5m.csv",
+      "tv": {
+        "rows": 40420,
+        "cols": 5,
+        "time_min": 1749428100,
+        "time_max": 1772573100,
+        "span_sec": 23145000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^TNX",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4240,
+          "cols": 6,
+          "time_min": 1767187200,
+          "time_max": 1773860100,
+          "span_sec": 6672900,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41357,
+          "rows_incoming": 40420,
+          "rows_merged": 41437,
+          "rows_added_net": 80,
+          "n_dupes_dropped": 40340,
+          "time_min": 1749428100,
+          "time_max": 1773860100
+        },
+        "final": {
+          "rows": 41437,
+          "cols": 7,
+          "time_min": 1749428100,
+          "time_max": 1773860100,
+          "span_sec": 24432000,
+          "missing_frac": 0.14961266500953255,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us10y_daily.csv",
+      "dest": "data/market/rates/us10y_daily.csv",
+      "tv": {
+        "rows": 10759,
+        "cols": 5,
+        "time_min": -1817078400,
+        "time_max": 1772496000,
+        "span_sec": 3589574400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^TNX",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 16067,
+          "cols": 6,
+          "time_min": -252352800,
+          "time_max": 1773810000,
+          "span_sec": 2026162800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 26825,
+          "rows_incoming": 10759,
+          "rows_merged": 26826,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 10758,
+          "time_min": -1817078400,
+          "time_max": 1773810000
+        },
+        "final": {
+          "rows": 26826,
+          "cols": 7,
+          "time_min": -1817078400,
+          "time_max": 1773810000,
+          "span_sec": 3590888400,
+          "missing_frac": 0.06684435497900047,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "rates/us30y_daily.csv",
+      "dest": "data/market/rates/us30y_daily.csv",
+      "tv": {
+        "rows": 8417,
+        "cols": 5,
+        "time_min": 555030000,
+        "time_max": 1772496000,
+        "span_sec": 1217466000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^TYX",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 12297,
+          "cols": 6,
+          "time_min": 224834400,
+          "time_max": 1773810000,
+          "span_sec": 1548975600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "incoming",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 20713,
+          "rows_incoming": 8417,
+          "rows_merged": 20714,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 8416,
+          "time_min": 224834400,
+          "time_max": 1773810000
+        },
+        "final": {
+          "rows": 20714,
+          "cols": 7,
+          "time_min": 224834400,
+          "time_max": 1773810000,
+          "span_sec": 1548975600,
+          "missing_frac": 0.06772392262881786,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/cor1m_15m.csv",
+      "dest": "data/market/sentiment/cor1m_15m.csv",
+      "tv": {
+        "rows": 26677,
+        "cols": 5,
+        "time_min": 1647610200,
+        "time_max": 1772570700,
+        "span_sec": 124960500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=cor1m category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 26677,
+          "rows_incoming": 26677,
+          "rows_merged": 26677,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 26677,
+          "time_min": 1647610200,
+          "time_max": 1772570700
+        },
+        "final": {
+          "rows": 26677,
+          "cols": 6,
+          "time_min": 1647610200,
+          "time_max": 1772570700,
+          "span_sec": 124960500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/cor1m_1h.csv",
+      "dest": "data/market/sentiment/cor1m_1h.csv",
+      "tv": {
+        "rows": 6917,
+        "cols": 5,
+        "time_min": 1647610200,
+        "time_max": 1772569800,
+        "span_sec": 124959600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=cor1m category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 6917,
+          "rows_incoming": 6917,
+          "rows_merged": 6917,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 6917,
+          "time_min": 1647610200,
+          "time_max": 1772569800
+        },
+        "final": {
+          "rows": 6917,
+          "cols": 6,
+          "time_min": 1647610200,
+          "time_max": 1772569800,
+          "span_sec": 124959600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/cor1m_30m.csv",
+      "dest": "data/market/sentiment/cor1m_30m.csv",
+      "tv": {
+        "rows": 13833,
+        "cols": 5,
+        "time_min": 1647610200,
+        "time_max": 1772569800,
+        "span_sec": 124959600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=cor1m category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 13833,
+          "rows_incoming": 13833,
+          "rows_merged": 13833,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 13833,
+          "time_min": 1647610200,
+          "time_max": 1772569800
+        },
+        "final": {
+          "rows": 13833,
+          "cols": 6,
+          "time_min": 1647610200,
+          "time_max": 1772569800,
+          "span_sec": 124959600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/cor1m_5m.csv",
+      "dest": "data/market/sentiment/cor1m_5m.csv",
+      "tv": {
+        "rows": 40309,
+        "cols": 5,
+        "time_min": 1709562600,
+        "time_max": 1772571300,
+        "span_sec": 63008700,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=cor1m category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40309,
+          "rows_incoming": 40309,
+          "rows_merged": 40309,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40309,
+          "time_min": 1709562600,
+          "time_max": 1772571300
+        },
+        "final": {
+          "rows": 40309,
+          "cols": 6,
+          "time_min": 1709562600,
+          "time_max": 1772571300,
+          "span_sec": 63008700,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/cor1m_daily.csv",
+      "dest": "data/market/sentiment/cor1m_daily.csv",
+      "tv": {
+        "rows": 5072,
+        "cols": 5,
+        "time_min": 1136298600,
+        "time_max": 1772548200,
+        "span_sec": 636249600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=cor1m category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 5072,
+          "rows_incoming": 5072,
+          "rows_merged": 5072,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 5072,
+          "time_min": 1136298600,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 5072,
+          "cols": 6,
+          "time_min": 1136298600,
+          "time_max": 1772548200,
+          "span_sec": 636249600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/pc_daily.csv",
+      "dest": "data/market/sentiment/pc_daily.csv",
+      "tv": {
+        "rows": 4871,
+        "cols": 5,
+        "time_min": 1161091800,
+        "time_max": 1772548200,
+        "span_sec": 611456400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=pc category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 4871,
+          "rows_incoming": 4871,
+          "rows_merged": 4871,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 4871,
+          "time_min": 1161091800,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 4871,
+          "cols": 6,
+          "time_min": 1161091800,
+          "time_max": 1772548200,
+          "span_sec": 611456400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/pcspx_daily.csv",
+      "dest": "data/market/sentiment/pcspx_daily.csv",
+      "tv": {
+        "rows": 4858,
+        "cols": 5,
+        "time_min": 1161178200,
+        "time_max": 1772548200,
+        "span_sec": 611370000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=pcspx category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 4858,
+          "rows_incoming": 4858,
+          "rows_merged": 4858,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 4858,
+          "time_min": 1161178200,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 4858,
+          "cols": 6,
+          "time_min": 1161178200,
+          "time_max": 1772548200,
+          "span_sec": 611370000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sentiment/skew_daily.csv",
+      "dest": "data/market/sentiment/skew_daily.csv",
+      "tv": {
+        "rows": 9044,
+        "cols": 5,
+        "time_min": 631290600,
+        "time_max": 1772461800,
+        "span_sec": 1141171200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=skew category=sentiment",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 9044,
+          "rows_incoming": 9044,
+          "rows_merged": 9044,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 9044,
+          "time_min": 631290600,
+          "time_max": 1772461800
+        },
+        "final": {
+          "rows": 9044,
+          "cols": 6,
+          "time_min": 631290600,
+          "time_max": 1772461800,
+          "span_sec": 1141171200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sp_futures/es1_1m.csv",
+      "dest": "data/market/sp_futures/es1_1m.csv",
+      "tv": {
+        "rows": 43485,
+        "cols": 5,
+        "time_min": 1768777200,
+        "time_max": 1772563500,
+        "span_sec": 3786300,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "ES=F",
+        "interval": "1m",
+        "status": "ok",
+        "stats": {
+          "rows": 7855,
+          "cols": 6,
+          "time_min": 1773202140,
+          "time_max": 1773867540,
+          "span_sec": 665400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 51340,
+          "rows_incoming": 43485,
+          "rows_merged": 52710,
+          "rows_added_net": 1370,
+          "n_dupes_dropped": 42115,
+          "time_min": 1768777200,
+          "time_max": 1773867540
+        },
+        "final": {
+          "rows": 52710,
+          "cols": 7,
+          "time_min": 1768777200,
+          "time_max": 1773867540,
+          "span_sec": 5090340,
+          "missing_frac": 0.1374976285334851,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sp_futures/es1_5m.csv",
+      "dest": "data/market/sp_futures/es1_5m.csv",
+      "tv": {
+        "rows": 40951,
+        "cols": 5,
+        "time_min": 1754258400,
+        "time_max": 1772563500,
+        "span_sec": 18305100,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "ES=F",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 13596,
+          "cols": 6,
+          "time_min": 1767675900,
+          "time_max": 1773867300,
+          "span_sec": 6191400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 43737,
+          "rows_incoming": 40951,
+          "rows_merged": 44012,
+          "rows_added_net": 275,
+          "n_dupes_dropped": 40676,
+          "time_min": 1754258400,
+          "time_max": 1773867300
+        },
+        "final": {
+          "rows": 44012,
+          "cols": 7,
+          "time_min": 1754258400,
+          "time_max": 1773867300,
+          "span_sec": 19608900,
+          "missing_frac": 0.11413553879245054,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sp_futures/es2_1m.csv",
+      "dest": "data/market/sp_futures/es2_1m.csv",
+      "tv": {
+        "rows": 41023,
+        "cols": 5,
+        "time_min": 1757887200,
+        "time_max": 1772563680,
+        "span_sec": 14676480,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "ES=F",
+        "interval": "1m",
+        "status": "ok",
+        "stats": {
+          "rows": 7855,
+          "cols": 6,
+          "time_min": 1773202140,
+          "time_max": 1773867540,
+          "span_sec": 665400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 48878,
+          "rows_incoming": 41023,
+          "rows_merged": 50248,
+          "rows_added_net": 1370,
+          "n_dupes_dropped": 39653,
+          "time_min": 1757887200,
+          "time_max": 1773867540
+        },
+        "final": {
+          "rows": 50248,
+          "cols": 7,
+          "time_min": 1757887200,
+          "time_max": 1773867540,
+          "span_sec": 15980340,
+          "missing_frac": 0.13606843390118348,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "sp_futures/es2_5m.csv",
+      "dest": "data/market/sp_futures/es2_5m.csv",
+      "tv": {
+        "rows": 40266,
+        "cols": 5,
+        "time_min": 1740351600,
+        "time_max": 1772563500,
+        "span_sec": 32211900,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "ES=F",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 13596,
+          "cols": 6,
+          "time_min": 1767675900,
+          "time_max": 1773867300,
+          "span_sec": 6191400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 47827,
+          "rows_incoming": 40266,
+          "rows_merged": 48102,
+          "rows_added_net": 275,
+          "n_dupes_dropped": 39991,
+          "time_min": 1740351600,
+          "time_max": 1773867300
+        },
+        "final": {
+          "rows": 48102,
+          "cols": 7,
+          "time_min": 1740351600,
+          "time_max": 1773867300,
+          "span_sec": 33515700,
+          "missing_frac": 0.11860213712527545,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx1_15m.csv",
+      "dest": "data/market/vix_futures/vx1_15m.csv",
+      "tv": {
+        "rows": 41579,
+        "cols": 5,
+        "time_min": 1714514400,
+        "time_max": 1772568000,
+        "span_sec": 58053600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vx1 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41579,
+          "rows_incoming": 41579,
+          "rows_merged": 41579,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 41579,
+          "time_min": 1714514400,
+          "time_max": 1772568000
+        },
+        "final": {
+          "rows": 41579,
+          "cols": 6,
+          "time_min": 1714514400,
+          "time_max": 1772568000,
+          "span_sec": 58053600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx1_1h.csv",
+      "dest": "data/market/vix_futures/vx1_1h.csv",
+      "tv": {
+        "rows": 23135,
+        "cols": 5,
+        "time_min": 1646301600,
+        "time_max": 1772568000,
+        "span_sec": 126266400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vx1 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 23135,
+          "rows_incoming": 23135,
+          "rows_merged": 23135,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 23135,
+          "time_min": 1646301600,
+          "time_max": 1772568000
+        },
+        "final": {
+          "rows": 23135,
+          "cols": 6,
+          "time_min": 1646301600,
+          "time_max": 1772568000,
+          "span_sec": 126266400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx1_30m.csv",
+      "dest": "data/market/vix_futures/vx1_30m.csv",
+      "tv": {
+        "rows": 45984,
+        "cols": 5,
+        "time_min": 1646217000,
+        "time_max": 1772568000,
+        "span_sec": 126351000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=vx1 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 45984,
+          "rows_incoming": 45984,
+          "rows_merged": 45984,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 45984,
+          "time_min": 1646217000,
+          "time_max": 1772568000
+        },
+        "final": {
+          "rows": 45984,
+          "cols": 6,
+          "time_min": 1646217000,
+          "time_max": 1772568000,
+          "span_sec": 126351000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx1_5m.csv",
+      "dest": "data/market/vix_futures/vx1_5m.csv",
+      "tv": {
+        "rows": 40845,
+        "cols": 5,
+        "time_min": 1751580000,
+        "time_max": 1772568600,
+        "span_sec": 20988600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vx1 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40845,
+          "rows_incoming": 40845,
+          "rows_merged": 40845,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40845,
+          "time_min": 1751580000,
+          "time_max": 1772568600
+        },
+        "final": {
+          "rows": 40845,
+          "cols": 6,
+          "time_min": 1751580000,
+          "time_max": 1772568600,
+          "span_sec": 20988600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx2_15m.csv",
+      "dest": "data/market/vix_futures/vx2_15m.csv",
+      "tv": {
+        "rows": 41156,
+        "cols": 5,
+        "time_min": 1711922400,
+        "time_max": 1772568900,
+        "span_sec": 60646500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vx2 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41156,
+          "rows_incoming": 41156,
+          "rows_merged": 41156,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 41156,
+          "time_min": 1711922400,
+          "time_max": 1772568900
+        },
+        "final": {
+          "rows": 41156,
+          "cols": 6,
+          "time_min": 1711922400,
+          "time_max": 1772568900,
+          "span_sec": 60646500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx2_1h.csv",
+      "dest": "data/market/vix_futures/vx2_1h.csv",
+      "tv": {
+        "rows": 23011,
+        "cols": 5,
+        "time_min": 1646204400,
+        "time_max": 1772568000,
+        "span_sec": 126363600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vx2 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 23011,
+          "rows_incoming": 23011,
+          "rows_merged": 23011,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 23011,
+          "time_min": 1646204400,
+          "time_max": 1772568000
+        },
+        "final": {
+          "rows": 23011,
+          "cols": 6,
+          "time_min": 1646204400,
+          "time_max": 1772568000,
+          "span_sec": 126363600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx2_30m.csv",
+      "dest": "data/market/vix_futures/vx2_30m.csv",
+      "tv": {
+        "rows": 44885,
+        "cols": 5,
+        "time_min": 1646224200,
+        "time_max": 1772568000,
+        "span_sec": 126343800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=vx2 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 44885,
+          "rows_incoming": 44885,
+          "rows_merged": 44885,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 44885,
+          "time_min": 1646224200,
+          "time_max": 1772568000
+        },
+        "final": {
+          "rows": 44885,
+          "cols": 6,
+          "time_min": 1646224200,
+          "time_max": 1772568000,
+          "span_sec": 126343800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx2_5m.csv",
+      "dest": "data/market/vix_futures/vx2_5m.csv",
+      "tv": {
+        "rows": 40228,
+        "cols": 5,
+        "time_min": 1749420000,
+        "time_max": 1772568900,
+        "span_sec": 23148900,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vx2 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40228,
+          "rows_incoming": 40228,
+          "rows_merged": 40228,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40228,
+          "time_min": 1749420000,
+          "time_max": 1772568900
+        },
+        "final": {
+          "rows": 40228,
+          "cols": 6,
+          "time_min": 1749420000,
+          "time_max": 1772568900,
+          "span_sec": 23148900,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vix_futures/vx2_daily.csv",
+      "dest": "data/market/vix_futures/vx2_daily.csv",
+      "tv": {
+        "rows": 5390,
+        "cols": 5,
+        "time_min": 1080255600,
+        "time_max": 1772492400,
+        "span_sec": 692236800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=vx2 category=vix_futures",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 5390,
+          "rows_incoming": 5390,
+          "rows_merged": 5390,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 5390,
+          "time_min": 1080255600,
+          "time_max": 1772492400
+        },
+        "final": {
+          "rows": 5390,
+          "cols": 6,
+          "time_min": 1080255600,
+          "time_max": 1772492400,
+          "span_sec": 692236800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/svxy_15m.csv",
+      "dest": "data/market/vol_etfs/svxy_15m.csv",
+      "tv": {
+        "rows": 40117,
+        "cols": 5,
+        "time_min": 1577975400,
+        "time_max": 1772570700,
+        "span_sec": 194595300,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SVXY",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1548,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863100,
+          "span_sec": 7708500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40377,
+          "rows_incoming": 40117,
+          "rows_merged": 40403,
+          "rows_added_net": 26,
+          "n_dupes_dropped": 40091,
+          "time_min": 1577975400,
+          "time_max": 1773863100
+        },
+        "final": {
+          "rows": 40403,
+          "cols": 7,
+          "time_min": 1577975400,
+          "time_max": 1773863100,
+          "span_sec": 195887700,
+          "missing_frac": 0.16017374947404897,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/svxy_1h.csv",
+      "dest": "data/market/vol_etfs/svxy_1h.csv",
+      "tv": {
+        "rows": 25057,
+        "cols": 5,
+        "time_min": 1317735000,
+        "time_max": 1772569800,
+        "span_sec": 454834800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SVXY",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 5078,
+          "cols": 6,
+          "time_min": 1681997400,
+          "time_max": 1773862200,
+          "span_sec": 91864800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 25127,
+          "rows_incoming": 25057,
+          "rows_merged": 25134,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 25050,
+          "time_min": 1317735000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 25134,
+          "cols": 7,
+          "time_min": 1317735000,
+          "time_max": 1773862200,
+          "span_sec": 456127200,
+          "missing_frac": 0.13294740192567836,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/svxy_30m.csv",
+      "dest": "data/market/vol_etfs/svxy_30m.csv",
+      "tv": {
+        "rows": 42837,
+        "cols": 5,
+        "time_min": 1357137000,
+        "time_max": 1772569800,
+        "span_sec": 415432800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SVXY",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 774,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773862200,
+          "span_sec": 7707600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42967,
+          "rows_incoming": 42837,
+          "rows_merged": 42980,
+          "rows_added_net": 13,
+          "n_dupes_dropped": 42824,
+          "time_min": 1357137000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 42980,
+          "cols": 7,
+          "time_min": 1357137000,
+          "time_max": 1773862200,
+          "span_sec": 416725200,
+          "missing_frac": 0.1636148596246316,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/svxy_5m.csv",
+      "dest": "data/market/vol_etfs/svxy_5m.csv",
+      "tv": {
+        "rows": 40303,
+        "cols": 5,
+        "time_min": 1705933800,
+        "time_max": 1772571300,
+        "span_sec": 66637500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SVXY",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4638,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863700,
+          "span_sec": 7709100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41114,
+          "rows_incoming": 40303,
+          "rows_merged": 41192,
+          "rows_added_net": 78,
+          "n_dupes_dropped": 40225,
+          "time_min": 1705933800,
+          "time_max": 1773863700
+        },
+        "final": {
+          "rows": 41192,
+          "cols": 7,
+          "time_min": 1705933800,
+          "time_max": 1773863700,
+          "span_sec": 67929900,
+          "missing_frac": 0.14758529164239012,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/svxy_daily.csv",
+      "dest": "data/market/vol_etfs/svxy_daily.csv",
+      "tv": {
+        "rows": 3623,
+        "cols": 5,
+        "time_min": 1317735000,
+        "time_max": 1772548200,
+        "span_sec": 454813200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "SVXY",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 3634,
+          "cols": 6,
+          "time_min": 1317700800,
+          "time_max": 1773806400,
+          "span_sec": 456105600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 7256,
+          "rows_incoming": 3623,
+          "rows_merged": 7257,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 3622,
+          "time_min": 1317700800,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 7257,
+          "cols": 7,
+          "time_min": 1317700800,
+          "time_max": 1773806400,
+          "span_sec": 456105600,
+          "missing_frac": 0.08320701851086308,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/uvxy_15m.csv",
+      "dest": "data/market/vol_etfs/uvxy_15m.csv",
+      "tv": {
+        "rows": 40137,
+        "cols": 5,
+        "time_min": 1577975400,
+        "time_max": 1772570700,
+        "span_sec": 194595300,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "UVXY",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1548,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863100,
+          "span_sec": 7708500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40397,
+          "rows_incoming": 40137,
+          "rows_merged": 40423,
+          "rows_added_net": 26,
+          "n_dupes_dropped": 40111,
+          "time_min": 1577975400,
+          "time_max": 1773863100
+        },
+        "final": {
+          "rows": 40423,
+          "cols": 7,
+          "time_min": 1577975400,
+          "time_max": 1773863100,
+          "span_sec": 195887700,
+          "missing_frac": 0.1601769619606,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/uvxy_1h.csv",
+      "dest": "data/market/vol_etfs/uvxy_1h.csv",
+      "tv": {
+        "rows": 25208,
+        "cols": 5,
+        "time_min": 1317735000,
+        "time_max": 1772569800,
+        "span_sec": 454834800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "UVXY",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 5078,
+          "cols": 6,
+          "time_min": 1681997400,
+          "time_max": 1773862200,
+          "span_sec": 91864800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 25278,
+          "rows_incoming": 25208,
+          "rows_merged": 25285,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 25201,
+          "time_min": 1317735000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 25285,
+          "cols": 7,
+          "time_min": 1317735000,
+          "time_max": 1773862200,
+          "span_sec": 456127200,
+          "missing_frac": 0.13314877068090436,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/uvxy_30m.csv",
+      "dest": "data/market/vol_etfs/uvxy_30m.csv",
+      "tv": {
+        "rows": 42891,
+        "cols": 5,
+        "time_min": 1357137000,
+        "time_max": 1772569800,
+        "span_sec": 415432800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "UVXY",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 774,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773862200,
+          "span_sec": 7707600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 43021,
+          "rows_incoming": 42891,
+          "rows_merged": 43034,
+          "rows_added_net": 13,
+          "n_dupes_dropped": 42878,
+          "time_min": 1357137000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 43034,
+          "cols": 7,
+          "time_min": 1357137000,
+          "time_max": 1773862200,
+          "span_sec": 416725200,
+          "missing_frac": 0.16361868909854224,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/uvxy_5m.csv",
+      "dest": "data/market/vol_etfs/uvxy_5m.csv",
+      "tv": {
+        "rows": 40319,
+        "cols": 5,
+        "time_min": 1707143400,
+        "time_max": 1772571000,
+        "span_sec": 65427600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "UVXY",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4642,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863700,
+          "span_sec": 7709100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41100,
+          "rows_incoming": 40319,
+          "rows_merged": 41178,
+          "rows_added_net": 78,
+          "n_dupes_dropped": 40241,
+          "time_min": 1707143400,
+          "time_max": 1773863700
+        },
+        "final": {
+          "rows": 41178,
+          "cols": 7,
+          "time_min": 1707143400,
+          "time_max": 1773863700,
+          "span_sec": 66720300,
+          "missing_frac": 0.14756261434099113,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/uvxy_daily.csv",
+      "dest": "data/market/vol_etfs/uvxy_daily.csv",
+      "tv": {
+        "rows": 3619,
+        "cols": 5,
+        "time_min": 1317735000,
+        "time_max": 1772548200,
+        "span_sec": 454813200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "UVXY",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 3634,
+          "cols": 6,
+          "time_min": 1317700800,
+          "time_max": 1773806400,
+          "span_sec": 456105600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 7252,
+          "rows_incoming": 3619,
+          "rows_merged": 7253,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 3618,
+          "time_min": 1317700800,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 7253,
+          "cols": 7,
+          "time_min": 1317700800,
+          "time_max": 1773806400,
+          "span_sec": 456105600,
+          "missing_frac": 0.08316099085435912,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/vixy_15m.csv",
+      "dest": "data/market/vol_etfs/vixy_15m.csv",
+      "tv": {
+        "rows": 40116,
+        "cols": 5,
+        "time_min": 1577975400,
+        "time_max": 1772570700,
+        "span_sec": 194595300,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "VIXY",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1548,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863100,
+          "span_sec": 7708500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40376,
+          "rows_incoming": 40116,
+          "rows_merged": 40402,
+          "rows_added_net": 26,
+          "n_dupes_dropped": 40090,
+          "time_min": 1577975400,
+          "time_max": 1773863100
+        },
+        "final": {
+          "rows": 40402,
+          "cols": 7,
+          "time_min": 1577975400,
+          "time_max": 1773863100,
+          "span_sec": 195887700,
+          "missing_frac": 0.1601735887662327,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/vixy_1h.csv",
+      "dest": "data/market/vol_etfs/vixy_1h.csv",
+      "tv": {
+        "rows": 26341,
+        "cols": 5,
+        "time_min": 1294151400,
+        "time_max": 1772569800,
+        "span_sec": 478418400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "VIXY",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 5078,
+          "cols": 6,
+          "time_min": 1681997400,
+          "time_max": 1773862200,
+          "span_sec": 91864800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 26411,
+          "rows_incoming": 26341,
+          "rows_merged": 26418,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 26334,
+          "time_min": 1294151400,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 26418,
+          "cols": 7,
+          "time_min": 1294151400,
+          "time_max": 1773862200,
+          "span_sec": 479710800,
+          "missing_frac": 0.1345862669392081,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/vixy_30m.csv",
+      "dest": "data/market/vol_etfs/vixy_30m.csv",
+      "tv": {
+        "rows": 42826,
+        "cols": 5,
+        "time_min": 1357137000,
+        "time_max": 1772569800,
+        "span_sec": 415432800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "VIXY",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 774,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773862200,
+          "span_sec": 7707600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42956,
+          "rows_incoming": 42826,
+          "rows_merged": 42969,
+          "rows_added_net": 13,
+          "n_dupes_dropped": 42813,
+          "time_min": 1357137000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 42969,
+          "cols": 7,
+          "time_min": 1357137000,
+          "time_max": 1773862200,
+          "span_sec": 416725200,
+          "missing_frac": 0.16361407836657435,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/vixy_5m.csv",
+      "dest": "data/market/vol_etfs/vixy_5m.csv",
+      "tv": {
+        "rows": 40036,
+        "cols": 5,
+        "time_min": 1707143400,
+        "time_max": 1772571300,
+        "span_sec": 65427900,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "VIXY",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4640,
+          "cols": 6,
+          "time_min": 1766154600,
+          "time_max": 1773863700,
+          "span_sec": 7709100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40826,
+          "rows_incoming": 40036,
+          "rows_merged": 40904,
+          "rows_added_net": 78,
+          "n_dupes_dropped": 39958,
+          "time_min": 1707143400,
+          "time_max": 1773863700
+        },
+        "final": {
+          "rows": 40904,
+          "cols": 7,
+          "time_min": 1707143400,
+          "time_max": 1773863700,
+          "span_sec": 66720300,
+          "missing_frac": 0.14744279288089185,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "vol_etfs/vixy_daily.csv",
+      "dest": "data/market/vol_etfs/vixy_daily.csv",
+      "tv": {
+        "rows": 3812,
+        "cols": 5,
+        "time_min": 1294151400,
+        "time_max": 1772548200,
+        "span_sec": 478396800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "VIXY",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 3823,
+          "cols": 6,
+          "time_min": 1294117200,
+          "time_max": 1773806400,
+          "span_sec": 479689200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 7634,
+          "rows_incoming": 3812,
+          "rows_merged": 7635,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 3811,
+          "time_min": 1294117200,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 7635,
+          "cols": 7,
+          "time_min": 1294117200,
+          "time_max": 1773806400,
+          "span_sec": 479689200,
+          "missing_frac": 0.08321327221130757,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1d_15m.csv",
+      "dest": "data/market/volatility/vix1d_15m.csv",
+      "tv": {
+        "rows": 19256,
+        "cols": 5,
+        "time_min": 1682343000,
+        "time_max": 1772563500,
+        "span_sec": 90220500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vix1d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 19256,
+          "rows_incoming": 19256,
+          "rows_merged": 19256,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 19256,
+          "time_min": 1682343000,
+          "time_max": 1772563500
+        },
+        "final": {
+          "rows": 19256,
+          "cols": 6,
+          "time_min": 1682343000,
+          "time_max": 1772563500,
+          "span_sec": 90220500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1d_1h.csv",
+      "dest": "data/market/volatility/vix1d_1h.csv",
+      "tv": {
+        "rows": 4993,
+        "cols": 5,
+        "time_min": 1682343000,
+        "time_max": 1772562600,
+        "span_sec": 90219600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vix1d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 4993,
+          "rows_incoming": 4993,
+          "rows_merged": 4993,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 4993,
+          "time_min": 1682343000,
+          "time_max": 1772562600
+        },
+        "final": {
+          "rows": 4993,
+          "cols": 6,
+          "time_min": 1682343000,
+          "time_max": 1772562600,
+          "span_sec": 90219600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1d_30m.csv",
+      "dest": "data/market/volatility/vix1d_30m.csv",
+      "tv": {
+        "rows": 9985,
+        "cols": 5,
+        "time_min": 1682343000,
+        "time_max": 1772562600,
+        "span_sec": 90219600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=vix1d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 9985,
+          "rows_incoming": 9985,
+          "rows_merged": 9985,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 9985,
+          "time_min": 1682343000,
+          "time_max": 1772562600
+        },
+        "final": {
+          "rows": 9985,
+          "cols": 6,
+          "time_min": 1682343000,
+          "time_max": 1772562600,
+          "span_sec": 90219600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1d_5m.csv",
+      "dest": "data/market/volatility/vix1d_5m.csv",
+      "tv": {
+        "rows": 40335,
+        "cols": 5,
+        "time_min": 1709562600,
+        "time_max": 1772564100,
+        "span_sec": 63001500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vix1d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40335,
+          "rows_incoming": 40335,
+          "rows_merged": 40335,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40335,
+          "time_min": 1709562600,
+          "time_max": 1772564100
+        },
+        "final": {
+          "rows": 40335,
+          "cols": 6,
+          "time_min": 1709562600,
+          "time_max": 1772564100,
+          "span_sec": 63001500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1d_daily.csv",
+      "dest": "data/market/volatility/vix1d_daily.csv",
+      "tv": {
+        "rows": 953,
+        "cols": 5,
+        "time_min": 1652448600,
+        "time_max": 1772548200,
+        "span_sec": 120099600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=vix1d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 953,
+          "rows_incoming": 953,
+          "rows_merged": 953,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 953,
+          "time_min": 1652448600,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 953,
+          "cols": 6,
+          "time_min": 1652448600,
+          "time_max": 1772548200,
+          "span_sec": 120099600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1y_15m.csv",
+      "dest": "data/market/volatility/vix1y_15m.csv",
+      "tv": {
+        "rows": 40580,
+        "cols": 5,
+        "time_min": 1583159400,
+        "time_max": 1772566200,
+        "span_sec": 189406800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vix1y category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40580,
+          "rows_incoming": 40580,
+          "rows_merged": 40580,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40580,
+          "time_min": 1583159400,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 40580,
+          "cols": 6,
+          "time_min": 1583159400,
+          "time_max": 1772566200,
+          "span_sec": 189406800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1y_1h.csv",
+      "dest": "data/market/volatility/vix1y_1h.csv",
+      "tv": {
+        "rows": 13960,
+        "cols": 5,
+        "time_min": 1521034200,
+        "time_max": 1772566200,
+        "span_sec": 251532000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vix1y category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 13960,
+          "rows_incoming": 13960,
+          "rows_merged": 13960,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 13960,
+          "time_min": 1521034200,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 13960,
+          "cols": 6,
+          "time_min": 1521034200,
+          "time_max": 1772566200,
+          "span_sec": 251532000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1y_30m.csv",
+      "dest": "data/market/volatility/vix1y_30m.csv",
+      "tv": {
+        "rows": 27919,
+        "cols": 5,
+        "time_min": 1521034200,
+        "time_max": 1772566200,
+        "span_sec": 251532000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=vix1y category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 27919,
+          "rows_incoming": 27919,
+          "rows_merged": 27919,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 27919,
+          "time_min": 1521034200,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 27919,
+          "cols": 6,
+          "time_min": 1521034200,
+          "time_max": 1772566200,
+          "span_sec": 251532000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1y_5m.csv",
+      "dest": "data/market/volatility/vix1y_5m.csv",
+      "tv": {
+        "rows": 40057,
+        "cols": 5,
+        "time_min": 1708439400,
+        "time_max": 1772566200,
+        "span_sec": 64126800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vix1y category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40057,
+          "rows_incoming": 40057,
+          "rows_merged": 40057,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40057,
+          "time_min": 1708439400,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 40057,
+          "cols": 6,
+          "time_min": 1708439400,
+          "time_max": 1772566200,
+          "span_sec": 64126800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix1y_daily.csv",
+      "dest": "data/market/volatility/vix1y_daily.csv",
+      "tv": {
+        "rows": 2003,
+        "cols": 5,
+        "time_min": 1521034200,
+        "time_max": 1772548200,
+        "span_sec": 251514000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=vix1y category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 2003,
+          "rows_incoming": 2003,
+          "rows_merged": 2003,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 2003,
+          "time_min": 1521034200,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 2003,
+          "cols": 6,
+          "time_min": 1521034200,
+          "time_max": 1772548200,
+          "span_sec": 251514000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix3m_15m.csv",
+      "dest": "data/market/volatility/vix3m_15m.csv",
+      "tv": {
+        "rows": 40566,
+        "cols": 5,
+        "time_min": 1583159400,
+        "time_max": 1772563500,
+        "span_sec": 189404100,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vix3m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40566,
+          "rows_incoming": 40566,
+          "rows_merged": 40566,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40566,
+          "time_min": 1583159400,
+          "time_max": 1772563500
+        },
+        "final": {
+          "rows": 40566,
+          "cols": 6,
+          "time_min": 1583159400,
+          "time_max": 1772563500,
+          "span_sec": 189404100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix3m_1h.csv",
+      "dest": "data/market/volatility/vix3m_1h.csv",
+      "tv": {
+        "rows": 31535,
+        "cols": 5,
+        "time_min": 1199370600,
+        "time_max": 1772562600,
+        "span_sec": 573192000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vix3m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 31535,
+          "rows_incoming": 31535,
+          "rows_merged": 31535,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 31535,
+          "time_min": 1199370600,
+          "time_max": 1772562600
+        },
+        "final": {
+          "rows": 31535,
+          "cols": 6,
+          "time_min": 1199370600,
+          "time_max": 1772562600,
+          "span_sec": 573192000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix3m_5m.csv",
+      "dest": "data/market/volatility/vix3m_5m.csv",
+      "tv": {
+        "rows": 40227,
+        "cols": 5,
+        "time_min": 1709562600,
+        "time_max": 1772564100,
+        "span_sec": 63001500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vix3m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40227,
+          "rows_incoming": 40227,
+          "rows_merged": 40227,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40227,
+          "time_min": 1709562600,
+          "time_max": 1772564100
+        },
+        "final": {
+          "rows": 40227,
+          "cols": 6,
+          "time_min": 1709562600,
+          "time_max": 1772564100,
+          "span_sec": 63001500,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix3m_daily.csv",
+      "dest": "data/market/volatility/vix3m_daily.csv",
+      "tv": {
+        "rows": 4552,
+        "cols": 5,
+        "time_min": 1196865000,
+        "time_max": 1772548200,
+        "span_sec": 575683200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=vix3m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 4552,
+          "rows_incoming": 4552,
+          "rows_merged": 4552,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 4552,
+          "time_min": 1196865000,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 4552,
+          "cols": 6,
+          "time_min": 1196865000,
+          "time_max": 1772548200,
+          "span_sec": 575683200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix6m_15m.csv",
+      "dest": "data/market/volatility/vix6m_15m.csv",
+      "tv": {
+        "rows": 40591,
+        "cols": 5,
+        "time_min": 1583159400,
+        "time_max": 1772566200,
+        "span_sec": 189406800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vix6m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40591,
+          "rows_incoming": 40591,
+          "rows_merged": 40591,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40591,
+          "time_min": 1583159400,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 40591,
+          "cols": 6,
+          "time_min": 1583159400,
+          "time_max": 1772566200,
+          "span_sec": 189406800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix6m_1h.csv",
+      "dest": "data/market/volatility/vix6m_1h.csv",
+      "tv": {
+        "rows": 21482,
+        "cols": 5,
+        "time_min": 1385562600,
+        "time_max": 1772566200,
+        "span_sec": 387003600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vix6m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 21482,
+          "rows_incoming": 21482,
+          "rows_merged": 21482,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 21482,
+          "time_min": 1385562600,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 21482,
+          "cols": 6,
+          "time_min": 1385562600,
+          "time_max": 1772566200,
+          "span_sec": 387003600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix6m_30m.csv",
+      "dest": "data/market/volatility/vix6m_30m.csv",
+      "tv": {
+        "rows": 42623,
+        "cols": 5,
+        "time_min": 1388673000,
+        "time_max": 1772566200,
+        "span_sec": 383893200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=vix6m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42623,
+          "rows_incoming": 42623,
+          "rows_merged": 42623,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 42623,
+          "time_min": 1388673000,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 42623,
+          "cols": 6,
+          "time_min": 1388673000,
+          "time_max": 1772566200,
+          "span_sec": 383893200,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix6m_5m.csv",
+      "dest": "data/market/volatility/vix6m_5m.csv",
+      "tv": {
+        "rows": 40311,
+        "cols": 5,
+        "time_min": 1708957800,
+        "time_max": 1772566200,
+        "span_sec": 63608400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vix6m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40311,
+          "rows_incoming": 40311,
+          "rows_merged": 40311,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40311,
+          "time_min": 1708957800,
+          "time_max": 1772566200
+        },
+        "final": {
+          "rows": 40311,
+          "cols": 6,
+          "time_min": 1708957800,
+          "time_max": 1772566200,
+          "span_sec": 63608400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix6m_daily.csv",
+      "dest": "data/market/volatility/vix6m_daily.csv",
+      "tv": {
+        "rows": 4570,
+        "cols": 5,
+        "time_min": 1199284200,
+        "time_max": 1772548200,
+        "span_sec": 573264000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=vix6m category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 4570,
+          "rows_incoming": 4570,
+          "rows_merged": 4570,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 4570,
+          "time_min": 1199284200,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 4570,
+          "cols": 6,
+          "time_min": 1199284200,
+          "time_max": 1772548200,
+          "span_sec": 573264000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix9d_15m.csv",
+      "dest": "data/market/volatility/vix9d_15m.csv",
+      "tv": {
+        "rows": 40594,
+        "cols": 5,
+        "time_min": 1583159400,
+        "time_max": 1772564400,
+        "span_sec": 189405000,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "15m",
+        "status": "no yahoo mapping for symbol=vix9d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40594,
+          "rows_incoming": 40594,
+          "rows_merged": 40594,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40594,
+          "time_min": 1583159400,
+          "time_max": 1772564400
+        },
+        "final": {
+          "rows": 40594,
+          "cols": 6,
+          "time_min": 1583159400,
+          "time_max": 1772564400,
+          "span_sec": 189405000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix9d_1h.csv",
+      "dest": "data/market/volatility/vix9d_1h.csv",
+      "tv": {
+        "rows": 21537,
+        "cols": 5,
+        "time_min": 1384785000,
+        "time_max": 1772562600,
+        "span_sec": 387777600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1h",
+        "status": "no yahoo mapping for symbol=vix9d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 21537,
+          "rows_incoming": 21537,
+          "rows_merged": 21537,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 21537,
+          "time_min": 1384785000,
+          "time_max": 1772562600
+        },
+        "final": {
+          "rows": 21537,
+          "cols": 6,
+          "time_min": 1384785000,
+          "time_max": 1772562600,
+          "span_sec": 387777600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix9d_30m.csv",
+      "dest": "data/market/volatility/vix9d_30m.csv",
+      "tv": {
+        "rows": 42664,
+        "cols": 5,
+        "time_min": 1388673000,
+        "time_max": 1772564400,
+        "span_sec": 383891400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "30m",
+        "status": "no yahoo mapping for symbol=vix9d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42664,
+          "rows_incoming": 42664,
+          "rows_merged": 42664,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 42664,
+          "time_min": 1388673000,
+          "time_max": 1772564400
+        },
+        "final": {
+          "rows": 42664,
+          "cols": 6,
+          "time_min": 1388673000,
+          "time_max": 1772564400,
+          "span_sec": 383891400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix9d_5m.csv",
+      "dest": "data/market/volatility/vix9d_5m.csv",
+      "tv": {
+        "rows": 40338,
+        "cols": 5,
+        "time_min": 1709562600,
+        "time_max": 1772564400,
+        "span_sec": 63001800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "5m",
+        "status": "no yahoo mapping for symbol=vix9d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40338,
+          "rows_incoming": 40338,
+          "rows_merged": 40338,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 40338,
+          "time_min": 1709562600,
+          "time_max": 1772564400
+        },
+        "final": {
+          "rows": 40338,
+          "cols": 6,
+          "time_min": 1709562600,
+          "time_max": 1772564400,
+          "span_sec": 63001800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix9d_daily.csv",
+      "dest": "data/market/volatility/vix9d_daily.csv",
+      "tv": {
+        "rows": 3811,
+        "cols": 5,
+        "time_min": 1294151400,
+        "time_max": 1772548200,
+        "span_sec": 478396800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": null,
+        "interval": "1d",
+        "status": "no yahoo mapping for symbol=vix9d category=volatility",
+        "stats": {
+          "rows": 0,
+          "cols": 0,
+          "time_min": null,
+          "time_max": null,
+          "span_sec": null,
+          "missing_frac": null
+        }
+      },
+      "decision": {
+        "prefer": null,
+        "yahoo_used": false
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 3811,
+          "rows_incoming": 3811,
+          "rows_merged": 3811,
+          "rows_added_net": 0,
+          "n_dupes_dropped": 3811,
+          "time_min": 1294151400,
+          "time_max": 1772548200
+        },
+        "final": {
+          "rows": 3811,
+          "cols": 6,
+          "time_min": 1294151400,
+          "time_max": 1772548200,
+          "span_sec": 478396800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix_15m.csv",
+      "dest": "data/market/volatility/vix_15m.csv",
+      "tv": {
+        "rows": 40465,
+        "cols": 5,
+        "time_min": 1675239300,
+        "time_max": 1772563500,
+        "span_sec": 97324200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VIX",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 2980,
+          "cols": 6,
+          "time_min": 1766736900,
+          "time_max": 1773864000,
+          "span_sec": 7127100,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41062,
+          "rows_incoming": 40465,
+          "rows_merged": 41114,
+          "rows_added_net": 52,
+          "n_dupes_dropped": 40413,
+          "time_min": 1675239300,
+          "time_max": 1773864000
+        },
+        "final": {
+          "rows": 41114,
+          "cols": 7,
+          "time_min": 1675239300,
+          "time_max": 1773864000,
+          "span_sec": 98624700,
+          "missing_frac": 0.1544323912373725,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix_1h.csv",
+      "dest": "data/market/volatility/vix_1h.csv",
+      "tv": {
+        "rows": 40484,
+        "cols": 5,
+        "time_min": 1325601000,
+        "time_max": 1772562600,
+        "span_sec": 446961600,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VIX",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 9970,
+          "cols": 6,
+          "time_min": 1685606400,
+          "time_max": 1773864000,
+          "span_sec": 88257600,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 50454,
+          "rows_incoming": 40484,
+          "rows_merged": 50468,
+          "rows_added_net": 14,
+          "n_dupes_dropped": 40470,
+          "time_min": 1325601000,
+          "time_max": 1773864000
+        },
+        "final": {
+          "rows": 50468,
+          "cols": 7,
+          "time_min": 1325601000,
+          "time_max": 1773864000,
+          "span_sec": 448263000,
+          "missing_frac": 0.13369527885656918,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix_5m.csv",
+      "dest": "data/market/volatility/vix_5m.csv",
+      "tv": {
+        "rows": 40256,
+        "cols": 5,
+        "time_min": 1740384900,
+        "time_max": 1772563800,
+        "span_sec": 32178900,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VIX",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 8931,
+          "cols": 6,
+          "time_min": 1766736900,
+          "time_max": 1773864600,
+          "span_sec": 7127700,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42099,
+          "rows_incoming": 40256,
+          "rows_merged": 42254,
+          "rows_added_net": 155,
+          "n_dupes_dropped": 40101,
+          "time_min": 1740384900,
+          "time_max": 1773864600
+        },
+        "final": {
+          "rows": 42254,
+          "cols": 7,
+          "time_min": 1740384900,
+          "time_max": 1773864600,
+          "span_sec": 33479700,
+          "missing_frac": 0.13099745980656663,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vix_daily.csv",
+      "dest": "data/market/volatility/vix_daily.csv",
+      "tv": {
+        "rows": 9127,
+        "cols": 5,
+        "time_min": 631354500,
+        "time_max": 1772525700,
+        "span_sec": 1141171200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VIX",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 9119,
+          "cols": 6,
+          "time_min": 631260000,
+          "time_max": 1773810000,
+          "span_sec": 1142550000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 18245,
+          "rows_incoming": 9127,
+          "rows_merged": 18246,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 9126,
+          "time_min": 631260000,
+          "time_max": 1773810000
+        },
+        "final": {
+          "rows": 18246,
+          "cols": 7,
+          "time_min": 631260000,
+          "time_max": 1773810000,
+          "span_sec": 1142550000,
+          "missing_frac": 0.08336987102195915,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vvix_15m.csv",
+      "dest": "data/market/volatility/vvix_15m.csv",
+      "tv": {
+        "rows": 40003,
+        "cols": 5,
+        "time_min": 1585747800,
+        "time_max": 1772567100,
+        "span_sec": 186819300,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VVIX",
+        "interval": "15m",
+        "status": "ok",
+        "stats": {
+          "rows": 1522,
+          "cols": 6,
+          "time_min": 1766413800,
+          "time_max": 1773863100,
+          "span_sec": 7449300,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 40267,
+          "rows_incoming": 40003,
+          "rows_merged": 40293,
+          "rows_added_net": 26,
+          "n_dupes_dropped": 39977,
+          "time_min": 1585747800,
+          "time_max": 1773863100
+        },
+        "final": {
+          "rows": 40293,
+          "cols": 7,
+          "time_min": 1585747800,
+          "time_max": 1773863100,
+          "span_sec": 188115300,
+          "missing_frac": 0.16037111491656947,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vvix_1h.csv",
+      "dest": "data/market/volatility/vvix_1h.csv",
+      "tv": {
+        "rows": 24341,
+        "cols": 5,
+        "time_min": 1331731800,
+        "time_max": 1772566200,
+        "span_sec": 440834400,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VVIX",
+        "interval": "1h",
+        "status": "ok",
+        "stats": {
+          "rows": 4897,
+          "cols": 6,
+          "time_min": 1685453400,
+          "time_max": 1773862200,
+          "span_sec": 88408800,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 24412,
+          "rows_incoming": 24341,
+          "rows_merged": 24419,
+          "rows_added_net": 7,
+          "n_dupes_dropped": 24334,
+          "time_min": 1331731800,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 24419,
+          "cols": 7,
+          "time_min": 1331731800,
+          "time_max": 1773862200,
+          "span_sec": 442130400,
+          "missing_frac": 0.1332432395538993,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vvix_30m.csv",
+      "dest": "data/market/volatility/vvix_30m.csv",
+      "tv": {
+        "rows": 42565,
+        "cols": 5,
+        "time_min": 1388673000,
+        "time_max": 1772566200,
+        "span_sec": 383893200,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VVIX",
+        "interval": "30m",
+        "status": "ok",
+        "stats": {
+          "rows": 761,
+          "cols": 6,
+          "time_min": 1766413800,
+          "time_max": 1773862200,
+          "span_sec": 7448400,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 42697,
+          "rows_incoming": 42565,
+          "rows_merged": 42710,
+          "rows_added_net": 13,
+          "n_dupes_dropped": 42552,
+          "time_min": 1388673000,
+          "time_max": 1773862200
+        },
+        "final": {
+          "rows": 42710,
+          "cols": 7,
+          "time_min": 1388673000,
+          "time_max": 1773862200,
+          "span_sec": 385189200,
+          "missing_frac": 0.16369702645750409,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vvix_5m.csv",
+      "dest": "data/market/volatility/vvix_5m.csv",
+      "tv": {
+        "rows": 40332,
+        "cols": 5,
+        "time_min": 1709562600,
+        "time_max": 1772567100,
+        "span_sec": 63004500,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VVIX",
+        "interval": "5m",
+        "status": "ok",
+        "stats": {
+          "rows": 4564,
+          "cols": 6,
+          "time_min": 1766413800,
+          "time_max": 1773863700,
+          "span_sec": 7449900,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 41129,
+          "rows_incoming": 40332,
+          "rows_merged": 41207,
+          "rows_added_net": 78,
+          "n_dupes_dropped": 40254,
+          "time_min": 1709562600,
+          "time_max": 1773863700
+        },
+        "final": {
+          "rows": 41207,
+          "cols": 7,
+          "time_min": 1709562600,
+          "time_max": 1773863700,
+          "span_sec": 64301100,
+          "missing_frac": 0.14820701984290693,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    },
+    {
+      "rel": "volatility/vvix_daily.csv",
+      "dest": "data/market/volatility/vvix_daily.csv",
+      "tv": {
+        "rows": 4956,
+        "cols": 5,
+        "time_min": 1141655400,
+        "time_max": 1772548200,
+        "span_sec": 630892800,
+        "missing_frac": 0.0,
+        "columns": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close"
+        ]
+      },
+      "yahoo": {
+        "ticker": "^VVIX",
+        "interval": "1d",
+        "status": "ok",
+        "stats": {
+          "rows": 4823,
+          "cols": 6,
+          "time_min": 1167800400,
+          "time_max": 1773806400,
+          "span_sec": 606006000,
+          "missing_frac": 0.0,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        }
+      },
+      "decision": {
+        "prefer": "existing",
+        "yahoo_used": true
+      },
+      "merge": {
+        "stats": {
+          "rows_existing": 9778,
+          "rows_incoming": 4956,
+          "rows_merged": 9779,
+          "rows_added_net": 1,
+          "n_dupes_dropped": 4955,
+          "time_min": 1141655400,
+          "time_max": 1773806400
+        },
+        "final": {
+          "rows": 9779,
+          "cols": 7,
+          "time_min": 1141655400,
+          "time_max": 1773806400,
+          "span_sec": 632151000,
+          "missing_frac": 0.08446671438797422,
+          "columns": [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "datetime"
+          ]
+        }
+      },
+      "status": "ok"
+    }
+  ],
+  "summary": {
+    "tv_files": 105,
+    "written": 105,
+    "skipped": 0,
+    "yahoo_ok": 62,
+    "yahoo_unavailable": 43,
+    "errors": 0
+  },
+  "finished_at": "2026-03-18T22:50:22"
+}

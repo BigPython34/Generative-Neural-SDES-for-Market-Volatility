@@ -1,5 +1,19 @@
+"""Legacy diagnostics helpers.
+
+NOTE: Hurst estimation source-of-truth lives in `quant.analysis.hurst_estimation`.
+This module keeps convenience utilities (ACF, quick stats) but delegates Hurst
+estimators to the consolidated implementation to avoid inconsistent results.
+"""
+
 import numpy as np
 from scipy.stats import kurtosis, linregress
+
+from quant.analysis.hurst_estimation import hurst_structure_function, hurst_variogram
+from utils.loader.RealizedVariance import (
+    compute_log_rv_series_from_file,
+    compute_rolling_annualized_rv_from_prices,
+    rv_series_settings_from_config,
+)
 
 def compute_acf(x, lags=10):
     """Computes Auto-Correlation Function."""
@@ -23,9 +37,6 @@ def estimate_hurst(data, method='variogram'):
     
     Target for Rough Volatility: H < 0.15 (on REALIZED vol, NOT VIX).
     
-    IMPORTANT: If data is VIX-derived variance paths, H ≈ 0.5 is expected
-    because VIX integrates over 30 days (smoothing effect).
-    True roughness (H ≈ 0.1) is only visible on realized vol from returns.
     
     Args:
         data: (n_paths, n_steps) variance paths
@@ -34,36 +45,26 @@ def estimate_hurst(data, method='variogram'):
     Returns:
         float: Estimated Hurst exponent
     """
-    # 1. Convert Variance to Log-Volatility: X_t = log(sqrt(V_t))
-    log_vol = np.log(np.sqrt(np.maximum(data, 1e-8)))
-    
-    # 2. Compute variogram for different lags
-    max_lag = min(10, data.shape[1] // 3) if data.ndim > 1 else min(10, len(data) // 3)
-    taus = range(1, max_lag + 1)
-    lag_moments = []
-    
-    for tau in taus:
-        if data.ndim > 1:
-            # Vectorized over (n_paths, n_steps)
-            diffs = log_vol[:, tau:] - log_vol[:, :-tau]
-        else:
-            diffs = log_vol[tau:] - log_vol[:-tau]
-        
+    # Convert variance to log-volatility: log(sqrt(V)) = 0.5*log(V)
+    # The 0.5 factor does not affect H.
+    if data.ndim == 1:
+        series = 0.5 * np.log(np.maximum(np.asarray(data, dtype=float), 1e-12))
         if method == 'variogram':
-            lag_moments.append(np.mean(diffs**2))
-        else:  # structure function order 1
-            lag_moments.append(np.mean(np.abs(diffs)))
-    
-    # 3. Log-Log Regression
-    x_reg = np.log(list(taus))
-    y_reg = np.log(lag_moments)
-    
-    slope, _, r_value, _, _ = linregress(x_reg, y_reg)
-    
-    if method == 'variogram':
-        return slope / 2.0  # variogram: slope = 2H
-    else:
-        return slope  # structure function q=1: slope = H
+            return float(hurst_variogram(series).H)
+        return float(hurst_structure_function(series, q=1.0).H)
+
+    paths = np.asarray(data, dtype=float)
+    n_paths = paths.shape[0]
+    # Limit to keep this utility lightweight.
+    n_eval = min(n_paths, 200)
+    Hs = []
+    for i in range(n_eval):
+        series = 0.5 * np.log(np.maximum(paths[i], 1e-12))
+        if method == 'variogram':
+            Hs.append(hurst_variogram(series).H)
+        else:
+            Hs.append(hurst_structure_function(series, q=1.0).H)
+    return float(np.mean(Hs)) if Hs else float('nan')
 
 
 def estimate_hurst_from_returns(prices_or_path, rv_window=78, max_lag=50):
@@ -87,63 +88,52 @@ def estimate_hurst_from_returns(prices_or_path, rv_window=78, max_lag=50):
     Returns:
         dict with H estimates and diagnostics
     """
-    import pandas as pd
-    
     if isinstance(prices_or_path, str):
-        df = pd.read_csv(prices_or_path)
-        df['close'] = pd.to_numeric(df['close'], errors='coerce')
-        df['datetime'] = pd.to_datetime(df['time'], unit='s')
-        df = df.sort_values('datetime').reset_index(drop=True)
-        
-        # Detect overnight/weekend gaps and assign one segment per trading day
-        df['time_delta'] = df['datetime'].diff()
-        max_gap = pd.Timedelta(hours=4)
-        df['segment_id'] = (df['time_delta'] > max_gap).cumsum()
-        
-        # Compute log-returns (only within segments — no overnight jumps)
-        df['log_return'] = np.log(df['close'] / df['close'].shift(1))
-        boundaries = df['segment_id'] != df['segment_id'].shift(1)
-        df.loc[boundaries, 'log_return'] = np.nan
-        df = df.dropna(subset=['log_return', 'close'])
-        
-        # Compute DAILY Realized Variance: one RV point per trading day
-        # This is the standard approach in Gatheral et al. (2018)
-        daily_rv = []
-        for seg_id in df['segment_id'].unique():
-            seg = df[df['segment_id'] == seg_id]
-            returns = seg['log_return'].values
-            if len(returns) < 10:  # need at least 10 bars for meaningful RV
-                continue
-            rv_val = np.sum(returns**2)  # Daily RV = sum of squared intraday returns
-            if rv_val > 1e-14:
-                daily_rv.append(rv_val)
-        
-        rv = np.array(daily_rv)
-        
-        if len(rv) < 50:
+        from utils.config import load_config
+
+        path_lower = prices_or_path.lower()
+        if "30m" in path_lower or "30min" in path_lower:
+            freq_label = "30m"
+        elif "15m" in path_lower or "15min" in path_lower:
+            freq_label = "15m"
+        elif "5m" in path_lower or "5min" in path_lower:
+            freq_label = "5m"
+        elif "1h" in path_lower or "60m" in path_lower:
+            freq_label = "1h"
+        else:
+            freq_label = "5m"
+
+        settings = rv_series_settings_from_config(load_config())
+        try:
+            log_rv, _dates = compute_log_rv_series_from_file(
+                prices_or_path,
+                freq_label=freq_label,
+                settings=settings,
+                min_obs=50,
+            )
+        except Exception:
             return {
                 'H_variogram': float('nan'), 'H_structure': float('nan'),
                 'R2_variogram': 0.0, 'R2_structure': 0.0,
-                'n_rv_points': len(rv), 'rv_window': 'daily'
+                'n_rv_points': 0, 'rv_window': 'daily'
             }
     else:
         prices = np.asarray(prices_or_path, dtype=float)
-        log_returns = np.diff(np.log(prices))
-        rv = np.array([
-            np.sum(log_returns[i:i+rv_window]**2) 
-            for i in range(len(log_returns) - rv_window)
-        ])
+        rv_arr = compute_rolling_annualized_rv_from_prices(
+            prices,
+            window_days=int(rv_window),
+            trading_days_per_year=252.0,
+        )
+        rv = rv_arr[~np.isnan(rv_arr)]
         rv = rv[rv > 1e-12]
-    
-    if len(rv) < 50:
+        log_rv = np.log(rv)
+
+    if len(log_rv) < 50:
         return {
             'H_variogram': float('nan'), 'H_structure': float('nan'),
             'R2_variogram': 0.0, 'R2_structure': 0.0,
-            'n_rv_points': len(rv), 'rv_window': rv_window
+            'n_rv_points': len(log_rv), 'rv_window': rv_window
         }
-    
-    # 3. Hurst on log(RV)
-    log_rv = np.log(rv)
     
     lags = np.arange(1, min(max_lag, len(log_rv) // 4) + 1)
     variogram = np.zeros(len(lags))
@@ -169,7 +159,7 @@ def estimate_hurst_from_returns(prices_or_path, rv_window=78, max_lag=50):
         'H_structure': H_structure,
         'R2_variogram': r_v**2,
         'R2_structure': r_s**2,
-        'n_rv_points': len(rv),
+        'n_rv_points': len(log_rv),
         'rv_window': rv_window
     }
 
@@ -194,12 +184,14 @@ def print_distribution_stats(name: str, data: np.ndarray, is_vix_derived: bool =
     # Compute metrics
     h_est = estimate_hurst(data, method='variogram')
     
-    # Marginal kurtosis: average excess kurtosis across time steps
+    # Marginal kurtosis on log-variance (raw variance kurtosis is typically dominated by level/outliers)
     if data.ndim > 1:
-        marginal_kurts = [kurtosis(data[:, t]) for t in range(n_steps)]
-        kurt = np.mean(marginal_kurts)
+        logv = np.log(np.maximum(data, 1e-12))
+        marginal_kurts = [kurtosis(logv[:, t], fisher=True, bias=False) for t in range(n_steps)]
+        kurt = float(np.mean(marginal_kurts))
     else:
-        kurt = kurtosis(data)
+        logv = np.log(np.maximum(data, 1e-12))
+        kurt = float(kurtosis(logv, fisher=True, bias=False))
     
     # Sample ACF on first 100 paths
     max_lag = min(10, n_steps - 2)
@@ -209,11 +201,11 @@ def print_distribution_stats(name: str, data: np.ndarray, is_vix_derived: bool =
     print(f"--- DIAGNOSTIC: {name} ---")
     print(f"   Mean           : {np.mean(flat_data):.5f}")
     print(f"   Median         : {np.median(flat_data):.5f}")
-    print(f"   Kurtosis (marg): {kurt:.2f} (excess, averaged over time steps)")
+    print(f"   Kurtosis (marg): {kurt:.2f} (excess on log-variance, averaged over time steps)")
     print(f"   Hurst (paths)  : {h_est:.3f}", end="")
     if is_vix_derived:
         print(f"  [VIX-derived -> expect ~0.5, NOT a roughness test]")
-        print(f"   ℹ️  True roughness (H~0.1) must be measured on realized vol from SPX returns")
+        print(f"True roughness (H~0.1) must be measured on realized vol from SPX returns")
     else:
         target = "< 0.15" 
         status = "[OK]" if h_est < 0.20 else "[WARN]"

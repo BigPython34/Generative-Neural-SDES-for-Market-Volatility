@@ -58,6 +58,33 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from scipy.stats import linregress
 from typing import Optional
+DEFAULT_CROSS_ASSETS = {
+    "SPY_5m": "data/market/equity_etfs/spy_5m.csv",
+    "SPY_15m": "data/market/equity_etfs/spy_15m.csv",
+    "SPY_daily": "data/market/equity_etfs/spy_daily.csv",
+    "CAC40_5m": "data/market/equity_indices/cac40_5m.csv",
+    "CAC40_15m": "data/market/equity_indices/cac40_15m.csv",
+    "CAC40_30m": "data/market/equity_indices/cac40_30m.csv",
+}
+
+DEFAULT_SPX_PATHS = {
+    "5s": "data/market/equity_indices/spx_5s.csv",
+    "5m": "data/market/equity_indices/spx_5m.csv",
+    "15m": "data/market/equity_indices/spx_15m.csv",
+    "30m": "data/market/equity_indices/spx_30m.csv",
+    "1h": "data/market/equity_indices/spx_1h.csv",
+    "daily": "data/market/equity_indices/spx_daily.csv",
+}
+try:
+    from utils.config import load_config  # type: ignore
+except Exception:  # pragma: no cover
+    load_config = None  # type: ignore
+
+from utils.loader.RealizedVariance import (
+    RVSeriesSettings,
+    compute_log_rv_series_from_file,
+    rv_series_settings_from_config,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -109,176 +136,7 @@ class MultiScaleResult:
 # ═══════════════════════════════════════════════════════════════════
 # 1. REALIZED VARIANCE COMPUTATION
 # ═══════════════════════════════════════════════════════════════════
-
-def _segment_trading_days(df: pd.DataFrame,
-                          max_gap_hours: float = 4.0,
-                          min_bars_per_day: int = 10) -> list[pd.DataFrame]:
-    """
-    Segment intraday data into trading days.
-
-    We detect overnight / weekend gaps (> max_gap_hours) and split into
-    segments.  Each segment is one trading day (or trading session).
-
-    Parameters
-    ----------
-    df : DataFrame with columns ['time', 'close'] (time = Unix epoch seconds)
-    max_gap_hours : threshold for overnight detection
-    min_bars_per_day : discard days with fewer bars
-
-    Returns
-    -------
-    List of DataFrames, one per trading day, sorted by time.
-    """
-    df = df.copy()
-    df['close'] = pd.to_numeric(df['close'], errors='coerce')
-    df['datetime'] = pd.to_datetime(df['time'], unit='s', utc=True)
-    df = df.sort_values('datetime').dropna(subset=['close']).reset_index(drop=True)
-
-    # Detect gaps
-    dt_sec = df['datetime'].diff().dt.total_seconds()
-    gap_mask = dt_sec > (max_gap_hours * 3600)
-    df['day_id'] = gap_mask.cumsum()
-
-    segments = []
-    for _, grp in df.groupby('day_id'):
-        if len(grp) >= min_bars_per_day:
-            segments.append(grp[['datetime', 'close']].reset_index(drop=True))
-    return segments
-
-
-def compute_rv_from_segments(segments: list[pd.DataFrame]) -> tuple[np.ndarray, list[pd.Timestamp]]:
-    """
-    Compute daily Realized Variance from pre-segmented intraday data.
-
-        RV_d = Σᵢ r²ᵢ   where  rᵢ = log(Pᵢ / Pᵢ₋₁)
-
-    Parameters
-    ----------
-    segments : list of DataFrames (one per trading day), each with 'close'
-
-    Returns
-    -------
-    1-D array of daily RV values.
-    """
-    rv: list[float] = []
-    dates: list[pd.Timestamp] = []
-    for seg in segments:
-        prices = seg['close'].values.astype(float)
-        log_returns = np.diff(np.log(prices))
-        rv_day = np.sum(log_returns ** 2)
-        if rv_day > 1e-16:
-            rv.append(rv_day)
-            dates.append(pd.Timestamp(seg['datetime'].iloc[-1]))
-    return np.array(rv), dates
-
-
-def compute_tsrv_from_segments(
-    segments: list[pd.DataFrame],
-    K: Optional[int] = None,
-) -> tuple[np.ndarray, list[pd.Timestamp]]:
-    """
-    Two-Scale Realized Variance (TSRV) for microstructure noise correction.
-
-    Reference: Zhang, Mykland & Aït-Sahalia (2005), JASA.
-
-    For each trading day with n price observations, define:
-      - Fast scale:  RV_fast = (1/n) Σ (ΔP)² using all ticks
-      - Slow scale:  RV_slow = (1/K) Σ_{k=0}^{K-1} RV^{(sub_k)}
-        where sub_k uses every K-th observation starting at k
-      - TSRV = RV_slow - (n̄_slow / n̄_fast) · RV_fast
-
-    The optimal K scales as n^{2/3} (Theorem 2 of ZMLS05).
-
-    Parameters
-    ----------
-    segments : list of DataFrames (one per day), each with 'close'
-    K : number of sub-samples for slow scale; if None, use n^{2/3}
-
-    Returns
-    -------
-    1-D array of daily TSRV values (bias-corrected).
-    """
-    tsrv: list[float] = []
-    dates: list[pd.Timestamp] = []
-    for seg in segments:
-        prices = seg['close'].values.astype(float)
-        log_prices = np.log(prices)
-        n = len(log_prices) - 1  # number of returns
-        if n < 20:
-            continue
-
-        # Optimal subsampling frequency
-        K_use = K if K is not None else max(2, int(np.round(n ** (2.0 / 3.0))))
-
-        # --- Fast scale: all returns ---
-        returns_all = np.diff(log_prices)
-        rv_fast = np.sum(returns_all ** 2)
-        n_fast = n  # number of fast-scale returns
-
-        # --- Slow scale: K sub-grids ---
-        rv_slow = 0.0
-        n_slow_total = 0
-        for k in range(K_use):
-            sub_prices = log_prices[k::K_use]
-            if len(sub_prices) < 2:
-                continue
-            sub_returns = np.diff(sub_prices)
-            rv_slow += np.sum(sub_returns ** 2)
-            n_slow_total += len(sub_returns)
-
-        rv_slow /= K_use
-        n_bar_slow = n_slow_total / K_use  # average number of returns per sub-grid
-
-        # --- TSRV = RV_slow - (n̄_slow / n_fast) * RV_fast ---
-        # This removes the O(1) microstructure bias
-        tsrv_day = rv_slow - (n_bar_slow / n_fast) * rv_fast
-
-        # Small-sample finite correction (Zhang 2006, eq. 3.6):
-        #   TSRV_corrected = TSRV / (1 - n̄_slow / n_fast)
-        correction = 1.0 - n_bar_slow / n_fast
-        if correction > 0.1:
-            tsrv_day /= correction
-
-        # TSRV can be negative due to noise; floor at a small positive value
-        tsrv_day = max(tsrv_day, 1e-16)
-        tsrv.append(tsrv_day)
-        dates.append(pd.Timestamp(seg['datetime'].iloc[-1]))
-
-    return np.array(tsrv), dates
-
-
-def compute_daily_rv_multiscale(
-    file_path: str | Path,
-    max_gap_hours: float = 4.0,
-    min_bars_per_day: int = 10,
-    use_tsrv: bool = False,
-    tsrv_K: Optional[int] = None,
-) -> tuple[np.ndarray, list]:
-    """
-    Load a CSV and compute daily RV (or TSRV) from intraday prices.
-
-    Parameters
-    ----------
-    file_path : path to CSV with columns [time, open, high, low, close]
-    max_gap_hours : overnight gap threshold
-    min_bars_per_day : minimum bars for a valid trading day
-    use_tsrv : if True, use TSRV instead of plain RV
-    tsrv_K : subsampling parameter for TSRV (None = automatic)
-
-    Returns
-    -------
-    (rv_array, dates_list) — daily (T)RV values and corresponding end-of-day dates
-    """
-    df = pd.read_csv(file_path)
-    segments = _segment_trading_days(df, max_gap_hours, min_bars_per_day)
-
-    if use_tsrv:
-        rv, dates = compute_tsrv_from_segments(segments, K=tsrv_K)
-    else:
-        rv, dates = compute_rv_from_segments(segments)
-
-    # IMPORTANT: dates are filtered in sync with rv.
-    return rv, dates
+# Centralised in utils/loader/realized_variance.py
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -496,8 +354,7 @@ def hurst_ratio_estimator(
     series: np.ndarray,
     lag_base: int = 1,
     max_ratio_lag: Optional[int] = None,
-    max_lag: Optional[int] = None,
-    **_kwargs,
+    max_lag: Optional[int] = None
 ) -> HurstEstimate:
     """
     Ratio-based (non-regression) Hurst estimator.
@@ -901,106 +758,14 @@ def _get_estimator(method: str):
 # 4. MULTI-SCALE ANALYSIS
 # ═══════════════════════════════════════════════════════════════════
 
-# Default TradingView data paths (relative to project root)
-DEFAULT_SPX_PATHS: dict[str, str] = {
-    "5s":    "data/market/equity_indices/spx_5s.csv",
-    "5m":    "data/market/equity_indices/spx_5m.csv",
-    "15m":   "data/market/equity_indices/spx_15m.csv",
-    "30m":   "data/market/equity_indices/spx_30m.csv",
-    "1h":    "data/market/equity_indices/spx_1h.csv",
-    "daily": "data/market/equity_indices/spx_daily.csv",
-}
 
-DEFAULT_CROSS_ASSETS: dict[str, str] = {
-    "SPY_5m":    "data/market/equity_etfs/spy_5m.csv",
-    "CAC40_5m":  "data/trading_view/equity_indices/cac40_5m.csv",
-}
-
-# Which frequencies need TSRV (microstructure noise is significant)
-TSRV_FREQUENCIES: set[str] = {"5s"}
-
-# Minimum bars per day to form a valid RV estimate
-MIN_BARS_PER_DAY: dict[str, int] = {
-    "5s": 200,    # ~17 min of 5s bars
-    "5m": 20,     # ~1.7h
-    "15m": 10,    # ~2.5h
-    "30m": 6,     # ~3h
-    "1h": 4,      # ~4h
-    "daily": 1,   # N/A (daily data → use returns directly)
-}
-
-
-def compute_log_rv_from_file(
-    file_path: str | Path,
-    freq_label: str,
-    max_gap_hours: float = 4.0,
-) -> tuple[np.ndarray, pd.DatetimeIndex]:
-    """
-    Compute log(RV) or log(TSRV) daily series from a CSV file.
-
-    For daily data, we use rolling realized variance.
-    For intraday data, we aggregate returns within each trading day.
-
-    Parameters
-    ----------
-    file_path : path to CSV
-    freq_label : e.g. '5s', '5m', '30m', 'daily'
-    max_gap_hours : overnight gap threshold
-
-    Returns
-    -------
-    tuple: (log_rv, dates) where dates is a DatetimeIndex for each RV point.
-    """
-    file_path = Path(file_path)
-    if not file_path.exists():
-        raise FileNotFoundError(f"Data file not found: {file_path}")
-
-    min_bars = MIN_BARS_PER_DAY.get(freq_label, 10)
-
-    if freq_label == "daily":
-        # For daily data: use non-overlapping 5-day windows to compute
-        # realized variance from daily close-to-close returns.
-        # Non-overlapping avoids autocorrelation bias in Hurst estimation.
-        df = pd.read_csv(file_path)
-        df['close'] = pd.to_numeric(df['close'], errors='coerce')
-        df['datetime'] = pd.to_datetime(df['time'], unit='s', utc=True)
-        df = df.sort_values('datetime').dropna(subset=['close']).reset_index(drop=True)
-        # Filter to post-1990 (pre-1990 data may have quality issues)
-        df = df[df['datetime'].dt.year >= 1990].reset_index(drop=True)
-        log_returns = np.diff(np.log(df['close'].values))
-        dates = df['datetime'].values[1:]  # dates corresponding to returns
-        
-        # Non-overlapping 5-day windows (stride = window)
-        window = 5
-        rv_list = []
-        dates_list = []
-        n_windows = len(log_returns) // window
-        for i in range(n_windows):
-            chunk = log_returns[i * window : (i + 1) * window]
-            rv_val = np.sum(chunk ** 2)
-            if rv_val > 1e-16:
-                rv_list.append(rv_val)
-                dates_list.append(dates[(i + 1) * window - 1])  # Date of last day in window
-        
-        return np.log(np.array(rv_list)), pd.DatetimeIndex(dates_list)
-
-    # Intraday data → segment into trading days → compute (T)RV
-    use_tsrv = freq_label in TSRV_FREQUENCIES
-
-    rv, dates_rv = compute_daily_rv_multiscale(
-        file_path,
-        max_gap_hours=max_gap_hours,
-        min_bars_per_day=min_bars,
-        use_tsrv=use_tsrv,
-    )
-
-    if len(rv) < 20:
-        raise ValueError(
-            f"{file_path.name}: only {len(rv)} valid days (need ≥20). "
-            f"Check data quality or reduce min_bars_per_day."
-        )
-
-    return np.log(rv), pd.DatetimeIndex(dates_rv)
+def _get_cfg() -> dict:
+    if load_config is None:
+        return {}
+    try:
+        return load_config() or {}
+    except Exception:
+        return {}
 
 
 def run_multiscale_hurst(
@@ -1036,8 +801,9 @@ def run_multiscale_hurst(
     -------
     MultiScaleResult with all estimates, RV series, and consensus H.
     """
-    if asset_paths is None:
-        asset_paths = DEFAULT_SPX_PATHS.copy()
+    cfg = _get_cfg()
+    settings: RVSeriesSettings = rv_series_settings_from_config(cfg)
+
     if methods is None:
         methods = ["variogram", "structure_q1", "ratio", "dma"]
 
@@ -1058,7 +824,11 @@ def run_multiscale_hurst(
             continue
 
         try:
-            log_rv, dates = compute_log_rv_from_file(fpath, freq_label)
+            log_rv, dates = compute_log_rv_series_from_file(
+                fpath,
+                freq_label=freq_label,
+                settings=settings,
+            )
         except (ValueError, FileNotFoundError) as e:
             if verbose:
                 print(f"  [{freq_label:>6s}] SKIP — {e}")
@@ -1066,7 +836,7 @@ def run_multiscale_hurst(
 
         rv_series[freq_label] = log_rv
         dates_series[freq_label] = dates
-        is_tsrv = freq_label in TSRV_FREQUENCIES
+        is_tsrv = freq_label in settings.tsrv_frequencies
         if is_tsrv:
             tsrv_labels[freq_label] = log_rv
 

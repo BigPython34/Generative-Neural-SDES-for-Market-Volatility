@@ -18,14 +18,12 @@ from pathlib import Path
 from functools import lru_cache
 
 
-_DEFAULT_PATH = "data/rates/sofr_daily_nyfed.csv"
-
 
 class SOFRRateLoader:
     """Load and interpolate SOFR risk-free rates from NY Fed data."""
 
     def __init__(self, filepath: str = None):
-        self._path = Path(filepath or _DEFAULT_PATH)
+        self._path = Path(filepath)
         self._df: pd.DataFrame = pd.DataFrame()
         self._load()
 
@@ -104,12 +102,6 @@ class SOFRRateLoader:
         if end_date:
             s = s[s.index <= pd.to_datetime(end_date)]
         return s
-
-    @staticmethod
-    def _fallback_rate() -> float:
-        from utils.config import load_config
-        return load_config()["pricing"]["risk_free_rate"]
-
 
 @lru_cache(maxsize=1)
 def get_sofr() -> SOFRRateLoader:

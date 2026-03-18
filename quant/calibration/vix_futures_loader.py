@@ -7,7 +7,7 @@ Unified loader for VIX volatility term structure from two data sources:
    Individual futures contracts with expiry dates, 2013–present.
    Columns: Trade Date, Futures, Open, High, Low, Close, Settle, ...
 
-2. **TradingView Volatility Indices** (data/trading_view/volatility/)
+2. **TradingView Volatility Indices** (data/market/volatility/)
    CBOE-computed VIX indices at fixed tenures:
      - VIX1D (1-day)   — τ = 1/365   — since 2022
      - VIX9D (9-day)   — τ = 9/365   — since 2011
@@ -16,7 +16,7 @@ Unified loader for VIX volatility term structure from two data sources:
      - VIX6M (6-month) — τ = 180/365 — since 2008
      - VIX1Y (1-year)  — τ = 365/365 — since 2018
 
-3. **TradingView VIX Futures** (data/trading_view/vix_futures/)
+3. **TradingView VIX Futures** (data/market/vix_futures/)
    Continuous front-month (VX1) and 2nd-month (VX2) contracts.
    High-frequency (5m–1h) and daily. VX2 daily since 2004.
 
@@ -289,7 +289,7 @@ def load_vix_spot_history(
     candidates = [
         Path(vix_daily_path),
         Path("data/market/volatility/vix_daily.csv"),
-        Path("data/trading_view/volatility/vix_daily.csv"),
+        Path("data/market/volatility/vix_daily.csv"),
     ]
 
     path = None
@@ -386,7 +386,7 @@ def _load_tradingview_csv(path: Path) -> pd.DataFrame:
 
 
 def load_vix_term_structure(
-    data_dir: str = "data/trading_view/volatility",
+    data_dir: str = "data/market/volatility",
     freq: str = "daily",
     tenors: list[str] | None = None,
 ) -> pd.DataFrame:
@@ -436,7 +436,7 @@ def load_vix_term_structure(
 
 def get_vix_term_snapshot(
     date: str | pd.Timestamp = None,
-    data_dir: str = "data/trading_view/volatility",
+    data_dir: str = "data/market/volatility",
 ) -> VIXTermStructureSnapshot:
     """
     Get VIX term structure for a specific date (latest if None).
@@ -544,7 +544,7 @@ def get_vix_term_snapshot_from_futures(
 # ═══════════════════════════════════════════════════════════════════
 
 def load_vix_futures_continuous(
-    data_dir: str = "data/trading_view/vix_futures",
+    data_dir: str = "data/market/vix_futures",
     freq: str = "daily",
 ) -> pd.DataFrame:
     """
@@ -639,8 +639,8 @@ class CalibrationMarketData:
 
 def assemble_calibration_data(
     options_cache_dir: str = "data/options_cache",
-    volatility_dir: str = "data/trading_view/volatility",
-    vix_futures_dir: str = "data/cboe_vix_futures_full",
+    volatility_dir: str = "data/market/volatility",
+    vix_futures_dir: str = "data/market/vix_futures",
     as_of_date: str | None = None,
     verbose: bool = True,
     enforce_sync: bool = False,

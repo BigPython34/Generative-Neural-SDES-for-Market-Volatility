@@ -45,7 +45,7 @@ def _get_current_vix() -> float:
     """Get latest VIX from TradingView."""
     import pandas as pd
     for p in [
-        ROOT / "data" / "trading_view" / "volatility" / "vix_daily.csv",
+        ROOT / "data" / "market" / "volatility" / "vix_daily.csv",
         ROOT / "data" / "market" / "vix" / "vix_daily.csv",
     ]:
         if p.exists():

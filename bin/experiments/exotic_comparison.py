@@ -139,7 +139,7 @@ def run_exotic_comparison(n_paths: int = 10000, save_fig: bool = True):
     # Use SOFR if available
     r = r_cfg
     try:
-        from utils.sofr_loader import get_sofr
+        from utils.loader.sofr_loader import get_sofr
         sofr = get_sofr()
         if sofr.is_available:
             r = sofr.get_rate()
@@ -160,7 +160,7 @@ def run_exotic_comparison(n_paths: int = 10000, save_fig: bool = True):
     try:
         import pandas as pd
         for vix_path in [
-            ROOT / "data" / "trading_view" / "volatility" / "vix_daily.csv",
+            ROOT / "data" / "market" / "volatility" / "vix_daily.csv",
             ROOT / "data" / "market" / "vix" / "vix_daily.csv",
         ]:
             if vix_path.exists():

@@ -52,6 +52,12 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from utils.loader.realized_variance import (
+    compute_forward_annualized_rv_from_prices,
+    compute_rolling_annualized_rv_from_prices,
+    compute_single_day_annualized_rv_from_intraday_df,
+)
+
 
 # =====================================================================
 # 1. DATA LOADING
@@ -167,49 +173,6 @@ def _load_regime_signals() -> dict:
         if df is not None:
             signals[name] = df
     return signals
-
-
-# =====================================================================
-# 2. REALIZED VOLATILITY ESTIMATORS
-# =====================================================================
-
-def compute_daily_rv_from_intraday(intraday: pd.DataFrame, date: pd.Timestamp,
-                                     bars_per_day: int = 78) -> Optional[float]:
-    """
-    Compute realized variance for a single trading day from 5-min data.
-    RV = sum(r_i^2) * 252, where r_i = log-returns of intraday bars.
-    Andersen & Bollerslev (1998).
-    """
-    day_data = intraday[intraday["datetime"].dt.date == date.date()]
-    if len(day_data) < 10:  # need at least 10 bars
-        return None
-    log_ret = np.diff(np.log(day_data["close"].values))
-    rv_daily = float(np.sum(log_ret**2))
-    rv_annualized = rv_daily * 252  # annualized variance
-    return rv_annualized
-
-
-def compute_rolling_rv(spx_daily: pd.DataFrame, window: int = 21) -> pd.Series:
-    """
-    Compute rolling realized variance from daily close-to-close returns.
-    RV_t = sum(r_{t-w}^2 ... r_t^2) * (252/w)
-    """
-    log_ret = np.log(spx_daily["close"] / spx_daily["close"].shift(1))
-    rv = log_ret.rolling(window).apply(lambda x: float(np.sum(x**2) * 252 / window), raw=True)
-    return rv
-
-
-def compute_forward_rv(spx_daily: pd.DataFrame, idx: int, horizon: int = 21) -> Optional[float]:
-    """
-    Compute REALIZED variance over the next `horizon` trading days from index idx.
-    This is the "truth" we compare model predictions against.
-    """
-    if idx + horizon >= len(spx_daily):
-        return None
-    future_close = spx_daily["close"].iloc[idx:idx + horizon + 1].values
-    log_ret = np.diff(np.log(future_close))
-    rv_annualized = float(np.sum(log_ret**2) * 252 / horizon)
-    return rv_annualized
 
 
 # =====================================================================
@@ -464,8 +427,10 @@ def run_vrp_backtest(
         raise ValueError(f"Not enough data: {len(merged)} rows for horizon={horizon}")
 
     # Compute historical rolling RV for "historical" model
-    merged["rv_rolling_21d"] = compute_rolling_rv(
-        merged.rename(columns={"spx_close": "close"}), window=21
+    merged["rv_rolling_21d"] = compute_rolling_annualized_rv_from_prices(
+        merged["spx_close"].values,
+        window_days=21,
+        trading_days_per_year=252.0,
     )
 
     # Pre-compute intraday RV if available
@@ -473,7 +438,13 @@ def run_vrp_backtest(
     if spx_intraday is not None:
         print("  Pre-computing intraday RV for available dates ...")
         for dt in merged["date"].unique():
-            rv = compute_daily_rv_from_intraday(spx_intraday, pd.Timestamp(dt))
+            day_data = spx_intraday[spx_intraday["datetime"].dt.date == pd.Timestamp(dt).date()]
+            rv = compute_single_day_annualized_rv_from_intraday_df(
+                day_data,
+                price_col="close",
+                trading_days_per_year=252.0,
+                min_bars=10,
+            )
             if rv is not None:
                 intraday_rv_cache[pd.Timestamp(dt).date()] = rv
 
@@ -504,8 +475,11 @@ def run_vrp_backtest(
             continue
 
         # Forward realized variance (ground truth)
-        fwd_rv = compute_forward_rv(
-            merged.rename(columns={"spx_close": "close"}), idx, horizon
+        fwd_rv = compute_forward_annualized_rv_from_prices(
+            merged["spx_close"].values,
+            start_idx=int(idx),
+            horizon_days=int(horizon),
+            trading_days_per_year=252.0,
         )
         if fwd_rv is None:
             break

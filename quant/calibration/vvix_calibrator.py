@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 _MARKET_PATH = "data/market/volatility/vvix_daily.csv"
-_TV_PATH = "data/trading_view/volatility/vvix_daily.csv"  # fallback only
+_TV_PATH = "data/market/volatility/vvix_daily.csv"  # fallback only
 
 
 class VVIXCalibrator:
