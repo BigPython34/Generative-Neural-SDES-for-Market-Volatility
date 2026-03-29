@@ -78,7 +78,7 @@ class OptionsDataCache:
         
         return filepath
     
-    def load_latest(self, ticker: str = "SPY") -> tuple:
+    def load_latest(self, ticker: str = "SPX") -> tuple:
         """Load the most recent surface for a ticker."""
         ticker_snapshots = [s for s in self.metadata["snapshots"] if s["ticker"] == ticker]
         
@@ -185,7 +185,7 @@ class EnhancedOptionsLoader:
     Enhanced options data loader with more maturities, wider strikes, and caching.
     """
     
-    def __init__(self, ticker: str = "SPY", cache: OptionsDataCache = None):
+    def __init__(self, ticker: str = "SPX", cache: OptionsDataCache = None):
         self.ticker = ticker
         self.cache = cache or OptionsDataCache()
         self.spot = None
@@ -201,7 +201,8 @@ class EnhancedOptionsLoader:
         return list(self.tick.options)
     
     def get_full_surface(self, max_dte: int = 360, min_volume: int = 1,
-                        moneyness_range: float = 0.30, save_cache: bool = True) -> pd.DataFrame:
+                        moneyness_range: float = 0.5, save_cache: bool = True,
+                        risk_free_rate: float = 0.0, dividend_yield: float = 0.0) -> pd.DataFrame:
         """
         Load comprehensive volatility surface with many maturities.
         
@@ -250,13 +251,20 @@ class EnhancedOptionsLoader:
                 df['T'] = dte / 365.0
                 df['moneyness'] = np.log(df['strike'] / self.spot)
                 df['mid'] = (df['bid'] + df['ask']) / 2
+                fwd = float(self.spot) * np.exp((float(risk_free_rate) - float(dividend_yield)) * df['T'].astype(float))
+                df['moneyness_fwd'] = np.log(df['strike'] / fwd.clip(lower=1e-12))
+                df['spread_pct'] = ((df['ask'] - df['bid']) / df['mid'].clip(lower=1e-6)).replace([np.inf, -np.inf], np.nan)
 
                 df = df[
                         (df['volume'] > min_volume) &
+                        (df['openInterest'] > 0) &
                         (df['bid'] >= 0) &
+                        (df['ask'] >= df['bid']) &
+                        (df['mid'] > 0.05) &
                         (df['impliedVolatility'] > 0.01) &
                         (df['impliedVolatility'] < 3.0) &
-                        (abs(df['moneyness']) <= moneyness_range)
+                        (abs(df['moneyness']) <= moneyness_range) &
+                        (df['spread_pct'].isna() | (df['spread_pct'] <= 0.60))
                     ]
                 print(f"  After filter: {len(df)} options")
 
@@ -277,17 +285,29 @@ class EnhancedOptionsLoader:
         
         surface = pd.concat(all_data, ignore_index=True)
         
-        # Use OTM options for cleaner IV
+        """# Use OTM options for cleaner IV
         otm_mask = ((surface['type'] == 'call') & (surface['strike'] >= self.spot)) | \
                    ((surface['type'] == 'put') & (surface['strike'] <= self.spot))
-        surface_otm = surface[otm_mask].copy()
-        
+        surface_otm = surface[otm_mask].copy()"""
+        surface_otm=surface.copy()  # Keep all options, not just OTM, for richer calibration data
         # Remove duplicates (same strike/dte)
         surface_otm = surface_otm.sort_values('volume', ascending=False)\
                                   .drop_duplicates(['strike', 'dte'])\
                                   .sort_values(['dte', 'moneyness'])
         
-        print(f"Surface loaded: {len(surface_otm)} OTM options")
+        # Robust IV outlier clipping by maturity (MAD filter)
+        clipped = []
+        for _, g in surface_otm.groupby('dte'):
+            iv = g['impliedVolatility'].astype(float)
+            med = float(np.nanmedian(iv))
+            mad = float(np.nanmedian(np.abs(iv - med)))
+            if np.isfinite(mad) and mad > 1e-8:
+                z = np.abs(iv - med) / (1.4826 * mad)
+                g = g[(z <= 5.0) | (~np.isfinite(z))]
+            clipped.append(g)
+        surface_otm = pd.concat(clipped, ignore_index=True) if clipped else surface_otm
+
+        print(f"Surface loaded: {len(surface_otm)} options")
         print(f"  DTEs: {sorted(surface_otm['dte'].unique().tolist())}")
         print(f"  Strikes: ${surface_otm['strike'].min():.0f} - ${surface_otm['strike'].max():.0f}")
         
@@ -318,15 +338,10 @@ def download_and_cache_options():
     print("="*70)
     
     cache = OptionsDataCache()
-    loader = EnhancedOptionsLoader("SPY", cache)
+    loader = EnhancedOptionsLoader("SPX", cache)
     
     # Load comprehensive surface
-    surface = loader.get_full_surface(
-        max_dte=360,        # Up to 6 months
-        min_volume=1,       # Include less liquid options
-        moneyness_range=0.3,  # ±25% strikes
-        save_cache=True
-    )
+    surface = loader.get_full_surface()
     
     # Show summary
     print("\nSurface Summary:")

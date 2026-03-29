@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-03-19T23:14:40.228030",
+  "method": "Wasserstein-1 Distance",
+  "comparison": "vs MSE",
+  "parameters": {
+    "H": 0.14719291138253177,
+    "eta": 2.517636973885331,
+    "rho": -0.738772167217105,
+    "xi0": 0.04617104624528239
+  },
+  "losses": {
+    "wasserstein_1": 7.342277866137548,
+    "mse": 1403.1457056450613
+  },
+  "diagnostics": {
+    "iterations": 80,
+    "convergence": "Incomplete",
+    "market_mean": 657.3738545150501,
+    "market_std": 24.786865000822186,
+    "model_mean": 658.5844033964864,
+    "model_std": 27.336167697761475,
+    "market_skew": -0.18390195310581905,
+    "model_skew": 0.08505513142717944
+  },
+  "note": "Compare H values with joint calibration (H=0.0115) to assess univariate vs joint effects"
+}

@@ -21,7 +21,6 @@ from pathlib import Path
 
 
 _MARKET_PATH = "data/market/volatility/vvix_daily.csv"
-_TV_PATH = "data/market/volatility/vvix_daily.csv"  # fallback only
 
 
 class VVIXCalibrator:
@@ -32,8 +31,6 @@ class VVIXCalibrator:
             self._path = Path(filepath)
         elif Path(_MARKET_PATH).exists():
             self._path = Path(_MARKET_PATH)
-        else:
-            self._path = Path(_TV_PATH)
         self._df: pd.DataFrame = pd.DataFrame()
         self._load()
 

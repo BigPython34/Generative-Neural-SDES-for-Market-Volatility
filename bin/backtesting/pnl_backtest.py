@@ -23,7 +23,7 @@ Data needed (all available):
     - SPX daily prices  (data/market/equity_indices/spx_daily.csv)
     - SPX 5m intraday   (data/market/equity_indices/spx_5m.csv) for RV estimation
     - VIX daily          (data/market/volatility/vix_daily.csv)
-  - SOFR rates         (data/rates/sofr_daily_nyfed.csv) optional
+    - SOFR rates         (data/market/rates/sofr_daily_nyfed.csv) optional
 
 References:
   - Carr & Wu (2009): "Variance Risk Premiums"
@@ -42,6 +42,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import sitecustomize  # noqa: F401
+
 import argparse
 import json
 import time
@@ -52,7 +54,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from utils.loader.realized_variance import (
+from quant.loader.RealizedVariance import (
     compute_forward_annualized_rv_from_prices,
     compute_rolling_annualized_rv_from_prices,
     compute_single_day_annualized_rv_from_intraday_df,

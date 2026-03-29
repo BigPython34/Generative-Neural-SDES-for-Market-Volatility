@@ -9,7 +9,7 @@ import numpy as np
 from scipy.stats import kurtosis, linregress
 
 from quant.analysis.hurst_estimation import hurst_structure_function, hurst_variogram
-from utils.loader.RealizedVariance import (
+from quant.loader.RealizedVariance import (
     compute_log_rv_series_from_file,
     compute_rolling_annualized_rv_from_prices,
     rv_series_settings_from_config,

@@ -22,7 +22,7 @@ from engine.losses import (
     martingale_violation_loss, jump_regularization_loss, smile_fit_loss,
 )
 from engine.signature_engine import SignatureFeatureExtractor
-from utils.loader.RealizedVariance import RealizedVolatilityLoader
+from quant.loader.RealizedVariance import RealizedVolatilityLoader
 from utils.config import load_config
 
 
@@ -202,15 +202,11 @@ class GenerativeTrainer:
             vk1, (batch_size,), 0, self.val_paths.shape[0]
         )
 
-        measure_str = f"[{self.measure}-measure]"
         jump_str = " + JUMPS" if enable_jumps else ""
         backbone_str = f" ({model.backbone} backbone)"
-        print(f"\nStarting {measure_str} Training{jump_str}{backbone_str}...")
+        print(f"\nStarting P measure Training{jump_str}{backbone_str}...")
         print(f"   LR warmup: {self.yaml_config.get('training',{}).get('warmup_steps',50)} steps")
         print(f"   Early stopping patience: {self.patience} epochs")
-        if self.measure == 'Q':
-            print(f"   Martingale penalty: λ={self.lambda_martingale}")
-            print(f"   Risk-free rate: {self._risk_free_rate:.4f}")
         if model.backbone == 'fractional':
             fp = model.fractional_params
             print(f"   Fractional backbone: H₀={float(fp.H):.4f}, η₀={float(fp.eta):.3f}")
@@ -327,8 +323,7 @@ class GenerativeTrainer:
         from pathlib import Path
         models_dir = Path("models")
         models_dir.mkdir(exist_ok=True)
-
-        suffix = f"_{self.measure.lower()}"
+        suffix = ""
         if model.enable_jumps:
             suffix += "_jump"
         model_path = models_dir / f"neural_sde_best{suffix}.eqx"
@@ -337,7 +332,7 @@ class GenerativeTrainer:
     def load_model(self, model_path=None, enable_jumps=False):
         from pathlib import Path
         if model_path is None:
-            suffix = f"_{self.measure.lower()}"
+            suffix = ""
             if enable_jumps:
                 suffix += "_jump"
             model_path = Path(f"models/neural_sde_best{suffix}.eqx")

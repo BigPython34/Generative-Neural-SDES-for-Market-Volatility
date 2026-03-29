@@ -236,7 +236,7 @@ _regime_detector = None
 def _get_sofr():
     global _sofr
     if _sofr is None:
-        from utils.loader.sofr_loader import SOFRRateLoader
+        from quant.loader.sofr_loader import SOFRRateLoader
         _sofr = SOFRRateLoader()
     return _sofr
 
@@ -647,29 +647,59 @@ def animate_mc_paths(req: MCAnimRequest):
 
 @app.get("/animate/vol-surface")
 def animate_vol_surface():
-    """Load options surface data for 3D animated visualization."""
+    """Load options surface: dense interpolated grid + raw quotes (robust spikes)."""
     cache_dir = PROJECT_ROOT / "data" / "options_cache"
-    files = sorted(cache_dir.glob("SPY_surface_*.csv"))
+    files = sorted(cache_dir.glob("SPX_surface_*.csv"))
     if not files:
         raise HTTPException(404, "No options surface cached. Run: python bin/data/fetch_options.py")
 
     import pandas as pd
+    from scipy.interpolate import griddata
+
     df = pd.read_csv(files[-1])
     df = df[(df['impliedVolatility'] > 0.01) & (df['impliedVolatility'] < 3.0)]
     df = df[df['dte'] > 0]
+    if "spread_pct" in df.columns:
+        df = df[(~df["spread_pct"].notna()) | (df["spread_pct"] <= 0.50)]
+    if "mid" in df.columns:
+        df = df[df["mid"] > 0.1]
 
     strikes = df['strike'].values.tolist()
     dtes = df['dte'].values.tolist()
     ivs = (df['impliedVolatility'] * 100).values.tolist()
     types = df['type'].values.tolist()
 
-    return {
+    out = {
         "strikes": strikes,
         "dtes": dtes,
         "ivs": ivs,
         "types": types,
         "n_points": len(strikes),
+        "grid_strikes": [],
+        "grid_dtes": [],
+        "grid_ivs": [],
     }
+
+    if len(df) >= 6:
+        pts = df[["strike", "dte"]].to_numpy(dtype=float)
+        vals = (df["impliedVolatility"].to_numpy(dtype=float) * 100.0)
+        kmin, kmax = float(df["strike"].min()), float(df["strike"].max())
+        tmin, tmax = float(df["dte"].min()), float(df["dte"].max())
+        n = len(df)
+        nk = int(min(70, max(20, round(np.sqrt(n) * 2))))
+        nt = int(min(50, max(15, round(np.sqrt(n)))))
+        grid_k = np.linspace(kmin, kmax, nk)
+        grid_t = np.linspace(tmin, tmax, nt)
+        K, T = np.meshgrid(grid_k, grid_t)
+        Z = griddata(pts, vals, (K, T), method="linear")
+        if np.isnan(Z).any():
+            Z_near = griddata(pts, vals, (K, T), method="nearest")
+            Z = np.where(np.isnan(Z), Z_near, Z)
+        out["grid_strikes"] = grid_k.tolist()
+        out["grid_dtes"] = grid_t.tolist()
+        out["grid_ivs"] = Z.tolist()
+
+    return out
 
 
 @app.post("/animate/hedging")
@@ -1013,7 +1043,7 @@ border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-a
 
 <!-- ====================== VOL SURFACE ====================== -->
 <div class="section" id="sec-vol-surface">
-  <div class="card"><h3>Implied Volatility Surface (from cached SPY options)</h3>
+  <div class="card"><h3>Implied Volatility Surface (from cached SPX options)</h3>
     <button onclick="loadVolSurface()" style="width:auto;margin-bottom:16px;padding:8px 24px">Load Surface</button>
     <div id="vol-surface-plot" class="plot-box" style="height:600px"></div>
   </div>
@@ -1363,20 +1393,27 @@ async function runMC() {
     {...DARK, xaxis:{...DARK.xaxis,title:'Terminal Price'},yaxis:{...DARK.yaxis,title:'Count'}}, {responsive:true});
 }
 
-// Vol Surface
+// Vol Surface (smoothed surface + raw quotes)
 async function loadVolSurface() {
   const d = await api('/animate/vol-surface');
-  const calls = {x:[],y:[],z:[],type:'mesh3d',opacity:0.8,colorscale:'Viridis',intensity:[],name:'Calls'};
-  const puts = {x:[],y:[],z:[],type:'mesh3d',opacity:0.6,colorscale:'Inferno',intensity:[],name:'Puts'};
-  for (let i = 0; i < d.n_points; i++) {
-    const t = d.types[i] === 'call' ? calls : puts;
-    t.x.push(d.strikes[i]); t.y.push(d.dtes[i]); t.z.push(d.ivs[i]); t.intensity.push(d.ivs[i]);
+  const traces = [];
+  if (d.grid_ivs && d.grid_ivs.length && d.grid_strikes && d.grid_dtes) {
+    traces.push({
+      type:'surface', x:d.grid_strikes, y:d.grid_dtes, z:d.grid_ivs,
+      opacity:0.82, colorscale:'Viridis', name:'Smoothed', showscale:true,
+      colorbar:{title:'IV%',titlefont:{color:'#888'},tickfont:{color:'#888'}},
+    });
   }
-  Plotly.newPlot('vol-surface-plot',
-    [{x:d.strikes,y:d.dtes,z:d.ivs,type:'scatter3d',mode:'markers',
-      marker:{size:2,color:d.ivs,colorscale:'Plasma',showscale:true,colorbar:{title:'IV%'}},
-      text:d.types}],
-    {...DARK3D, margin:{l:0,r:0,t:0,b:0}}, {responsive:true});
+  traces.push({
+    x:d.strikes, y:d.dtes, z:d.ivs, type:'scatter3d', mode:'markers', name:'Quotes',
+    marker:{size:2.5,color:d.ivs,colorscale:'Plasma',showscale:false},
+    text:d.types,
+  });
+  Plotly.newPlot('vol-surface-plot', traces,
+    {...DARK3D, margin:{l:0,r:0,t:0,b:0},
+     scene:{...DARK3D.scene,xaxis:{...DARK3D.scene.xaxis,title:'Strike'},
+      yaxis:{...DARK3D.scene.yaxis,title:'DTE'},zaxis:{...DARK3D.scene.zaxis,title:'IV (%)'}}},
+    {responsive:true});
 }
 
 // Hedging animation

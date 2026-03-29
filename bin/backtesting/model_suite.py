@@ -22,13 +22,16 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+import sitecustomize  # noqa: F401
+
 import jax
 import jax.numpy as jnp
 import equinox as eqx
 import yaml
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from utils.config import load_config
 
@@ -319,7 +322,7 @@ def _pricing_prior_recalibration(model, cfg: dict) -> dict:
     dt = T_model / n_steps
 
     cache = OptionsDataCache()
-    surface, info = cache.load_latest("SPY")
+    surface, info = cache.load_latest("SPX")
 
     bt = HistoricalBacktester(fair_mode=True)
     smile, actual_dte = bt._filter_smile(surface, target_dte=30)

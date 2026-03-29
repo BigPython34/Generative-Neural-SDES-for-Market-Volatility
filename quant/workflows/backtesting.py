@@ -5,7 +5,7 @@ if _sys.stdout.encoding != 'utf-8':
 """
 Historical Backtesting Module
 =============================
-Backtests volatility models against REAL SPY options surfaces.
+Backtests volatility models against REAL SPX options surfaces.
 Uses cached market data from data/options_cache/ (Yahoo Finance snapshots).
 
 Models compared:
@@ -43,7 +43,7 @@ from engine.generative_trainer import GenerativeTrainer
 
 # Q-model support (Girsanov drift correction for risk-neutral pricing)
 try:
-    from quant.calibration.neural_sde_q_calibrator import load_q_model
+    from quant.calibration.neural_q import load_q_model
     _HAS_Q_CALIBRATOR = True
 except ImportError:
     _HAS_Q_CALIBRATOR = False
@@ -320,7 +320,7 @@ class HistoricalBacktester:
         """Use real SOFR rate when available, fall back to config."""
         if cfg['pricing'].get('use_sofr', True):
             try:
-                from utils.loader.sofr_loader import get_sofr
+                from quant.loader.sofr_loader import get_sofr
                 sofr = get_sofr()
                 if sofr.is_available:
                     return sofr.get_rate()
@@ -544,9 +544,9 @@ class HistoricalBacktester:
         moneyness_range = tuple(bt_cfg.get('moneyness_range', [-0.15, 0.15]))
 
         # Load snapshots
-        snapshots_df = self.cache.list_snapshots("SPY")
+        snapshots_df = self.cache.list_snapshots("SPX")
         if snapshots_df.empty:
-            print("ERROR: No cached SPY options data.")
+            print("ERROR: No cached SPX options data.")
             return pd.DataFrame()
 
         snapshots = snapshots_df.to_dict('records')
@@ -984,7 +984,7 @@ class HistoricalBacktester:
         ), row=2, col=2)
 
         fig.update_layout(
-            title=dict(text='<b>Backtest: Model IV vs Real SPY Options</b>',
+            title=dict(text='<b>Backtest: Model IV vs Real SPX Options</b>',
                        font=dict(size=18)),
             template='plotly_dark',
             height=750, width=350 * n_cols,
@@ -1026,7 +1026,7 @@ class HistoricalBacktester:
 
         out = {
             'timestamp': datetime.now().isoformat(),
-            'data_source': 'Real SPY options (Yahoo Finance cache)',
+            'data_source': 'Real SPX options (Yahoo Finance cache)',
             'fair_mode': self.fair_mode,
             'bergomi_params_source': bergomi_source,
             'vix_term_structure': {str(k): v for k, v in self.vix_ts.items()},

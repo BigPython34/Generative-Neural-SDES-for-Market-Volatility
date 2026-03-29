@@ -19,6 +19,8 @@ import pandas as pd
 import os as _os
 _os.environ['JAX_PLATFORMS'] = 'cpu'
 
+import sitecustomize  # noqa: F401
+
 import jax
 import jax.numpy as jnp
 import json
@@ -205,7 +207,7 @@ def generate_ou_paths(
 def run_ablation_study():
     """Compare model performance with and without signatures. Uses P model."""
     from engine.losses import kernel_mmd_loss
-    from utils.loader.RealizedVariance import RealizedVolatilityLoader
+    from quant.loader.RealizedVariance import RealizedVolatilityLoader
 
     print("   3a. Loading real paths and signatures...", flush=True)
     from engine.signature_engine import SignatureFeatureExtractor
@@ -218,7 +220,6 @@ def run_ablation_study():
     real_dt = _get_base_dt(cfg)
     
     # Load real REALIZED VOLATILITY data (same as training data)
-    # This is crucial: must match the training distribution!
     loader = RealizedVolatilityLoader(config_path='config/params.yaml')
     real_paths = np.array(
         loader.get_realized_vol_paths(segment_length=seg_len, seed=123, shuffle=True)[:500]
@@ -404,7 +405,7 @@ def verify_generated_roughness():
     print("   1a. Realized variance from SPX (training distribution)...", flush=True)
     H_rv = None
     try:
-        from utils.loader.RealizedVariance import RealizedVolatilityLoader
+        from quant.loader.RealizedVariance import RealizedVolatilityLoader
         loader = RealizedVolatilityLoader(config_path='config/params.yaml')
         # Use long-ish segments for a stable H estimate at the training sampling interval.
         rv_paths = np.array(
@@ -459,7 +460,7 @@ def verify_generated_roughness():
 def compare_signature_distributions():
     """Compare signature distributions of real vs generated paths."""
     from engine.signature_engine import SignatureFeatureExtractor
-    from utils.loader.RealizedVariance import RealizedVolatilityLoader
+    from quant.loader.RealizedVariance import RealizedVolatilityLoader
     from engine.losses import kernel_mmd_loss, signature_mmd_loss
 
     print("   2a. Loading real path segments (RV / P-measure)...", flush=True)

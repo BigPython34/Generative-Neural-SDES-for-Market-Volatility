@@ -11,6 +11,7 @@ Full-featured dashboard with:
 """
 
 import numpy as np
+import pandas as pd
 from datetime import datetime
 import os
 import sys
@@ -55,7 +56,7 @@ class DashboardV2:
 
         # SOFR rate
         try:
-            from utils.loader.sofr_loader import SOFRRateLoader
+            from quant.loader.sofr_loader import SOFRRateLoader
             sofr = SOFRRateLoader()
             if sofr.is_available:
                 self.metrics['sofr_rate'] = sofr.get_rate()
@@ -78,7 +79,7 @@ class DashboardV2:
         try:
             from utils.fetcher.options_cache import OptionsDataCache
             cache = OptionsDataCache()
-            self.surface, info = cache.load_latest("SPY")
+            self.surface, info = cache.load_latest("SPX")
             self.metrics['surface_info'] = info
             print(f"   Surface loaded: {len(self.surface)} options")
         except Exception:
@@ -274,7 +275,7 @@ class DashboardV2:
         <div class="kpi-grid">
             <div class="kpi-card kpi-cyan">
                 <div class="kpi-value">${spot:.2f}</div>
-                <div class="kpi-label">SPY Spot</div>
+                <div class="kpi-label">SPX Spot</div>
             </div>
             <div class="kpi-card kpi-green">
                 <div class="kpi-value">{atm_iv:.1f}%</div>
@@ -406,7 +407,20 @@ class DashboardV2:
                 mode:'text',text:['No surface data'],textfont:{size:20,color:'gray'}}],
                 {paper_bgcolor:'rgba(0,0,0,0)',scene:{bgcolor:'rgba(0,0,0,0)'}});'''
 
-        pivot = self.surface.pivot_table(
+        surf = self.surface.copy()
+        if "spread_pct" in surf.columns:
+            surf = surf[(~surf["spread_pct"].notna()) | (surf["spread_pct"] <= 0.50)]
+        if "mid" in surf.columns:
+            surf = surf[surf["mid"] > 0.1]
+        for dte, g in list(surf.groupby("dte")):
+            iv = g["impliedVolatility"].astype(float)
+            med = float(np.nanmedian(iv))
+            mad = float(np.nanmedian(np.abs(iv - med)))
+            if np.isfinite(mad) and mad > 1e-8:
+                z = np.abs(iv - med) / (1.4826 * mad)
+                surf = surf.drop(g.index[(z > 5.0) & np.isfinite(z)])
+
+        pivot = surf.pivot_table(
             values='impliedVolatility', index='moneyness', columns='dte', aggfunc='mean'
         ).dropna(how='all', axis=0).dropna(how='all', axis=1)
         pivot = pivot.interpolate(method='linear', axis=0).interpolate(method='linear', axis=1)

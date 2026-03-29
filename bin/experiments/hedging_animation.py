@@ -33,6 +33,8 @@ from __future__ import annotations
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+import sitecustomize  # noqa: F401
+
 import argparse
 import time
 from pathlib import Path

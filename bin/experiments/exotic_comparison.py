@@ -33,6 +33,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import sitecustomize  # noqa: F401
+
 import argparse
 import json
 import time
@@ -88,7 +90,7 @@ def _generate_neural_sde_paths(spot, r, T, n_steps, n_paths, use_q=True):
     # --- Try Q-model (Girsanov) ---
     if use_q:
         try:
-            from quant.calibration.neural_sde_q_calibrator import load_q_model
+            from quant.calibration.neural_q import load_q_model
             q_model = load_q_model()
             if q_model is not None:
                 dt = T / n_steps
@@ -139,7 +141,7 @@ def run_exotic_comparison(n_paths: int = 10000, save_fig: bool = True):
     # Use SOFR if available
     r = r_cfg
     try:
-        from utils.loader.sofr_loader import get_sofr
+        from quant.loader.sofr_loader import get_sofr
         sofr = get_sofr()
         if sofr.is_available:
             r = sofr.get_rate()

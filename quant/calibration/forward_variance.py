@@ -42,15 +42,16 @@ References
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from scipy.interpolate import PchipInterpolator
 
-
-def _enforce_monotone_total_variance(total_var: np.ndarray, eps: float = 1e-8) -> np.ndarray:
-    """In-place monotonicity projection for total variance term structure."""
-    out = np.array(total_var, dtype=float, copy=True)
-    for i in range(1, len(out)):
-        if out[i] < out[i - 1]:
-            out[i] = out[i - 1] + eps
-    return out
+def _enforce_monotone_total_variance(total_var: np.ndarray, T: np.ndarray) -> np.ndarray:
+    """Isotonic regression + PCHIP pour monotoniser sans écraser les gradients."""
+    from sklearn.isotonic import IsotonicRegression
+    iso = IsotonicRegression(increasing=True)
+    tv_mono = iso.fit_transform(T, total_var)
+    # Réévaluer sur la grille via PCHIP pour lisser les discontinuités
+    pchip = PchipInterpolator(T, tv_mono)
+    return np.maximum(pchip(T), total_var[0])  # garantir TV(0)=0 préservé
 
 
 def _bootstrap_piecewise_forward_variance(tenors_years: np.ndarray,
@@ -241,7 +242,7 @@ def bootstrap_forward_variance(
     total_var = iv ** 2 * T  # σ²(T) · T
 
     if monotone_smooth:
-        total_var = _enforce_monotone_total_variance(total_var)
+        total_var = _enforce_monotone_total_variance(total_var, T)
         # Recompute consistent ATM IVs
         iv = np.sqrt(total_var / T)
 
@@ -337,7 +338,7 @@ def bootstrap_xi0_from_vix(
     # Total variance: TV(τ) = VIX²(τ) · τ
     total_var = impl_var * tenors_years
 
-    total_var = _enforce_monotone_total_variance(total_var)
+    total_var = _enforce_monotone_total_variance(total_var, tenors_years)
     xi = _bootstrap_piecewise_forward_variance(tenors_years, total_var, min_xi=min_xi)
 
     # Recompute consistent "IVs" (actually VIX-implied vols)

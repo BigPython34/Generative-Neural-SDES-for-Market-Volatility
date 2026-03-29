@@ -80,7 +80,7 @@ try:
 except Exception:  # pragma: no cover
     load_config = None  # type: ignore
 
-from utils.loader.RealizedVariance import (
+from quant.loader.RealizedVariance import (
     RVSeriesSettings,
     compute_log_rv_series_from_file,
     rv_series_settings_from_config,

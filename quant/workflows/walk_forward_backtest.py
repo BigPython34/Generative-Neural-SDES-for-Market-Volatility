@@ -135,7 +135,7 @@ class WalkForwardBacktester:
             print("       Set retrain_neural=True for valid walk-forward (slow).")
         if reindex:
             self.cache.reindex_from_disk()
-        snapshots_df = self.cache.list_snapshots("SPY")
+        snapshots_df = self.cache.list_snapshots("SPX")
         if snapshots_df.empty:
             print("[WARN] No cached options. Run: python bin/data/fetch_options.py")
             print(f"       Cache path: {os.path.abspath(self.cache.cache_dir)}")

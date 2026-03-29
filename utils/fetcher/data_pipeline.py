@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from quant.loader.timeseries_merge import add_datetime_column, coerce_time_column, merge_timeseries_frames
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 today=datetime.now().strftime("%Y-%m-%d")
@@ -28,6 +30,73 @@ NYFED_SOFR_URL = (
     "https://markets.newyorkfed.org/read?startDt=2016-03-01&endDt=" + today +
     "&eventCodes=520&productCode=50&sort=postDt:-1,eventCode:1&format=xlsx"
 )
+
+
+YAHOO_REFRESH_CATALOG = {
+    "equity_indices": {
+        "spx": {"ticker": "^GSPC", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+        "cac40": {"ticker": "^FCHI", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+    },
+    "equity_etfs": {
+        "spy": {"ticker": "SPY", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+    },
+    "volatility": {
+        "vix": {"ticker": "^VIX", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+        "vvix": {"ticker": "^VVIX", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+        "vix1d": {"fixed_reason": "No Yahoo Finance equivalent for CBOE fixed-tenor VIX1D"},
+        "vix9d": {"fixed_reason": "No Yahoo Finance equivalent for CBOE fixed-tenor VIX9D"},
+        "vix3m": {"fixed_reason": "No Yahoo Finance equivalent for CBOE fixed-tenor VIX3M"},
+        "vix6m": {"fixed_reason": "No Yahoo Finance equivalent for CBOE fixed-tenor VIX6M"},
+        "vix1y": {"fixed_reason": "No Yahoo Finance equivalent for CBOE fixed-tenor VIX1Y"},
+    },
+    "rates": {
+        "us02y": {"fixed_reason": "No reliable Yahoo Finance series found for the 2Y Treasury yield in this environment"},
+        "us05y": {"ticker": "^FVX", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+        "us10y": {"ticker": "^TNX", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+        "us30y": {"ticker": "^TYX", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+    },
+    "sp_futures": {
+        "es1": {"ticker": "ES=F", "intervals": {"1m", "5m", "15m", "30m", "1h", "1d"}},
+        "es2": {"fixed_reason": "Yahoo Finance exposes only the continuous front-month ES futures"},
+    },
+    "vix_futures": {
+        "vx1": {"fixed_reason": "Yahoo Finance does not expose a reliable continuous VX front-month history here"},
+        "vx2": {"fixed_reason": "Yahoo Finance exposes only the continuous front-month VX futures"},
+    },
+}
+
+INTERVAL_SECONDS = {
+    "5m": 5 * 60,
+    "10m": 10 * 60,
+    "15m": 15 * 60,
+    "30m": 30 * 60,
+    "1h": 60 * 60,
+    "1d": 24 * 60 * 60,
+}
+
+INTERVAL_PERIODS = {
+    "1m": "7d",
+    "2m": "60d",
+    "5m": "60d",
+    "10m": "60d",
+    "15m": "60d",
+    "30m": "60d",
+    "45m": "60d",
+    "60m": "730d",
+    "90m": "60d",
+    "1h": "730d",
+    "1d": "max",
+}
+
+
+def _infer_interval_from_filename(name: str) -> Optional[str]:
+    stem = Path(name).stem.lower()
+    if stem.endswith("_daily"):
+        return "1d"
+    for tag in ["1m", "2m", "5m", "10m", "15m", "30m", "45m", "60m", "90m", "1h"]:
+        if stem.endswith(f"_{tag}"):
+            return tag
+    return None
 
 
 @dataclass
@@ -50,8 +119,8 @@ class DataRegenerator:
         self.vix_dir = self.market_dir / "volatility"
         self.vvix_dir = self.market_dir / "volatility"
         self.spx_dir = self.market_dir / "equity_indices"
-        self.rates_dir = self.data_dir / "rates"
-        self.vix_fut_dir = self.data_dir / "cboe_vix_futures_full"
+        self.rates_dir = self.market_dir / "rates"
+        self.vix_fut_dir = self.market_dir / "cboe_vix_futures_full"
 
         for d in [
             self.data_dir,
@@ -190,6 +259,195 @@ class DataRegenerator:
         path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(path, index=False)
         self._register(label, path)
+
+    def _read_csv_safe(self, path: Path) -> pd.DataFrame:
+        if not path.exists():
+            return pd.DataFrame()
+        try:
+            return pd.read_csv(path)
+        except Exception:
+            return pd.DataFrame()
+
+    def _latest_timestamp(self, path: Path):
+        df = self._read_csv_safe(path)
+        if len(df) == 0:
+            return None
+        try:
+            df = coerce_time_column(df)
+            if len(df) == 0:
+                return None
+            return pd.to_datetime(int(df["time"].max()), unit="s", utc=True)
+        except Exception:
+            return None
+
+    def _interval_seconds(self, interval: Optional[str]) -> Optional[int]:
+        if interval is None:
+            return None
+        return INTERVAL_SECONDS.get(interval)
+
+    def _latest_is_stale(self, latest_ts, interval: Optional[str]) -> bool:
+        if latest_ts is None:
+            return True
+        now = pd.Timestamp.now(tz="UTC")
+        if interval == "1d":
+            return latest_ts.normalize() < now.normalize()
+        sec = self._interval_seconds(interval)
+        if sec is None:
+            return latest_ts.normalize() < now.normalize()
+        return latest_ts < (now - pd.Timedelta(seconds=sec * 2))
+
+    def _catalog_for(self, category: str, prefix: str) -> dict:
+        return YAHOO_REFRESH_CATALOG.get(category, {}).get(prefix, {})
+
+    def _yahoo_refreshable(self, category: str, prefix: str, interval: Optional[str]) -> tuple[bool, str | None, str | None]:
+        spec = self._catalog_for(category, prefix)
+        if not spec:
+            return False, None, f"No Yahoo Finance equivalent for {category}/{prefix}"
+        if "fixed_reason" in spec:
+            return False, None, spec["fixed_reason"]
+        if interval is None:
+            return False, None, f"Unsupported filename interval for {category}/{prefix}"
+        if interval not in spec["intervals"]:
+            return False, spec.get("ticker"), f"Yahoo ticker exists but interval {interval} is not supported for {category}/{prefix}"
+        return True, spec.get("ticker"), None
+
+    def _refresh_yahoo_series(self, path: Path, ticker: str, interval: str, label: str):
+        """Refresh a single CSV by fetching only data newer than the on-disk tail."""
+        existing = self._read_csv_safe(path)
+        latest_ts = self._latest_timestamp(path)
+        if latest_ts is not None:
+            start = (latest_ts + pd.Timedelta(seconds=1)).to_pydatetime()
+            df_new = yf.Ticker(ticker).history(
+                start=start,
+                end=datetime.now(),
+                interval=interval,
+                auto_adjust=False,
+            )
+        else:
+            period = INTERVAL_PERIODS.get(interval, "max")
+            df_new = yf.Ticker(ticker).history(
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+            )
+
+        if df_new is None or len(df_new) == 0:
+            return {
+                "label": label,
+                "path": str(path.relative_to(self.root)).replace("\\", "/"),
+                "ticker": ticker,
+                "interval": interval,
+                "status": "empty",
+                "updated": False,
+                "rows_existing": len(existing),
+                "rows_new": 0,
+                "rows_final": len(existing),
+                "latest": str(latest_ts) if latest_ts is not None else None,
+            }
+
+        df_new = self._to_canonical_ohlc(df_new)
+        if len(df_new) == 0:
+            return {
+                "label": label,
+                "path": str(path.relative_to(self.root)).replace("\\", "/"),
+                "ticker": ticker,
+                "interval": interval,
+                "status": "empty-after-normalize",
+                "updated": False,
+                "rows_existing": len(existing),
+                "rows_new": 0,
+                "rows_final": len(existing),
+                "latest": str(latest_ts) if latest_ts is not None else None,
+            }
+
+        merged = merge_timeseries_frames(existing, df_new, prefer="incoming")
+        merged = add_datetime_column(merged)
+        merged = merged.sort_values("time").drop_duplicates("time", keep="last").reset_index(drop=True)
+
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+        merged.to_csv(path, index=False)
+
+        new_latest = self._latest_timestamp(path)
+        return {
+            "label": label,
+            "path": str(path.relative_to(self.root)).replace("\\", "/"),
+            "ticker": ticker,
+            "interval": interval,
+            "status": "updated",
+            "updated": True,
+            "rows_existing": len(existing),
+            "rows_new": len(df_new),
+            "rows_final": len(merged),
+            "latest_before": str(latest_ts) if latest_ts is not None else None,
+            "latest_after": str(new_latest) if new_latest is not None else None,
+        }
+
+    def build_refresh_inventory(self) -> dict:
+        """Inspect every CSV in data/market and classify it for refresh vs fixed."""
+        inventory = []
+        for path in sorted(self.market_dir.rglob("*.csv")):
+            if path.name == "regeneration_report.json":
+                continue
+            rel = path.relative_to(self.market_dir)
+            category = rel.parts[0] if len(rel.parts) > 1 else rel.parts[0]
+            prefix = path.stem.lower().split("_", 1)[0]
+            interval = _infer_interval_from_filename(path.name)
+            refreshable, ticker, fixed_reason = self._yahoo_refreshable(category, prefix, interval)
+            latest_ts = self._latest_timestamp(path)
+            inventory.append({
+                "path": str(rel).replace("\\", "/"),
+                "category": category,
+                "prefix": prefix,
+                "interval": interval,
+                "latest": str(latest_ts) if latest_ts is not None else None,
+                "stale": self._latest_is_stale(latest_ts, interval) if refreshable else None,
+                "refreshable": refreshable,
+                "ticker": ticker,
+                "reason": fixed_reason,
+            })
+        return {
+            "refreshable": [x for x in inventory if x["refreshable"]],
+            "fixed": [x for x in inventory if not x["refreshable"]],
+        }
+
+    def print_refresh_inventory(self):
+        plan = self.build_refresh_inventory()
+        print("\n[DATA PIPELINE] REFRESH PLAN")
+        print("  Refreshable (Yahoo Finance):")
+        for x in plan["refreshable"]:
+            stale_flag = "STALE" if x["stale"] else "fresh"
+            print(f"    - {x['path']}  [{x['ticker']} / {x['interval']}]  latest={x['latest']}  {stale_flag}")
+        print("  Fixed (no Yahoo Finance equivalent):")
+        for x in plan["fixed"]:
+            reason = x["reason"]
+            if x["category"] == "rates" and x["prefix"] == "sofr":
+                reason = "Managed by NY Fed SOFR fetcher (not Yahoo)"
+            print(f"    - {x['path']}  ({reason})")
+
+    def refresh_market_smart(self, *, verbose: bool = True) -> dict:
+        """Refresh only refreshable market files, fetching only the missing tail."""
+        plan = self.build_refresh_inventory()
+        results = []
+        for x in plan["refreshable"]:
+            if not x["stale"] and not self.force_download:
+                results.append({**x, "status": "up-to-date", "updated": False})
+                continue
+            path = self.market_dir / x["path"]
+            res = self._refresh_yahoo_series(path, x["ticker"], x["interval"], x["path"])
+            res.update({"refreshable": True, "stale": x["stale"]})
+            results.append(res)
+            if verbose:
+                if res["updated"]:
+                    print(f"  OK  {x['path']}  rows={res['rows_final']}  (added {res['rows_new']})")
+                else:
+                    print(f"  SKIP {x['path']}  {res['status']}")
+
+        return {
+            "refreshable": plan["refreshable"],
+            "fixed": plan["fixed"],
+            "results": results,
+        }
 
     # ------------------------------------------------------------------
     # Yahoo download helpers
@@ -654,7 +912,7 @@ class DataRegenerator:
             self._save_csv(combo, out_path, f"{symbol}_combined")
 
     # ------------------------------------------------------------------
-    # SOFR from Yahoo
+    # SOFR from NY Fed
     # ------------------------------------------------------------------
     def fetch_sofr_nyfed(self,
                          nyfed_url: Optional[str] = None,
@@ -667,17 +925,28 @@ class DataRegenerator:
         when Excel dependencies are unavailable.
         """
         out_path = self.rates_dir / "sofr_daily_nyfed.csv"
-        if out_path.exists() and not self.force_download:
-            self._register_skip("sofr_nyfed", "exists")
-            return
+
+        existing = self._read_csv_safe(out_path)
+        latest_existing = None
+        if len(existing) > 0:
+            date_cols = [c for c in existing.columns if c.lower() in {"date", "datetime"}]
+            if date_cols:
+                try:
+                    latest_existing = pd.to_datetime(existing[date_cols[0]], errors="coerce").max()
+                except Exception:
+                    latest_existing = None
+
+        if latest_existing is not None and not self.force_download:
+            start = (pd.to_datetime(latest_existing).normalize() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
         if end is None:
             end = datetime.now().strftime("%Y-%m-%d")
 
-        base_url = (
-            nyfed_url
-            or NYFED_SOFR_URL
-        )
+        import re
+
+        base_url = nyfed_url or NYFED_SOFR_URL
+        base_url = re.sub(r"startDt=[0-9-]+", f"startDt={start}", base_url)
+        base_url = re.sub(r"endDt=[0-9-]+", f"endDt={end}", base_url)
 
         df = None
         used_url = None
@@ -717,17 +986,27 @@ class DataRegenerator:
                 return
 
         out = pd.DataFrame({
-            "Date": pd.to_datetime(df[date_col], errors="coerce"),
-            "Close": pd.to_numeric(df[rate_col], errors="coerce"),
+            "date": pd.to_datetime(df[date_col], errors="coerce"),
+            "rate": pd.to_numeric(df[rate_col], errors="coerce"),
         }).dropna()
 
         if len(out) == 0:
             self._register_skip("sofr_nyfed", "Parsed NY Fed SOFR data is empty")
             return
 
-        out = out.sort_values("Date").drop_duplicates("Date")
+        if len(existing) > 0:
+            existing = existing.copy()
+            if "date" not in existing.columns and "Date" in existing.columns:
+                existing = existing.rename(columns={"Date": "date"})
+            if "rate" not in existing.columns and "Close" in existing.columns:
+                existing = existing.rename(columns={"Close": "rate"})
+            out = pd.concat([existing, out], ignore_index=True, sort=False)
 
-        self._save_csv(out, out_path, "sofr_nyfed")
+        out = out.sort_values("date").drop_duplicates("date", keep="last")
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out.to_csv(out_path, index=False)
+        self._register("sofr_nyfed", out_path)
 
         self.metadata["sofr_source"] = "nyfed"
         self.metadata["sofr_url"] = used_url

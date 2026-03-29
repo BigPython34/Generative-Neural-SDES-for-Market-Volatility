@@ -1,26 +1,26 @@
 {
   "roughness": {
     "H_rv": 0.12823050168222166,
-    "H_generated_mean": 0.09778402327493362,
-    "H_generated_std": 0.038680186395165295,
-    "gap_vs_training": 0.03044647840728805
+    "H_generated_mean": 0.12465713081964394,
+    "H_generated_std": 0.05069075553174277,
+    "gap_vs_training": 0.003573370862577724
   },
   "signatures": {
     "real_norm": 0.040855489671230316,
-    "gen_norm": 0.008541140705347061,
-    "norm_ratio": 0.20905735738523226,
-    "mean_correlation": 0.30130321972383955,
-    "mmd_kernel": 0.2748878598213196,
-    "mmd_mean_l2": 0.10299084335565567,
+    "gen_norm": 0.011753266677260399,
+    "norm_ratio": 0.2876790064649949,
+    "mean_correlation": 0.47033532744658607,
+    "mmd_kernel": 0.1523599922657013,
+    "mmd_mean_l2": 0.10505031049251556,
     "mmd_kernel_ou": 1.7373042106628418,
     "mmd_mean_l2_ou": 0.12148299813270569
   },
   "ablation": {
-    "mmd_neural": 0.24540002644062042,
+    "mmd_neural": 0.12495679408311844,
     "mmd_ou": 1.8739427328109741,
-    "improvement_pct": 86.90461441836526,
+    "improvement_pct": 93.33187765585134,
     "hurst_real": 0.1273440995256897,
-    "hurst_neural": 0.09868213255945378,
+    "hurst_neural": 0.12680173394203,
     "hurst_ou": 0.6248572802442142
   }
 }
